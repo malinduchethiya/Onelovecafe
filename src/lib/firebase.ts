@@ -84,7 +84,7 @@ export function handleFirestoreError(
 // Validate connection on boot as required by firebase-integration-rpc
 async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'settings', 'main'));
+    await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.error('Please check your Firebase configuration.');

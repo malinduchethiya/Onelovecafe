@@ -180,6 +180,22 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // 1. Auth & Admin Role Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          await currentUser.getIdToken();
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (errMsg.includes('token-service-api') || errMsg.includes('disabled')) {
+            console.warn('Stale auth token detected. Resetting auth session:', errMsg);
+            await firebaseSignOut(auth).catch(() => {});
+            setUser(null);
+            setIsAdmin(false);
+            setAuthReady(true);
+            return;
+          }
+        }
+      }
+
       setUser(currentUser);
       if (!currentUser || !currentUser.emailVerified) {
         setIsAdmin(false);
