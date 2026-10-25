@@ -1,0 +1,6 @@
+{
+  "name": "OneLove Café — Sigiriya Sanctuary & Table Reservations",
+  "description": "Boutique tropical garden café, specialty Ceylon coffee roastery, and wood-fired kitchen in Sigiriya, Sri Lanka. Reserve your table on our live interactive floor plan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
