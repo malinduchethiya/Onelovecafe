@@ -1,7 +1,0 @@
-# Cloudflare Pages & Netlify SPA Routing + Static SEO Asset Rules
-/sitemap.xml /sitemap.xml 200
-/robots.txt /robots.txt 200
-/assets/* /assets/:splat 200
-
-# Rewrite all SPA routes (/menu, /reserve, /story, /gallery, /events, /contact, /admin/*) to /index.html with HTTP 200
-/* /index.html 200

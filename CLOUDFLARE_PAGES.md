@@ -46,7 +46,7 @@ If you prefer to keep `firebase-applet-config.json` private or override settings
 
 ## 🚦 SPA Routing & Assets (Already Handled)
 
-- `public/_redirects`: Directs all paths (`/admin`, `/reserve`, etc.) to `/index.html` with HTTP 200, preventing 404s on page refresh.
+- `dist/200.html`: Automatically generated during `vite build` (via `spa-fallback-200` plugin in `vite.config.ts`). Cloudflare Pages natively uses `200.html` to serve the SPA on deep links (`/menu`, `/reserve`, `/admin`, etc.) without redirect loops (avoiding Wrangler error 100324).
 - `public/_headers`: Sets XML/plaintext headers and caching for `sitemap.xml` and `robots.txt`.
 - Output is generated in `dist/` with all static assets in `dist/assets/`.
 
