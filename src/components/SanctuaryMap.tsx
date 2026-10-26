@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { CafeSettings } from '../types/cafe';
 import { resolveGoogleMapsEmbedUrl, getGoogleMapsDirectionsUrl } from '../lib/mapUtils';
-import { MapPin, Navigation, Compass } from 'lucide-react';
+import { Navigation, Compass } from 'lucide-react';
 
 interface SanctuaryMapProps {
   settings: CafeSettings;
@@ -72,22 +72,7 @@ export const SanctuaryMap: React.FC<SanctuaryMapProps> = ({ settings, className 
           allowFullScreen={false}
         />
       </div>
-
-      {/* Minimal subtle location strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 text-xs text-[#171513]/75 font-mono-tabular">
-        <div className="flex items-center gap-2">
-          <MapPin className="w-3.5 h-3.5 text-[#C65B2B] shrink-0" />
-          <span className="truncate">{settings.address || 'Lion Rock Sanctuary Road, Kimbissa, Sigiriya'}</span>
-        </div>
-        <div className="flex items-center sm:justify-center gap-2">
-          <span className="text-[#171513]/40">GPS:</span>
-          <span>{settings.coordinates || '07°57\'25"N · 80°45\'37"E'}</span>
-        </div>
-        <div className="flex items-center sm:justify-end gap-2 text-[#58644E]">
-          <span className="w-2 h-2 rounded-full bg-[#58644E] inline-block animate-pulse" />
-          <span>Open Daily · Sunrise to Candlelight</span>
-        </div>
-      </div>
     </section>
   );
 };
+

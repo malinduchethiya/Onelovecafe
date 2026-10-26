@@ -13,16 +13,28 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({ src, alt, clas
     setImgError(false);
   }, [src]);
 
-  const isEditorialKey = src.startsWith('editorial:') || !src || imgError;
+  if (!src || src === 'loading' || imgError) {
+    return (
+      <div
+        className={`w-full h-full bg-[#E7DED3]/35 ${className}`}
+        role="img"
+        aria-label={alt}
+      />
+    );
+  }
+
+  const isEditorialKey = src.startsWith('editorial:');
   const key = src.replace('editorial:', '');
 
   if (!isEditorialKey) {
+    const isDataUrl = src.startsWith('data:');
     return (
       <img
         src={src}
         alt={alt}
         referrerPolicy="no-referrer"
-        loading="lazy"
+        loading={isDataUrl ? 'eager' : 'lazy'}
+        decoding={isDataUrl ? 'sync' : 'async'}
         onError={() => setImgError(true)}
         className={`w-full h-full object-cover ${className}`}
       />

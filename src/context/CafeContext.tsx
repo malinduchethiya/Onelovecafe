@@ -152,22 +152,83 @@ function getOrCreateSessionId(): string {
   return created;
 }
 
+function readLocalCache<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalCache<T>(key: string, value: T): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore storage quota errors when Base64 payloads exceed localStorage limit (IndexedDB handles full cache)
+  }
+}
+
+const INITIAL_SETTINGS: CafeSettings = {
+  ...DEFAULT_SETTINGS,
+  heroImages: [],
+};
+
+const INITIAL_MENU_ITEMS: MenuItem[] = DEFAULT_MENU_ITEMS.map((item) => ({
+  ...item,
+  imageUrl: '',
+}));
+
+const INITIAL_GALLERY: GalleryItem[] = DEFAULT_GALLERY.map((g) => ({
+  ...g,
+  imageUrl: '',
+}));
+
+const INITIAL_EVENTS: CafeEvent[] = DEFAULT_EVENTS.map((e) => ({
+  ...e,
+  imageUrl: '',
+}));
+
+const INITIAL_SITE_CONTENT: SiteContentSection[] = DEFAULT_SITE_CONTENT.map((s) => ({
+  ...s,
+  imageUrl: '',
+}));
+
 export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [sessionId] = useState<string>(getOrCreateSessionId);
 
-  const [settings, setSettings] = useState<CafeSettings>(DEFAULT_SETTINGS);
-  const [zones, setZones] = useState<SeatingZone[]>(DEFAULT_ZONES);
-  const [tables, setTables] = useState<CafeTable[]>(DEFAULT_TABLES);
+  const [settings, setSettings] = useState<CafeSettings>(() =>
+    readLocalCache('onelove_cache_settings', INITIAL_SETTINGS)
+  );
+  const [zones, setZones] = useState<SeatingZone[]>(() =>
+    readLocalCache('onelove_cache_zones', DEFAULT_ZONES)
+  );
+  const [tables, setTables] = useState<CafeTable[]>(() =>
+    readLocalCache('onelove_cache_tables', DEFAULT_TABLES)
+  );
   const [openingHours, setOpeningHours] = useState<OpeningHoursConfig[]>(DEFAULT_OPENING_HOURS);
   const [blockedDates, setBlockedDates] = useState<BlockedDateRecord[]>([]);
-  const [menuCategories, setMenuCategories] = useState<MenuCategory[]>(DEFAULT_MENU_CATEGORIES);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(DEFAULT_MENU_ITEMS);
-  const [gallery, setGallery] = useState<GalleryItem[]>(DEFAULT_GALLERY);
-  const [events, setEvents] = useState<CafeEvent[]>(DEFAULT_EVENTS);
-  const [siteContent, setSiteContent] = useState<SiteContentSection[]>(DEFAULT_SITE_CONTENT);
+  const [menuCategories, setMenuCategories] = useState<MenuCategory[]>(() =>
+    readLocalCache('onelove_cache_categories', DEFAULT_MENU_CATEGORIES)
+  );
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(() =>
+    readLocalCache('onelove_cache_menuItems', INITIAL_MENU_ITEMS)
+  );
+  const [gallery, setGallery] = useState<GalleryItem[]>(() =>
+    readLocalCache('onelove_cache_gallery', INITIAL_GALLERY)
+  );
+  const [events, setEvents] = useState<CafeEvent[]>(() =>
+    readLocalCache('onelove_cache_events', INITIAL_EVENTS)
+  );
+  const [siteContent, setSiteContent] = useState<SiteContentSection[]>(() =>
+    readLocalCache('onelove_cache_siteContent', INITIAL_SITE_CONTENT)
+  );
   const [availability, setAvailability] = useState<AvailabilitySlotRecord[]>([]);
 
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
@@ -233,21 +294,29 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const mainDoc = snap.docs.find((d) => d.id === 'main');
           if (mainDoc) {
             const data = mainDoc.data() as Omit<CafeSettings, 'id'>;
-            setSettings({
+            const rawHero =
+              Array.isArray(data.heroImages) && data.heroImages.length > 0
+                ? data.heroImages
+                : DEFAULT_SETTINGS.heroImages || [];
+            const uploadedHero = rawHero.filter(
+              (img) => typeof img === 'string' && img.length > 0 && !img.startsWith('editorial:')
+            );
+            const nextSettings: CafeSettings = {
               ...DEFAULT_SETTINGS,
               id: mainDoc.id,
               ...data,
-              heroImages:
-                Array.isArray(data.heroImages) && data.heroImages.length > 0
-                  ? data.heroImages
-                  : DEFAULT_SETTINGS.heroImages,
+              heroImages: uploadedHero.length > 0 ? uploadedHero : rawHero,
               heroSlideshowSpeedSeconds:
                 typeof data.heroSlideshowSpeedSeconds === 'number'
                   ? data.heroSlideshowSpeedSeconds
                   : DEFAULT_SETTINGS.heroSlideshowSpeedSeconds,
               floorPlanImageUrl:
                 typeof data.floorPlanImageUrl === 'string' ? data.floorPlanImageUrl : '',
-            });
+            };
+            setSettings(nextSettings);
+            writeLocalCache('onelove_cache_settings', nextSettings);
+          } else if (!snap.metadata.fromCache) {
+            setSettings(DEFAULT_SETTINGS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'settings')
@@ -263,6 +332,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .map((d) => ({ id: d.id, ...(d.data() as Omit<SeatingZone, 'id'>) }))
               .sort((a, b) => a.sortOrder - b.sortOrder);
             setZones(list);
+            writeLocalCache('onelove_cache_zones', list);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'seatingZones')
@@ -278,6 +348,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .map((d) => ({ id: d.id, ...(d.data() as Omit<CafeTable, 'id'>) }))
               .sort((a, b) => a.number - b.number);
             setTables(list);
+            writeLocalCache('onelove_cache_tables', list);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'tables')
@@ -323,6 +394,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .map((d) => ({ id: d.id, ...(d.data() as Omit<MenuCategory, 'id'>) }))
               .sort((a, b) => a.sortOrder - b.sortOrder);
             setMenuCategories(list);
+            writeLocalCache('onelove_cache_categories', list);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'menuCategories')
@@ -338,16 +410,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: d.id,
               ...(d.data() as Omit<MenuItem, 'id'>),
             }));
-            const alreadyUpgraded =
-              typeof window !== 'undefined' &&
-              window.localStorage.getItem('onelove_4x4_grid_seeded') === '1';
-            if (list.length < 16 && !alreadyUpgraded) {
-              const existingIds = new Set(list.map((i) => i.id));
-              const missingDefaults = DEFAULT_MENU_ITEMS.filter((d) => !existingIds.has(d.id));
-              setMenuItems([...list, ...missingDefaults]);
-            } else {
-              setMenuItems(list);
-            }
+            setMenuItems(list);
+            writeLocalCache('onelove_cache_menuItems', list);
+          } else if (!snap.metadata.fromCache) {
+            setMenuItems(DEFAULT_MENU_ITEMS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'menuItems')
@@ -363,6 +429,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .map((d) => ({ id: d.id, ...(d.data() as Omit<GalleryItem, 'id'>) }))
               .sort((a, b) => a.sortOrder - b.sortOrder);
             setGallery(list);
+            writeLocalCache('onelove_cache_gallery', list);
+          } else if (!snap.metadata.fromCache) {
+            setGallery(DEFAULT_GALLERY);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'gallery')
@@ -379,6 +448,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...(d.data() as Omit<CafeEvent, 'id'>),
             }));
             setEvents(list);
+            writeLocalCache('onelove_cache_events', list);
+          } else if (!snap.metadata.fromCache) {
+            setEvents(DEFAULT_EVENTS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'events')
@@ -398,7 +470,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const missingSections = DEFAULT_SITE_CONTENT.filter(
               (def) => !existingKeys.has(def.sectionKey)
             );
-            setSiteContent([...list, ...missingSections]);
+            const merged = [...list, ...missingSections];
+            setSiteContent(merged);
+            writeLocalCache('onelove_cache_siteContent', merged);
+          } else if (!snap.metadata.fromCache) {
+            setSiteContent(DEFAULT_SITE_CONTENT);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'siteContent')
@@ -1141,7 +1217,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Optimistic local state update so UI reflects immediately
       setMenuItems((prev) => {
         const exists = prev.some((m) => m.id === item.id);
-        return exists ? prev.map((m) => (m.id === item.id ? item : m)) : [item, ...prev];
+        const next = exists ? prev.map((m) => (m.id === item.id ? item : m)) : [item, ...prev];
+        writeLocalCache('onelove_cache_menuItems', next);
+        return next;
       });
 
       // Ensure default items are persisted if collection was unseeded
@@ -1180,7 +1258,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteMenuItem = useCallback(async (id: string) => {
     try {
       // Optimistic local state update
-      setMenuItems((prev) => prev.filter((m) => m.id !== id));
+      setMenuItems((prev) => {
+        const next = prev.filter((m) => m.id !== id);
+        writeLocalCache('onelove_cache_menuItems', next);
+        return next;
+      });
 
       const snap = await getDocs(collection(db, 'menuItems'));
       if (snap.empty) {
@@ -1205,8 +1287,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setGallery((prev) => {
         const exists = prev.some((g) => g.id === item.id);
-        const next = exists ? prev.map((g) => (g.id === item.id ? item : g)) : [...prev, item];
-        return next.sort((a, b) => a.sortOrder - b.sortOrder);
+        const next = (exists ? prev.map((g) => (g.id === item.id ? item : g)) : [...prev, item]).sort(
+          (a, b) => a.sortOrder - b.sortOrder
+        );
+        writeLocalCache('onelove_cache_gallery', next);
+        return next;
       });
 
       const snap = await getDocs(collection(db, 'gallery'));
@@ -1241,7 +1326,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteGalleryItem = useCallback(async (id: string) => {
     try {
-      setGallery((prev) => prev.filter((g) => g.id !== id));
+      setGallery((prev) => {
+        const next = prev.filter((g) => g.id !== id);
+        writeLocalCache('onelove_cache_gallery', next);
+        return next;
+      });
       const snap = await getDocs(collection(db, 'gallery'));
       if (snap.empty) {
         for (const defG of DEFAULT_GALLERY) {
@@ -1262,7 +1351,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setEvents((prev) => {
         const exists = prev.some((e) => e.id === evt.id);
-        return exists ? prev.map((e) => (e.id === evt.id ? evt : e)) : [...prev, evt];
+        const next = exists ? prev.map((e) => (e.id === evt.id ? evt : e)) : [...prev, evt];
+        writeLocalCache('onelove_cache_events', next);
+        return next;
       });
 
       const snap = await getDocs(collection(db, 'events'));
@@ -1296,7 +1387,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteEvent = useCallback(async (id: string) => {
     try {
-      setEvents((prev) => prev.filter((e) => e.id !== id));
+      setEvents((prev) => {
+        const next = prev.filter((e) => e.id !== id);
+        writeLocalCache('onelove_cache_events', next);
+        return next;
+      });
       const snap = await getDocs(collection(db, 'events'));
       if (snap.empty) {
         for (const defEvt of DEFAULT_EVENTS) {
@@ -1317,7 +1412,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setSiteContent((prev) => {
         const exists = prev.some((s) => s.id === section.id);
-        return exists ? prev.map((s) => (s.id === section.id ? section : s)) : [...prev, section];
+        const next = exists ? prev.map((s) => (s.id === section.id ? section : s)) : [...prev, section];
+        writeLocalCache('onelove_cache_siteContent', next);
+        return next;
       });
 
       const snap = await getDocs(collection(db, 'siteContent'));
@@ -1355,6 +1452,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const saveSettings = useCallback(async (newSettings: CafeSettings) => {
     try {
       setSettings(newSettings);
+      writeLocalCache('onelove_cache_settings', newSettings);
       const { id, ...data } = newSettings;
       const cleanedHeroImages = Array.isArray(data.heroImages)
         ? data.heroImages.filter((img) => typeof img === 'string' && img.length > 0).slice(0, 12)
@@ -1429,9 +1527,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const uploadMediaFile = useCallback(async (file: File, folder = 'menu'): Promise<string> => {
     const isHeroSlideshow = folder === 'hero';
     const isFloorPlan = folder === 'floorplan';
-    const maxWidth = isFloorPlan ? 1200 : isHeroSlideshow ? 1100 : 900;
-    const maxHeight = isFloorPlan ? 850 : isHeroSlideshow ? 750 : 700;
-    const quality = isHeroSlideshow ? 0.68 : 0.75;
+    const maxWidth = isHeroSlideshow ? 2048 : isFloorPlan ? 1600 : 1200;
+    const maxHeight = isHeroSlideshow ? 1365 : isFloorPlan ? 1100 : 900;
+    const quality = isHeroSlideshow ? 0.88 : 0.84;
 
     const base64DataUrl = await fileToCompressedBase64(file, maxWidth, maxHeight, quality);
     await logAdminAction(

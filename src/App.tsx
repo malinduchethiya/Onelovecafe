@@ -304,18 +304,25 @@ const OneLoveRouter: React.FC = () => {
 
   // Hero Background Slideshow list & timer
   const heroSlides = useMemo(() => {
-    const baseSlides =
+    const rawSlides =
       Array.isArray(settings.heroImages) && settings.heroImages.length > 0
         ? settings.heroImages
-        : [heroContent?.imageUrl || 'editorial:hero-sanctuary'];
-    if (
+        : [];
+    const combined =
       heroContent?.imageUrl &&
       !heroContent.imageUrl.startsWith('editorial:') &&
-      !baseSlides.includes(heroContent.imageUrl)
-    ) {
-      return [heroContent.imageUrl, ...baseSlides];
-    }
-    return baseSlides;
+      !rawSlides.includes(heroContent.imageUrl)
+        ? [heroContent.imageUrl, ...rawSlides]
+        : rawSlides.length > 0
+        ? rawSlides
+        : heroContent?.imageUrl
+        ? [heroContent.imageUrl]
+        : [];
+
+    const realUploadedSlides = combined.filter(
+      (img) => typeof img === 'string' && img.trim().length > 0 && !img.startsWith('editorial:')
+    );
+    return realUploadedSlides.length > 0 ? realUploadedSlides : combined;
   }, [settings.heroImages, heroContent?.imageUrl]);
 
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
@@ -494,17 +501,17 @@ const OneLoveRouter: React.FC = () => {
         {/* ==================== HOME PAGE ==================== */}
         {routeInfo.page === 'home' && (
           <div>
-            {/* 1. Immersive Hero Section with Parallax Effect for Mouse Scrolling */}
+            {/* 1. Immersive Full-Screen Hero Section with Parallax Effect for Mouse Scrolling */}
             <section
               onMouseMove={handleHeroMouseMove}
               onMouseLeave={handleHeroMouseLeave}
-              className="relative min-h-[86vh] flex items-end bg-[#171513] text-[#F8F4EE] overflow-hidden"
+              className="relative min-h-[calc(100vh-72px)] flex items-center justify-center bg-[#171513] text-[#F8F4EE] overflow-hidden"
             >
               {/* Parallax Background Slideshow Layer */}
               <div
                 className="absolute inset-0 transition-transform duration-300 ease-out pointer-events-none"
                 style={{
-                  transform: `translate3d(${mouseParallax.x * 0.4}px, ${scrollY * 0.38 + mouseParallax.y * 0.4}px, 0) scale(1.15)`,
+                  transform: `translate3d(${mouseParallax.x * 0.3}px, ${scrollY * 0.28 + mouseParallax.y * 0.3}px, 0) scale(1.02)`,
                   willChange: 'transform',
                 }}
               >
@@ -522,47 +529,48 @@ const OneLoveRouter: React.FC = () => {
                     />
                   </div>
                 ))}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#171513] via-[#171513]/55 to-black/30" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#171513]/90 via-[#171513]/45 to-black/35" />
               </div>
 
-              {/* Parallax Foreground Content Layer */}
+              {/* Parallax Foreground Content Layer - Centered in Middle */}
               <div
-                className="relative z-10 max-w-7xl mx-auto w-full px-6 lg:px-12 py-16 sm:py-24 grid grid-cols-1 lg:grid-cols-12 gap-10 items-end transition-transform duration-200 ease-out"
+                className="relative z-10 max-w-4xl mx-auto w-full px-6 lg:px-12 py-12 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
                 style={{
-                  transform: `translate3d(${-mouseParallax.x * 0.2}px, ${scrollY * -0.15 - mouseParallax.y * 0.2}px, 0)`,
+                  transform: `translate3d(${-mouseParallax.x * 0.15}px, ${scrollY * -0.15 - mouseParallax.y * 0.15}px, 0)`,
                   opacity: Math.max(0, 1 - scrollY / 680),
                   willChange: 'transform, opacity',
                 }}
               >
-                <div className="lg:col-span-8 space-y-6">
+                <div className="space-y-6 flex flex-col items-center justify-center text-center w-full">
                   <h1
                     style={{ textWrap: 'balance' }}
-                    className="text-4xl sm:text-6xl lg:text-[64px] font-editorial font-normal leading-[1.06] tracking-tight text-[#F8F4EE]"
+                    className="text-4xl sm:text-6xl lg:text-[66px] font-editorial font-normal leading-[1.08] tracking-tight text-[#F8F4EE] max-w-3xl mx-auto"
                   >
                     {heroContent?.heading || 'Where Jungle Stone Meets Slow Highland Coffee.'}
                   </h1>
-                  <p className="text-base sm:text-lg text-[#F8F4EE]/80 max-w-2xl leading-relaxed">
-                    {heroContent?.subheading}
+                  <p className="text-base sm:text-lg text-[#F8F4EE]/85 max-w-2xl leading-relaxed mx-auto">
+                    {heroContent?.subheading ||
+                      'Nestled in the emerald canopy beneath Sigiriya Lion Rock, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
                   </p>
-                  <div className="flex flex-wrap items-center gap-4 pt-2">
+                  <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
                     <button
                       type="button"
                       onClick={handleReserveCtaClick}
-                      className="px-7 py-3.5 bg-[#C65B2B] text-white text-xs font-medium uppercase tracking-widest inline-flex items-center gap-2.5 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0"
+                      className="px-7 py-3.5 bg-[#C65B2B] text-white text-xs font-medium uppercase tracking-widest inline-flex items-center gap-2.5 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-lg"
                     >
                       Reserve a Table <ArrowRight className="w-4 h-4" />
                     </button>
                     <button
                       type="button"
                       onClick={() => navigate('/menu')}
-                      className="px-7 py-3.5 border border-[#F8F4EE]/40 text-[#F8F4EE] text-xs font-medium uppercase tracking-widest hover:bg-[#F8F4EE] hover:text-[#171513] transition-colors whitespace-nowrap shrink-0"
+                      className="px-7 py-3.5 border border-[#F8F4EE]/40 text-[#F8F4EE] text-xs font-medium uppercase tracking-widest hover:bg-[#F8F4EE] hover:text-[#171513] transition-colors whitespace-nowrap shrink-0 backdrop-blur-xs"
                     >
                       Explore Seasonal Menu
                     </button>
                   </div>
 
                   {heroSlides.length > 1 && (
-                    <div className="flex items-center gap-2 pt-2">
+                    <div className="flex items-center justify-center gap-2 pt-3">
                       {heroSlides.map((_, idx) => (
                         <button
                           key={idx}
@@ -612,7 +620,7 @@ const OneLoveRouter: React.FC = () => {
 
                 <div className="lg:col-span-6 min-h-[380px] border border-[#E7DED3] bg-white p-3">
                   <EditorialVisual
-                    src={storyContent?.imageUrl || 'editorial:courtyard'}
+                    src={storyContent?.imageUrl || ''}
                     alt="Laterite stone courtyard and lotus pond at OneLove Café"
                     className="h-full"
                   />
@@ -924,7 +932,7 @@ const OneLoveRouter: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
               <div className="lg:col-span-7 min-h-[420px] bg-white border border-[#E7DED3] p-3">
                 <EditorialVisual
-                  src={storyContent?.imageUrl || 'editorial:courtyard'}
+                  src={storyContent?.imageUrl || ''}
                   alt={storyContent?.heading || 'Sigiriya sanctuary architecture at dusk'}
                   className="h-full"
                 />
@@ -983,7 +991,7 @@ const OneLoveRouter: React.FC = () => {
                 </div>
                 <div className="lg:col-span-6 aspect-[16/10] border border-[#E7DED3] overflow-hidden bg-[#F8F4EE]">
                   <EditorialVisual
-                    src={conciergeContent.imageUrl || 'editorial:evening-hearth'}
+                    src={conciergeContent.imageUrl || ''}
                     alt={conciergeContent.heading}
                   />
                 </div>

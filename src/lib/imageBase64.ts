@@ -4,9 +4,9 @@
  */
 export async function fileToCompressedBase64(
   file: File,
-  maxWidth = 1100,
-  maxHeight = 850,
-  quality = 0.76
+  maxWidth = 1920,
+  maxHeight = 1200,
+  quality = 0.86
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
@@ -36,12 +36,29 @@ export async function fileToCompressedBase64(
           return;
         }
 
+        // Use high-quality image smoothing
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
-        // If still large (> 240KB), step down quality slightly so multiple images fit comfortably in Firestore
-        if (dataUrl.length > 240_000) {
-          dataUrl = canvas.toDataURL('image/jpeg', 0.62);
+        // Prefer webp for superior fidelity and smaller size, fallback to jpeg
+        let dataUrl: string;
+        try {
+          dataUrl = canvas.toDataURL('image/webp', quality);
+          if (!dataUrl.startsWith('data:image/webp')) {
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+        } catch {
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
+
+        // Only gently compress if exceeding 480KB so that crisp details are fully preserved
+        if (dataUrl.length > 500_000) {
+          try {
+            dataUrl = canvas.toDataURL('image/webp', 0.80);
+          } catch {
+            dataUrl = canvas.toDataURL('image/jpeg', 0.80);
+          }
         }
         resolve(dataUrl);
       };

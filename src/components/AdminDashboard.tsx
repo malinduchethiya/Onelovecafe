@@ -206,11 +206,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const b64 = await uploadMediaFile(files[i], 'hero');
         uploadedBase64List.push(b64);
       }
-      // If current list only has the default SVG placeholder, replace it with the uploaded images; otherwise append
-      const baseList =
-        currentHeroImages.length === 1 && currentHeroImages[0].startsWith('editorial:')
-          ? []
-          : [...currentHeroImages];
+      // Strip any default 'editorial:*' SVG placeholders so only real uploaded images remain
+      const baseList = currentHeroImages.filter((img) => !img.startsWith('editorial:'));
       const nextHeroImages = [...baseList, ...uploadedBase64List].slice(0, 12);
       const updatedSettings = {
         ...settings,
@@ -2525,6 +2522,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {siteContent.map((sec) => {
                   const draft = contentDrafts[sec.id] || sec;
                   const isFooterSec = sec.sectionKey === 'footer';
+                  const isHeroSec = sec.sectionKey === 'hero';
+                  const hasImageUpload = !isFooterSec && !isHeroSec;
+
                   return (
                     <div key={sec.id} className="bg-white border border-[#E7DED3] p-6 space-y-5">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E7DED3] pb-3">
@@ -2533,13 +2533,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             Section Key: {sec.sectionKey}
                           </div>
                           <div className="text-[11px] text-[#171513]/60">
-                            {sec.sectionKey === 'hero' &&
-                              'Controls Homepage Hero headline, subheading, hours line & primary slide image'}
+                            {isHeroSec &&
+                              'Controls Homepage Hero headline, subheading & body copy. (Hero background photos are managed in the Hero Slideshow above.)'}
                             {sec.sectionKey === 'story' &&
                               'Controls Homepage Story section + /story Page primary architectural photograph & copy'}
                             {sec.sectionKey === 'concierge' &&
                               'Controls /story Page secondary hospitality showcase photograph & copy'}
-                            {sec.sectionKey === 'footer' &&
+                            {isFooterSec &&
                               'Controls Footer banner headline, CTA button labels, copyright notice & bottom links'}
                           </div>
                         </div>
@@ -2547,7 +2547,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           type="button"
                           onClick={async () => {
                             await saveSiteContent(draft);
-                            showToast(`Saved "${sec.sectionKey}" section & image to Firestore.`);
+                            showToast(`Saved "${sec.sectionKey}" section changes to Firestore.`);
                           }}
                           className="px-4 py-2 bg-[#C65B2B] text-white text-xs uppercase tracking-wider font-medium"
                         >
@@ -2555,8 +2555,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
-                        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div
+                        className={`text-xs ${
+                          hasImageUpload
+                            ? 'grid grid-cols-1 lg:grid-cols-3 gap-6'
+                            : 'w-full'
+                        }`}
+                      >
+                        <div
+                          className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+                            hasImageUpload ? 'lg:col-span-2' : 'w-full'
+                          }`}
+                        >
                           <div>
                             <label className="block text-[#171513]/60 mb-1">
                               {isFooterSec ? 'Primary Footer Button Label' : 'Kicker Line'}
@@ -2659,83 +2669,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                         </div>
 
-                        {/* Section Image Upload / Replace / Remove */}
-                        <div className="bg-[#F8F4EE] border border-[#E7DED3] p-4 space-y-3 flex flex-col justify-between">
-                          <div className="space-y-2">
-                            <div className="font-semibold text-[#171513]">
-                              Section Image (Base64 in Firestore)
+                        {/* Section Image Upload / Replace / Remove for Story & Concierge only */}
+                        {hasImageUpload && (
+                          <div className="bg-[#F8F4EE] border border-[#E7DED3] p-4 space-y-3 flex flex-col justify-between">
+                            <div className="space-y-2">
+                              <div className="font-semibold text-[#171513]">
+                                Section Image (Base64 in Firestore)
+                              </div>
+                              <div className="aspect-[16/10] w-full bg-white border border-[#E7DED3] overflow-hidden">
+                                <EditorialVisual
+                                  src={draft.imageUrl}
+                                  alt={draft.heading || sec.sectionKey}
+                                />
+                              </div>
                             </div>
-                            <div className="aspect-[16/10] w-full bg-white border border-[#E7DED3] overflow-hidden">
-                              <EditorialVisual
-                                src={draft.imageUrl}
-                                alt={draft.heading || sec.sectionKey}
-                              />
-                            </div>
-                          </div>
 
-                          <div className="flex flex-wrap items-center gap-2">
-                            <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#171513] text-[#F8F4EE] cursor-pointer hover:bg-[#C65B2B] font-medium">
-                              <Upload className="w-3.5 h-3.5" />
-                              <span>
-                                {uploadingSectionId === sec.id
-                                  ? 'Encoding...'
-                                  : 'Upload / Replace Photo'}
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  setUploadingSectionId(sec.id);
-                                  try {
-                                    const b64 = await uploadMediaFile(
-                                      file,
-                                      sec.sectionKey === 'hero' ? 'hero' : 'content'
-                                    );
-                                    const updatedSection = { ...draft, imageUrl: b64 };
-                                    setContentDrafts({
-                                      ...contentDrafts,
-                                      [sec.id]: updatedSection,
-                                    });
-                                    await saveSiteContent(updatedSection);
-                                    // If Hero section image was updated, also sync Slide #1 of Hero Slideshow
-                                    if (sec.sectionKey === 'hero') {
-                                      const nextSlides = [...currentHeroImages];
-                                      nextSlides[0] = b64;
-                                      await saveSettings({
-                                        ...settings,
-                                        heroImages: nextSlides,
+                            <div className="flex flex-wrap items-center gap-2">
+                              <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#171513] text-[#F8F4EE] cursor-pointer hover:bg-[#C65B2B] font-medium">
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>
+                                  {uploadingSectionId === sec.id
+                                    ? 'Encoding...'
+                                    : 'Upload / Replace Photo'}
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setUploadingSectionId(sec.id);
+                                    try {
+                                      const b64 = await uploadMediaFile(file, 'content');
+                                      const updatedSection = { ...draft, imageUrl: b64 };
+                                      setContentDrafts({
+                                        ...contentDrafts,
+                                        [sec.id]: updatedSection,
                                       });
+                                      await saveSiteContent(updatedSection);
+                                      showToast(
+                                        `Uploaded & saved new Base64 image for "${sec.sectionKey}" in Firestore.`
+                                      );
+                                    } finally {
+                                      setUploadingSectionId(null);
+                                      e.target.value = '';
                                     }
-                                    showToast(
-                                      `Uploaded & saved new Base64 image for "${sec.sectionKey}" in Firestore.`
-                                    );
-                                  } finally {
-                                    setUploadingSectionId(null);
-                                    e.target.value = '';
-                                  }
+                                  }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const cleared = { ...draft, imageUrl: '' };
+                                  setContentDrafts({
+                                    ...contentDrafts,
+                                    [sec.id]: cleared,
+                                  });
+                                  await saveSiteContent(cleared);
+                                  showToast(`Removed custom image from "${sec.sectionKey}".`);
                                 }}
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const cleared = { ...draft, imageUrl: '' };
-                                setContentDrafts({
-                                  ...contentDrafts,
-                                  [sec.id]: cleared,
-                                });
-                                await saveSiteContent(cleared);
-                                showToast(`Removed custom image from "${sec.sectionKey}".`);
-                              }}
-                              className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" /> Remove
-                            </button>
+                                className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Remove
+                              </button>
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                   );
