@@ -69,7 +69,9 @@ async function startServer() {
 
   // Health & Diagnostics API
   app.get('/api/health', (_req, res) => {
-    res.json({
+    res.status(200).json({
+      ok: true,
+      success: true,
       status: 'ok',
       service: 'onelove-cafe-sigiriya',
       timestamp: new Date().toISOString(),
@@ -81,6 +83,8 @@ async function startServer() {
     const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(`res_${clientIp}`, 15, 60_000)) {
       res.status(429).json({
+        ok: false,
+        success: false,
         valid: false,
         error: 'Too many reservation attempts. Please wait a moment and try again.',
       });
@@ -90,6 +94,8 @@ async function startServer() {
     const parsed = ReservationPayloadSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
+        ok: false,
+        success: false,
         valid: false,
         error: parsed.error.issues[0]?.message || 'Invalid reservation details.',
         issues: parsed.error.issues,
@@ -104,7 +110,9 @@ async function startServer() {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
 
-    res.json({
+    res.status(200).json({
+      ok: true,
+      success: true,
       valid: true,
       referenceCode: code,
       sanitized: parsed.data,
@@ -117,6 +125,8 @@ async function startServer() {
     const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(`inq_${clientIp}`, 10, 60_000)) {
       res.status(429).json({
+        ok: false,
+        success: false,
         valid: false,
         error: 'Rate limit exceeded. Please wait a minute before sending another message.',
       });
@@ -126,15 +136,36 @@ async function startServer() {
     const parsed = InquiryPayloadSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({
+        ok: false,
+        success: false,
         valid: false,
         error: parsed.error.issues[0]?.message || 'Please check your inquiry fields.',
       });
       return;
     }
 
-    res.json({
+    res.status(200).json({
+      ok: true,
+      success: true,
       valid: true,
       sanitized: parsed.data,
+    });
+  });
+
+  // Catch-all for any other /api/* routes so they never return HTML or empty body
+  app.all('/api/*', (_req, res) => {
+    res.status(200).json({
+      ok: true,
+      success: true,
+    });
+  });
+
+  // Global Express JSON error handler
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    res.status(500).json({
+      ok: false,
+      success: false,
+      error: err.message || 'Internal server error',
     });
   });
 

@@ -2539,6 +2539,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               'Controls Homepage Story section + /story Page primary architectural photograph & copy'}
                             {sec.sectionKey === 'concierge' &&
                               'Controls /story Page secondary hospitality showcase photograph & copy'}
+                            {sec.sectionKey.startsWith('story_collage_') &&
+                              'Controls one of the 5 hover-animated collage frames in the "Crafted from Laterite Earth, Teak & Monsoon Light" section'}
                             {isFooterSec &&
                               'Controls Footer banner headline, CTA button labels, copyright notice & bottom links'}
                           </div>

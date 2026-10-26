@@ -146,7 +146,7 @@ service cloud.firestore {
         data.openTime is string && data.openTime.size() <= 10 &&
         data.closeTime is string && data.closeTime.size() <= 10 &&
         data.slotDurationMinutes is int && data.slotDurationMinutes >= 15 && data.slotDurationMinutes <= 240 &&
-        data.gracePeriodMinutes is int && data.gracePeriodMinutes >= 5 && data.gracePeriodMinutes >= 60 &&
+        data.gracePeriodMinutes is int && data.gracePeriodMinutes >= 5 && data.gracePeriodMinutes <= 60 &&
         data.updatedAt is timestamp;
     }
 

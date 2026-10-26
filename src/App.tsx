@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { CafeProvider, useCafe } from './context/CafeContext';
 import { EditorialVisual } from './components/EditorialVisual';
+import { LateriteStorySection } from './components/LateriteStorySection';
 import { ReservationEngine } from './components/ReservationEngine';
 import { SanctuaryMap } from './components/SanctuaryMap';
 import { AdminDashboard, AdminTab } from './components/AdminDashboard';
@@ -638,43 +639,8 @@ const OneLoveRouter: React.FC = () => {
               )}
             </section>
 
-            {/* 2. Architectural Story & Philosophy Split */}
-            <section className="max-w-7xl mx-auto px-6 lg:px-12 py-20 sm:py-28 border-b border-[#E7DED3]">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-stretch">
-                <div className="lg:col-span-6 flex flex-col justify-between space-y-6">
-                  <div className="space-y-4">
-                    <h2
-                      style={{ textWrap: 'balance' }}
-                      className="text-3xl sm:text-5xl font-editorial font-semibold leading-tight text-[#171513]"
-                    >
-                      {storyContent?.heading ||
-                        'Crafted from Laterite Earth, Reclaimed Teak & Monsoon Light.'}
-                    </h2>
-                    <p className="text-base text-[#171513]/75 leading-relaxed font-light">
-                      {storyContent?.body}
-                    </p>
-                  </div>
-
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/story')}
-                      className="px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#C65B2B] transition-colors shadow-sm cursor-pointer"
-                    >
-                      Read Sigiriya Monograph <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="lg:col-span-6 min-h-[380px] border border-[#E7DED3] bg-white p-3">
-                  <EditorialVisual
-                    src={storyContent?.imageUrl || ''}
-                    alt="Laterite stone courtyard and lotus pond at OneLove Café"
-                    className="h-full"
-                  />
-                </div>
-              </div>
-            </section>
+            {/* 2. Crafted from Laterite Earth, Teak & Monsoon Light — 5-Photo Hover-Animated Collage */}
+            <LateriteStorySection onReadMonograph={() => navigate('/story')} />
 
             {/* 3. Featured Culinary & Roastery Selections */}
             <section className="max-w-7xl mx-auto px-6 lg:px-12 py-20 sm:py-28 border-b border-[#E7DED3] space-y-12">
@@ -961,32 +927,17 @@ const OneLoveRouter: React.FC = () => {
 
         {/* ==================== OUR STORY PAGE (/story) ==================== */}
         {routeInfo.page === 'story' && (
-          <div className="max-w-7xl mx-auto px-6 lg:px-12 py-16 sm:py-24 space-y-20">
-            <div className="max-w-3xl space-y-4">
-              <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
-                {storyContent?.kicker || 'Our Story & Sanctuary Identity'}
-              </div>
-              <h1
-                style={{ textWrap: 'balance' }}
-                className="text-4xl sm:text-6xl font-editorial font-semibold leading-tight text-[#171513]"
-              >
-                {storyContent?.heading ||
-                  'Built Around Ancient Banyan Trees in the Shadow of Sigiriya Rock.'}
-              </h1>
-              {storyContent?.subheading && (
-                <p className="text-sm text-[#58644E] font-medium">{storyContent.subheading}</p>
-              )}
-              <p className="text-base text-[#171513]/75 leading-relaxed font-light">{storyContent?.body}</p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
-              <div className="lg:col-span-7 min-h-[420px] bg-white border border-[#E7DED3] p-3">
-                <EditorialVisual
-                  src={storyContent?.imageUrl || ''}
-                  alt={storyContent?.heading || 'Sigiriya sanctuary architecture at dusk'}
-                  className="h-full"
-                />
-              </div>
+          <div>
+            <LateriteStorySection showMonographButton={false} />
+            <div className="max-w-7xl mx-auto px-6 lg:px-12 py-16 sm:py-24 space-y-20">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
+                <div className="lg:col-span-7 min-h-[420px] bg-white border border-[#E7DED3] p-3">
+                  <EditorialVisual
+                    src={storyContent?.imageUrl || 'editorial:courtyard'}
+                    alt={storyContent?.heading || 'Sigiriya sanctuary architecture at dusk'}
+                    className="h-full"
+                  />
+                </div>
               <div className="lg:col-span-5 bg-white border border-[#E7DED3] p-8 sm:p-10 flex flex-col justify-between space-y-6">
                 <div className="space-y-4">
                   <div className="text-xs uppercase tracking-widest text-[#58644E] font-medium">
@@ -1047,6 +998,7 @@ const OneLoveRouter: React.FC = () => {
                 </div>
               </div>
             )}
+            </div>
           </div>
         )}
 
