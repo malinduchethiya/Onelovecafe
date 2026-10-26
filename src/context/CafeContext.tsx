@@ -56,6 +56,8 @@ import {
   DEFAULT_EVENTS,
   DEFAULT_SITE_CONTENT,
 } from '../data/seedData';
+import { GlobalSeoConfig, PageSeoConfig, SeoPageKey } from '../types/seo';
+import { DEFAULT_GLOBAL_SEO, DEFAULT_PAGE_SEO } from '../data/seoDefaults';
 
 interface HoldResult {
   slotId: string;
@@ -96,6 +98,8 @@ interface CafeContextValue {
   events: CafeEvent[];
   siteContent: SiteContentSection[];
   availability: AvailabilitySlotRecord[];
+  seoGlobal: GlobalSeoConfig;
+  seoPages: Record<SeoPageKey, PageSeoConfig>;
   // Admin-only collections
   reservations: ReservationRecord[];
   inquiries: InquiryRecord[];
@@ -137,6 +141,9 @@ interface CafeContextValue {
   deleteEvent: (id: string) => Promise<void>;
   saveSiteContent: (section: SiteContentSection) => Promise<void>;
   saveSettings: (settings: CafeSettings) => Promise<void>;
+  saveSeoGlobal: (config: GlobalSeoConfig) => Promise<void>;
+  saveSeoPage: (page: PageSeoConfig) => Promise<void>;
+  resetSeoToDefaults: () => Promise<void>;
   updateInquiryStatus: (inquiry: InquiryRecord, status: InquiryRecord['status']) => Promise<void>;
   uploadMediaFile: (file: File, folder?: string) => Promise<string>;
   updateCollageImageFromDevice: (slotIndex: number, file: File) => Promise<void>;
@@ -263,6 +270,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     mergeSiteContentWithDefaults(readLocalCache('onelove_cache_siteContent', INITIAL_SITE_CONTENT))
   );
   const [availability, setAvailability] = useState<AvailabilitySlotRecord[]>([]);
+  const [seoGlobal, setSeoGlobal] = useState<GlobalSeoConfig>(() =>
+    readLocalCache('onelove_cache_seoGlobal', DEFAULT_GLOBAL_SEO)
+  );
+  const [seoPages, setSeoPages] = useState<Record<SeoPageKey, PageSeoConfig>>(() =>
+    readLocalCache('onelove_cache_seoPages', DEFAULT_PAGE_SEO)
+  );
 
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
@@ -612,10 +625,77 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
+    // 11. Global SEO Configuration Real-Time Listener
+    unsubs.push(
+      onSnapshot(
+        collection(db, 'seoConfig'),
+        (snap) => {
+          const mainDoc = snap.docs.find((d) => d.id === 'main');
+          if (mainDoc) {
+            const data = mainDoc.data() as Omit<GlobalSeoConfig, 'id'>;
+            const mergedGlobal: GlobalSeoConfig = {
+              ...DEFAULT_GLOBAL_SEO,
+              ...data,
+              id: 'main',
+            };
+            setSeoGlobal(mergedGlobal);
+            writeLocalCache('onelove_cache_seoGlobal', mergedGlobal);
+          } else if (!snap.metadata.fromCache) {
+            setSeoGlobal(DEFAULT_GLOBAL_SEO);
+          }
+        },
+        (err) => console.warn('SEO config sync note:', err)
+      )
+    );
+
+    // 12. Per-Page SEO Configuration Real-Time Listener
+    unsubs.push(
+      onSnapshot(
+        collection(db, 'seoPages'),
+        (snap) => {
+          if (!snap.empty) {
+            const nextMap: Record<SeoPageKey, PageSeoConfig> = { ...DEFAULT_PAGE_SEO };
+            snap.docs.forEach((d) => {
+              const key = d.id as SeoPageKey;
+              if (key in nextMap) {
+                nextMap[key] = {
+                  ...DEFAULT_PAGE_SEO[key],
+                  ...(d.data() as Omit<PageSeoConfig, 'id'>),
+                  id: key,
+                };
+              }
+            });
+            setSeoPages(nextMap);
+            writeLocalCache('onelove_cache_seoPages', nextMap);
+          } else if (!snap.metadata.fromCache) {
+            setSeoPages(DEFAULT_PAGE_SEO);
+          }
+        },
+        (err) => console.warn('SEO pages sync note:', err)
+      )
+    );
+
     return () => {
       unsubs.forEach((u) => u());
     };
   }, []);
+
+  // Sync live Firestore SEO configuration to the Express server so SSR HTML metadata,
+  // /sitemap.xml, /robots.txt, and /favicon* endpoints always reflect the latest settings
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const timer = window.setTimeout(() => {
+      fetch('/api/seo/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          global: seoGlobal,
+          pages: seoPages,
+        }),
+      }).catch(() => {});
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [seoGlobal, seoPages]);
 
   // Seed initial sanctuary data into Firestore when an admin clicks Seed or first initializes
   const seedDatabaseIfNeeded = useCallback(async () => {
@@ -1814,6 +1894,122 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [isAdmin, siteContent, saveSiteContent]
   );
 
+  const saveSeoGlobal = useCallback(async (config: GlobalSeoConfig) => {
+    try {
+      const merged: GlobalSeoConfig = {
+        ...DEFAULT_GLOBAL_SEO,
+        ...config,
+        id: 'main',
+      };
+      setSeoGlobal(merged);
+      writeLocalCache('onelove_cache_seoGlobal', merged);
+
+      const { id, ...data } = merged;
+      await setDoc(doc(db, 'seoConfig', id || 'main'), {
+        siteName: (data.siteName || 'OneLove Café').slice(0, 100),
+        alternateNames: (data.alternateNames || []).slice(0, 15),
+        defaultTitle: (data.defaultTitle || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
+        titleTemplate: (data.titleTemplate || '%s | OneLove Café Sigiriya').slice(0, 120),
+        defaultDescription: (data.defaultDescription || DEFAULT_GLOBAL_SEO.defaultDescription).slice(0, 500),
+        canonicalDomain: (data.canonicalDomain || 'https://onelovecafesigiriya.com')
+          .replace(/\/+$/, '')
+          .slice(0, 200),
+        language: (data.language || 'en').slice(0, 16),
+        googleVerificationTag: (data.googleVerificationTag || '').slice(0, 200),
+        defaultOgImageUrl: (data.defaultOgImageUrl || '').slice(0, 900000),
+        brandLogoUrl: (data.brandLogoUrl || '').slice(0, 900000),
+        faviconSourceUrl: (data.faviconSourceUrl || '').slice(0, 900000),
+        favicon48Url: (data.favicon48Url || '').slice(0, 300000),
+        favicon96Url: (data.favicon96Url || '').slice(0, 300000),
+        favicon192Url: (data.favicon192Url || '').slice(0, 400000),
+        appleTouchIconUrl: (data.appleTouchIconUrl || '').slice(0, 400000),
+        allowIndexing: Boolean(data.allowIndexing),
+        noindexPreviewDomains: Boolean(data.noindexPreviewDomains),
+        businessType: data.businessType === 'Restaurant' ? 'Restaurant' : 'CafeOrCoffeeShop',
+        streetAddress: (data.streetAddress || '').slice(0, 200),
+        addressLocality: (data.addressLocality || 'Sigiriya').slice(0, 80),
+        addressRegion: (data.addressRegion || 'Central Province').slice(0, 80),
+        postalCode: (data.postalCode || '21120').slice(0, 20),
+        addressCountry: (data.addressCountry || 'LK').slice(0, 10),
+        latitude: Number(data.latitude) || 7.9541,
+        longitude: Number(data.longitude) || 80.7547,
+        telephone: (data.telephone || '').slice(0, 40),
+        whatsapp: (data.whatsapp || '').slice(0, 40),
+        email: (data.email || '').slice(0, 120),
+        priceRange: (data.priceRange || '$$').slice(0, 16),
+        servesCuisine: (data.servesCuisine || []).slice(0, 20),
+        openingHoursSpec: (data.openingHoursSpec || 'Mo-Su 07:30-22:30').slice(0, 120),
+        socialLinks: (data.socialLinks || []).slice(0, 20),
+        customKeywords: (data.customKeywords || []).slice(0, 200),
+        imageAltOverrides: data.imageAltOverrides || {},
+        updatedAt: serverTimestamp(),
+      });
+
+      await logAdminAction(
+        'SAVE_SEO_GLOBAL',
+        'seoConfig',
+        'main',
+        `Updated global SEO configuration (${data.siteName} · ${data.canonicalDomain})`
+      );
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'seoConfig/main');
+    }
+  }, []);
+
+  const saveSeoPage = useCallback(async (page: PageSeoConfig) => {
+    try {
+      setSeoPages((prev) => {
+        const next = { ...prev, [page.id]: page };
+        writeLocalCache('onelove_cache_seoPages', next);
+        return next;
+      });
+
+      const snap = await getDocs(collection(db, 'seoPages'));
+      if (snap.empty) {
+        for (const defKey of Object.keys(DEFAULT_PAGE_SEO) as SeoPageKey[]) {
+          if (defKey === page.id) continue;
+          const { id: pid, ...pdata } = DEFAULT_PAGE_SEO[defKey];
+          await setDoc(doc(db, 'seoPages', pid), {
+            ...pdata,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      const { id, ...data } = page;
+      await setDoc(doc(db, 'seoPages', id), {
+        routePath: (data.routePath || '/').slice(0, 120),
+        pageLabel: (data.pageLabel || id).slice(0, 120),
+        title: (data.title || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
+        metaDescription: (data.metaDescription || '').slice(0, 500),
+        canonicalPath: (data.canonicalPath || data.routePath || '/').slice(0, 120),
+        primaryKeyword: (data.primaryKeyword || '').slice(0, 120),
+        supportingKeywords: (data.supportingKeywords || []).slice(0, 40),
+        ogTitle: (data.ogTitle || data.title || '').slice(0, 160),
+        ogDescription: (data.ogDescription || data.metaDescription || '').slice(0, 500),
+        ogImageUrl: (data.ogImageUrl || '').slice(0, 900000),
+        indexable: Boolean(data.indexable),
+        updatedAt: serverTimestamp(),
+      });
+
+      await logAdminAction(
+        'SAVE_SEO_PAGE',
+        'seoPages',
+        id,
+        `Updated page SEO metadata for ${data.routePath} (${data.title})`
+      );
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `seoPages/${page.id}`);
+    }
+  }, []);
+
+  const resetSeoToDefaults = useCallback(async () => {
+    await saveSeoGlobal(DEFAULT_GLOBAL_SEO);
+    for (const key of Object.keys(DEFAULT_PAGE_SEO) as SeoPageKey[]) {
+      await saveSeoPage(DEFAULT_PAGE_SEO[key]);
+    }
+  }, [saveSeoGlobal, saveSeoPage]);
+
   return (
     <CafeContext.Provider
       value={{
@@ -1832,6 +2028,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         events,
         siteContent,
         availability,
+        seoGlobal,
+        seoPages,
         reservations,
         inquiries,
         admins,
@@ -1860,6 +2058,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteEvent,
         saveSiteContent,
         saveSettings,
+        saveSeoGlobal,
+        saveSeoPage,
+        resetSeoToDefaults,
         updateInquiryStatus,
         uploadMediaFile,
         updateCollageImageFromDevice,

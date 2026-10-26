@@ -20,6 +20,7 @@ import { LateriteStorySection } from './components/LateriteStorySection';
 import { ReservationEngine } from './components/ReservationEngine';
 import { SanctuaryMap } from './components/SanctuaryMap';
 import { AdminDashboard, AdminTab } from './components/AdminDashboard';
+import { SeoHead } from './components/SeoHead';
 import { GalleryItem } from './types/cafe';
 
 // Error Boundary for clear diagnostics (including Firestore quota or rule messages)
@@ -87,7 +88,7 @@ function parsePathname(pathname: string): {
   if (lower === '/story') return { page: 'story' };
   if (lower === '/gallery') return { page: 'gallery' };
   if (lower === '/events') return { page: 'events' };
-  if (lower === '/contact') return { page: 'contact' };
+  if (lower === '/contact' || lower === '/visit') return { page: 'contact' };
   if (lower === '/reserve') return { page: 'reserve', voucherCode: null };
   if (lower.startsWith('/reserve/voucher/')) {
     const code = rawClean.slice('/reserve/voucher/'.length);
@@ -106,6 +107,7 @@ function parsePathname(pathname: string): {
       'events',
       'content',
       'inquiries',
+      'seo',
       'settings',
       'audit',
     ];
@@ -198,95 +200,6 @@ const OneLoveRouter: React.FC = () => {
   };
 
   const routeInfo = parsePathname(pathname);
-
-  // Dynamic Route-Level SEO Title, Meta Description, Robots & Canonical URL for Google Search Console
-  useEffect(() => {
-    if (typeof document === 'undefined' || typeof window === 'undefined') return;
-    const brand = settings.cafeName || 'OneLove Café';
-    const seoMap: Record<string, { title: string; desc: string; path: string }> = {
-      home: {
-        title: `${brand} — Sigiriya Sanctuary, Roastery & Table Reservations`,
-        desc:
-          settings.tagline ||
-          'Boutique tropical garden café, specialty Ceylon coffee roastery, and wood-fired kitchen in Sigiriya, Sri Lanka. Reserve your table on our live interactive floor plan.',
-        path: '/',
-      },
-      menu: {
-        title: `Seasonal Menu & Highland Pour-Overs | ${brand} Sigiriya`,
-        desc:
-          'Explore single-estate Ceylon pour-over coffee, artisanal hopper brunch bowls, wood-fired coastal plates, and botanical elixirs at OneLove Café Sigiriya.',
-        path: '/menu',
-      },
-      reserve: {
-        title: `Reserve a Table on Interactive Floor Plan | ${brand} Sigiriya`,
-        desc:
-          'Select your exact dining zone and table across our Jungle Canopy Verandah, Laterite Stone Courtyard, Roastery Lounge, or Lotus Private Pavilion in Sigiriya.',
-        path: '/reserve',
-      },
-      story: {
-        title: `Our Sigiriya Story & Sanctuary Architecture | ${brand}`,
-        desc:
-          'Built around ancient Banyan and Frangipani trees in the shadow of Sigiriya Lion Rock using local laterite earth, reclaimed railway teak, and highland craftsmanship.',
-        path: '/story',
-      },
-      gallery: {
-        title: `Sanctuary Photography Gallery | ${brand} Sigiriya`,
-        desc:
-          'Visual monograph of OneLove Café Sigiriya: open-air jungle architecture, specialty coffee rituals, wood-fired cuisine, and candlelit evenings.',
-        path: '/gallery',
-      },
-      events: {
-        title: `Acoustic Hearth Nights & Coffee Cuppings | ${brand} Sigiriya`,
-        desc:
-          'Join our twilight acoustic guitar gatherings, Highland Estate coffee cupping workshops, and Full Moon Poya claypot supper clubs in Sigiriya.',
-        path: '/events',
-      },
-      contact: {
-        title: `Location, Directions & Concierge | ${brand} Sigiriya`,
-        desc: `Located at ${settings.address}. Open daily for post-climb sunrise coffee, brunch, and candlelit dinner in Sigiriya, Sri Lanka.`,
-        path: '/contact',
-      },
-      admin: {
-        title: `Admin Console | ${brand} Sigiriya`,
-        desc: 'Protected hospitality management console.',
-        path: '/admin',
-      },
-      notfound: {
-        title: `Page Not Found | ${brand} Sigiriya`,
-        desc: 'Return to OneLove Café Sigiriya homepage or reserve your table online.',
-        path: pathname,
-      },
-    };
-
-    const currentSeo = seoMap[routeInfo.page] || seoMap.home;
-    document.title = currentSeo.title;
-
-    const setMeta = (selector: string, attr: string, val: string) => {
-      const el = document.querySelector(selector);
-      if (el) el.setAttribute(attr, val);
-    };
-
-    setMeta('meta[name="description"]', 'content', currentSeo.desc);
-    setMeta('meta[property="og:title"]', 'content', currentSeo.title);
-    setMeta('meta[property="og:description"]', 'content', currentSeo.desc);
-    setMeta('meta[name="twitter:title"]', 'content', currentSeo.title);
-    setMeta('meta[name="twitter:description"]', 'content', currentSeo.desc);
-
-    const canonicalEl = document.getElementById('canonical-link');
-    if (canonicalEl) {
-      canonicalEl.setAttribute('href', `${window.location.origin}${currentSeo.path}`);
-    }
-
-    const robotsEl = document.getElementById('meta-robots');
-    if (robotsEl) {
-      robotsEl.setAttribute(
-        'content',
-        routeInfo.page === 'admin' || routeInfo.page === 'notfound'
-          ? 'noindex, nofollow'
-          : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
-      );
-    }
-  }, [routeInfo.page, pathname, settings.cafeName, settings.tagline, settings.address]);
 
   const heroContent = useMemo(
     () => siteContent.find((s) => s.sectionKey === 'hero') || siteContent[0],
@@ -412,15 +325,27 @@ const OneLoveRouter: React.FC = () => {
   // Protected Admin Route
   if (routeInfo.page === 'admin') {
     return (
-      <AdminDashboard
-        initialTab={routeInfo.adminTab}
-        onNavigatePublic={(path) => navigate(path)}
-      />
+      <>
+        <SeoHead
+          currentPage={routeInfo.page}
+          pathname={pathname}
+          voucherCode={routeInfo.voucherCode}
+        />
+        <AdminDashboard
+          initialTab={routeInfo.adminTab}
+          onNavigatePublic={(path) => navigate(path)}
+        />
+      </>
     );
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F4EE] text-[#171513]">
+      <SeoHead
+        currentPage={routeInfo.page}
+        pathname={pathname}
+        voucherCode={routeInfo.voucherCode}
+      />
       {/* Strict 3-Zone Top Bar Contract */}
       <header className="sticky top-0 z-40 h-[72px] bg-[#F8F4EE]/95 backdrop-blur-sm border-b border-[#E7DED3] px-6 lg:px-12 flex items-center justify-between gap-8">
         {/* Zone 1: Single text element wordmark */}

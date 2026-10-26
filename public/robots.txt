@@ -1,20 +1,8 @@
-# robots.txt for OneLove Café Sigiriya
-# Optimized for Google Search Console & Modern Search Crawlers
-
 User-agent: *
 Allow: /
-Allow: /menu
-Allow: /reserve
-Allow: /story
-Allow: /gallery
-Allow: /events
-Allow: /contact
-Allow: /sitemap.xml
-
-# Exclude protected staff & administrative console routes from search indexing
 Disallow: /admin
 Disallow: /admin/
+Disallow: /admin/seo
 Disallow: /reserve/voucher/
-
-# XML Sitemap location for Google Search Console
-Sitemap: https://onelovecafe.lk/sitemap.xml
+Disallow: /api/
+Sitemap: https://onelovecafesigiriya.com/sitemap.xml

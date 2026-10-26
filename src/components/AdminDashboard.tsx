@@ -21,10 +21,12 @@ import {
   Edit3,
   RefreshCw,
   Sliders,
+  Globe,
 } from 'lucide-react';
 import { useCafe } from '../context/CafeContext';
 import { InteractiveFloorPlan } from './InteractiveFloorPlan';
 import { EditorialVisual } from './EditorialVisual';
+import { AdminSeoPanel } from './AdminSeoPanel';
 import { resolveGoogleMapsEmbedUrl } from '../lib/mapUtils';
 import {
   CafeTable,
@@ -47,6 +49,7 @@ export type AdminTab =
   | 'events'
   | 'content'
   | 'inquiries'
+  | 'seo'
   | 'settings'
   | 'audit';
 
@@ -109,6 +112,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const [seeding, setSeeding] = useState(false);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Reservations filter state
   const [resSearch, setResSearch] = useState('');
@@ -477,6 +486,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     { id: 'events', label: 'Events & Rituals', icon: <Sparkles className="w-4 h-4" /> },
     { id: 'content', label: 'Hero & Site Content', icon: <FileText className="w-4 h-4" /> },
     { id: 'inquiries', label: 'Guest Inquiries', icon: <MessageSquare className="w-4 h-4" /> },
+    { id: 'seo', label: 'SEO & Search (/admin/seo)', icon: <Globe className="w-4 h-4" /> },
     { id: 'settings', label: 'Café Settings', icon: <Settings className="w-4 h-4" /> },
     { id: 'audit', label: 'Audit Trail', icon: <ShieldCheck className="w-4 h-4" /> },
   ];
@@ -3843,6 +3853,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
           )}
+
+          {/* TAB 10: SEO, FAVICON & SEARCH OPTIMIZATION (/admin/seo) */}
+          {activeTab === 'seo' && <AdminSeoPanel onShowToast={showToast} />}
 
           {/* TAB 11: AUDIT LOGS */}
           {activeTab === 'audit' && (

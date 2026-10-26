@@ -292,6 +292,23 @@ service cloud.firestore {
         data.createdAt is timestamp;
     }
 
+    function isValidSeoConfig(data) {
+      return data.siteName is string && data.siteName.size() >= 1 && data.siteName.size() <= 100 &&
+        data.defaultTitle is string && data.defaultTitle.size() >= 1 && data.defaultTitle.size() <= 160 &&
+        data.defaultDescription is string && data.defaultDescription.size() <= 500 &&
+        data.canonicalDomain is string && data.canonicalDomain.size() <= 200 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSeoPage(data) {
+      return data.routePath is string && data.routePath.size() >= 1 && data.routePath.size() <= 120 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.metaDescription is string && data.metaDescription.size() <= 500 &&
+        data.canonicalPath is string && data.canonicalPath.size() <= 120 &&
+        data.indexable is bool &&
+        data.updatedAt is timestamp;
+    }
+
     // 1. Admins Collection
     match /admins/{adminId} {
       allow get: if isValidId(adminId) && (isAdmin() || (isVerifiedUser() && request.auth.uid == adminId));
@@ -467,6 +484,24 @@ service cloud.firestore {
         incoming().createdAt == request.time &&
         isAdmin();
       allow update, delete: if false;
+    }
+
+    // 17. Global SEO Configuration Collection
+    match /seoConfig/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if true;
+      allow create: if isValidId(configId) && isValidSeoConfig(incoming()) && isAdmin();
+      allow update: if isValidId(configId) && isValidSeoConfig(incoming()) && isAdmin();
+      allow delete: if isValidId(configId) && isAdmin();
+    }
+
+    // 18. Per-Page SEO Configuration Collection
+    match /seoPages/{pageId} {
+      allow get: if isValidId(pageId);
+      allow list: if true;
+      allow create: if isValidId(pageId) && isValidSeoPage(incoming()) && isAdmin();
+      allow update: if isValidId(pageId) && isValidSeoPage(incoming()) && isAdmin();
+      allow delete: if isValidId(pageId) && isAdmin();
     }
   }
 }
