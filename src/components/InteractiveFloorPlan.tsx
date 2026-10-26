@@ -143,7 +143,7 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-[#171513]">
       {/* Zone Filter Bar & Editor Mode Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-1.5 bg-[#EFE9DF] p-1 border border-[#E7DED3]">

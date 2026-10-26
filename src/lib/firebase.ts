@@ -48,6 +48,16 @@ export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export const BOOTSTRAP_ADMIN_EMAIL = 'merlinfiverr0@gmail.com';
+export const BOOTSTRAP_ADMIN_EMAILS = [
+  'merlinfiverr0@gmail.com',
+  'onelovecafesigiriya@gmail.com',
+];
+
+export function isAuthorizedAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  return BOOTSTRAP_ADMIN_EMAILS.some((adminEmail) => adminEmail.toLowerCase() === normalized);
+}
 
 export enum OperationType {
   CREATE = 'create',

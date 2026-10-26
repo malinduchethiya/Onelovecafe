@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   Compass,
   Menu as MenuIcon,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { CafeProvider, useCafe } from './context/CafeContext';
 import { EditorialVisual } from './components/EditorialVisual';
@@ -342,6 +344,16 @@ const OneLoveRouter: React.FC = () => {
     return () => window.clearInterval(timer);
   }, [heroSlides.length, settings.heroSlideshowSpeedSeconds]);
 
+  const handlePrevSlide = () => {
+    if (heroSlides.length <= 1) return;
+    setHeroSlideIndex((prev) => (prev - 1 + heroSlides.length) % heroSlides.length);
+  };
+
+  const handleNextSlide = () => {
+    if (heroSlides.length <= 1) return;
+    setHeroSlideIndex((prev) => (prev + 1) % heroSlides.length);
+  };
+
   // Scroll & Mouse Movement Parallax for Hero Section
   const [scrollY, setScrollY] = useState(0);
   const [mouseParallax, setMouseParallax] = useState({ x: 0, y: 0 });
@@ -457,7 +469,7 @@ const OneLoveRouter: React.FC = () => {
           <button
             type="button"
             onClick={handleReserveCtaClick}
-            className="px-5 py-2.5 bg-[#C65B2B] text-white text-xs font-medium uppercase tracking-widest hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0"
+            className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
           >
             Reserve a Table
           </button>
@@ -501,17 +513,17 @@ const OneLoveRouter: React.FC = () => {
         {/* ==================== HOME PAGE ==================== */}
         {routeInfo.page === 'home' && (
           <div>
-            {/* 1. Immersive Full-Screen Hero Section with Parallax Effect for Mouse Scrolling */}
+            {/* 1. Immersive Full-Screen Hero Section matching reference design */}
             <section
               onMouseMove={handleHeroMouseMove}
               onMouseLeave={handleHeroMouseLeave}
-              className="relative min-h-[calc(100vh-72px)] flex items-center justify-center bg-[#171513] text-[#F8F4EE] overflow-hidden"
+              className="relative min-h-[calc(100vh-72px)] flex items-center justify-center bg-[#171513] text-white overflow-hidden"
             >
-              {/* Parallax Background Slideshow Layer */}
+              {/* Background Slideshow Layer */}
               <div
                 className="absolute inset-0 transition-transform duration-300 ease-out pointer-events-none"
                 style={{
-                  transform: `translate3d(${mouseParallax.x * 0.3}px, ${scrollY * 0.28 + mouseParallax.y * 0.3}px, 0) scale(1.02)`,
+                  transform: `translate3d(${mouseParallax.x * 0.15}px, ${scrollY * 0.2 + mouseParallax.y * 0.15}px, 0) scale(1.01)`,
                   willChange: 'transform',
                 }}
               >
@@ -529,65 +541,101 @@ const OneLoveRouter: React.FC = () => {
                     />
                   </div>
                 ))}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#171513]/90 via-[#171513]/45 to-black/35" />
+                {/* Luminous clean dark overlay with subtle vignette matching reference screenshot */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/65" />
               </div>
 
-              {/* Parallax Foreground Content Layer - Centered in Middle */}
+              {/* Slider Navigation Arrows (Left & Right) matching reference screenshot */}
+              {heroSlides.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePrevSlide}
+                    aria-label="Previous slide"
+                    className="absolute left-4 sm:left-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/40 border border-white/20 text-white hover:bg-black/75 hover:border-white/40 flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-md"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextSlide}
+                    aria-label="Next slide"
+                    className="absolute right-4 sm:right-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/40 border border-white/20 text-white hover:bg-black/75 hover:border-white/40 flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-md"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </>
+              )}
+
+              {/* Foreground Content Layer - Centered, Big Main Text Widespread & Small Secondary Text */}
               <div
-                className="relative z-10 max-w-4xl mx-auto w-full px-6 lg:px-12 py-12 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
+                className="relative z-10 max-w-5xl mx-auto w-full px-6 sm:px-12 py-16 sm:py-24 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
                 style={{
-                  transform: `translate3d(${-mouseParallax.x * 0.15}px, ${scrollY * -0.15 - mouseParallax.y * 0.15}px, 0)`,
-                  opacity: Math.max(0, 1 - scrollY / 680),
+                  transform: `translate3d(${-mouseParallax.x * 0.1}px, ${scrollY * -0.12 - mouseParallax.y * 0.1}px, 0)`,
+                  opacity: Math.max(0, 1 - scrollY / 700),
                   willChange: 'transform, opacity',
                 }}
               >
-                <div className="space-y-6 flex flex-col items-center justify-center text-center w-full">
+                <div className="space-y-6 sm:space-y-7 flex flex-col items-center justify-center text-center w-full">
+                  {/* Big Main Text Widespread matching screenshot */}
                   <h1
                     style={{ textWrap: 'balance' }}
-                    className="text-4xl sm:text-6xl lg:text-[66px] font-editorial font-normal leading-[1.08] tracking-tight text-[#F8F4EE] max-w-3xl mx-auto"
+                    className="text-4xl sm:text-6xl md:text-7xl lg:text-[76px] xl:text-[84px] font-normal leading-[1.08] sm:leading-[1.06] tracking-tight text-white max-w-5xl mx-auto drop-shadow-sm"
                   >
                     {heroContent?.heading || 'Where Jungle Stone Meets Slow Highland Coffee.'}
                   </h1>
-                  <p className="text-base sm:text-lg text-[#F8F4EE]/85 max-w-2xl leading-relaxed mx-auto">
+
+                  {/* Small Secondary Text */}
+                  <p className="text-xs sm:text-sm md:text-base text-white/85 max-w-2xl mx-auto leading-relaxed font-light drop-shadow-xs px-2">
                     {heroContent?.subheading ||
                       'Nestled in the emerald canopy beneath Sigiriya Lion Rock, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
                   </p>
-                  <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
-                    <button
-                      type="button"
-                      onClick={handleReserveCtaClick}
-                      className="px-7 py-3.5 bg-[#C65B2B] text-white text-xs font-medium uppercase tracking-widest inline-flex items-center gap-2.5 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-lg"
-                    >
-                      Reserve a Table <ArrowRight className="w-4 h-4" />
-                    </button>
+
+                  {/* Solid Colors Action Buttons matching reference screenshot */}
+                  <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                     <button
                       type="button"
                       onClick={() => navigate('/menu')}
-                      className="px-7 py-3.5 border border-[#F8F4EE]/40 text-[#F8F4EE] text-xs font-medium uppercase tracking-widest hover:bg-[#F8F4EE] hover:text-[#171513] transition-colors whitespace-nowrap shrink-0 backdrop-blur-xs"
+                      className="px-6 sm:px-7 py-3 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-md cursor-pointer"
                     >
-                      Explore Seasonal Menu
+                      View Menu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleReserveCtaClick}
+                      className="px-6 sm:px-7 py-3 rounded-full bg-white text-[#171513] text-xs font-semibold uppercase tracking-wider hover:bg-[#F8F4EE] transition-colors whitespace-nowrap shrink-0 shadow-md cursor-pointer"
+                    >
+                      Reserve a Table
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/story')}
+                      className="px-6 sm:px-7 py-3 rounded-full bg-black/50 border border-white/30 text-white text-xs font-semibold uppercase tracking-wider hover:bg-black/75 transition-colors whitespace-nowrap shrink-0 shadow-md backdrop-blur-xs cursor-pointer"
+                    >
+                      Discover More
                     </button>
                   </div>
-
-                  {heroSlides.length > 1 && (
-                    <div className="flex items-center justify-center gap-2 pt-3">
-                      {heroSlides.map((_, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setHeroSlideIndex(idx)}
-                          aria-label={`Show hero slide ${idx + 1}`}
-                          className={`h-1.5 transition-all ${
-                            idx === heroSlideIndex
-                              ? 'w-8 bg-[#C65B2B]'
-                              : 'w-2.5 bg-[#F8F4EE]/40 hover:bg-[#F8F4EE]/70'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
+
+              {/* Slide Indicator Dots at bottom center matching reference screenshot */}
+              {heroSlides.length > 1 && (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center gap-2.5">
+                  {heroSlides.map((_, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setHeroSlideIndex(idx)}
+                      aria-label={`Show hero slide ${idx + 1}`}
+                      className={`rounded-full transition-all cursor-pointer ${
+                        idx === heroSlideIndex
+                          ? 'w-2.5 h-2.5 bg-[#C65B2B] ring-2 ring-[#C65B2B]/40'
+                          : 'w-2 h-2 bg-white/40 hover:bg-white/80'
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
             </section>
 
             {/* 2. Architectural Story & Philosophy Split */}
@@ -597,12 +645,12 @@ const OneLoveRouter: React.FC = () => {
                   <div className="space-y-4">
                     <h2
                       style={{ textWrap: 'balance' }}
-                      className="text-3xl sm:text-5xl font-editorial font-normal leading-tight"
+                      className="text-3xl sm:text-5xl font-editorial font-semibold leading-tight text-[#171513]"
                     >
                       {storyContent?.heading ||
                         'Crafted from Laterite Earth, Reclaimed Teak & Monsoon Light.'}
                     </h2>
-                    <p className="text-base text-[#171513]/75 leading-relaxed">
+                    <p className="text-base text-[#171513]/75 leading-relaxed font-light">
                       {storyContent?.body}
                     </p>
                   </div>
@@ -611,9 +659,9 @@ const OneLoveRouter: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => navigate('/story')}
-                      className="text-xs uppercase tracking-widest font-semibold text-[#171513] border-b border-[#171513] pb-1 inline-flex items-center gap-2 hover:text-[#C65B2B] hover:border-[#C65B2B] transition-colors"
+                      className="px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#C65B2B] transition-colors shadow-sm cursor-pointer"
                     >
-                      Read the Sigiriya Monograph <ArrowRight className="w-3.5 h-3.5" />
+                      Read Sigiriya Monograph <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -632,14 +680,14 @@ const OneLoveRouter: React.FC = () => {
             <section className="max-w-7xl mx-auto px-6 lg:px-12 py-20 sm:py-28 border-b border-[#E7DED3] space-y-12">
               <div className="flex flex-wrap items-end justify-between gap-6">
                 <div className="space-y-2 max-w-2xl">
-                  <h2 className="text-3xl sm:text-5xl font-editorial font-normal">
+                  <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#171513]">
                     Signature Plates &amp; Highland Pour-Overs
                   </h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => navigate('/menu')}
-                  className="px-6 py-3 border border-[#171513] text-xs uppercase tracking-widest font-medium hover:bg-[#171513] hover:text-[#F8F4EE] transition-colors whitespace-nowrap shrink-0"
+                  className="px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold uppercase tracking-wider hover:bg-[#C65B2B] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
                 >
                   View Complete Menu
                 </button>
@@ -684,81 +732,83 @@ const OneLoveRouter: React.FC = () => {
               </div>
             </section>
 
-            {/* 4. Curated Evening Rituals & Experiences Preview */}
-            <section className="bg-[#171513] text-[#F8F4EE] py-20 sm:py-28">
-              <div className="max-w-7xl mx-auto px-6 lg:px-12 space-y-12">
-                <div className="flex flex-wrap items-end justify-between gap-6">
-                  <div className="space-y-2 max-w-2xl">
-                    <h2 className="text-3xl sm:text-5xl font-editorial font-normal">
-                      Experiences Under the Sigiriya Palms
-                    </h2>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/events')}
-                    className="px-6 py-3 border border-[#F8F4EE]/30 text-xs uppercase tracking-widest font-medium hover:bg-[#F8F4EE] hover:text-[#171513] transition-colors whitespace-nowrap shrink-0"
-                  >
-                    All Events &amp; Cuppings
-                  </button>
+            {/* 4. Embedded Homepage Reservation Section (#reserve-section) - Swapped & Dark Theme */}
+            <section
+              id="reserve-section"
+              className="scroll-mt-20 bg-[#171513] text-[#F8F4EE] py-20 sm:py-28"
+            >
+              <div className="max-w-7xl mx-auto px-6 lg:px-12 space-y-10">
+                <div className="text-center max-w-2xl mx-auto space-y-3">
+                  <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#F8F4EE]">
+                    Reserve Your Sanctuary Table
+                  </h2>
+                  <p className="text-sm text-[#F8F4EE]/75 leading-relaxed font-light">
+                    Choose your preferred dining atmosphere across our open-air jungle verandah,
+                    candlelit stone courtyard, or cooled specialty roastery lounge.
+                  </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {events
-                    .filter((e) => e.isActive)
-                    .slice(0, 3)
-                    .map((evt, idx) => (
-                      <div
-                        key={evt.id}
-                        className="bg-[#1F1C19] border border-[#2E2925] flex flex-col justify-between overflow-hidden"
-                      >
-                        <div>
-                          <div className="aspect-[16/9] overflow-hidden border-b border-[#2E2925]">
-                            <EditorialVisual src={evt.imageUrl} alt={evt.title} />
-                          </div>
-                          <div className="p-7 space-y-3">
-                            <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-mono-tabular">
-                              0{idx + 1} · {evt.category} · {evt.date}
-                            </div>
-                            <h3 className="text-2xl font-editorial font-semibold text-[#F8F4EE]">
-                              {evt.title}
-                            </h3>
-                            <p className="text-xs text-[#F8F4EE]/70 leading-relaxed">
-                              {evt.description}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="px-7 py-4 border-t border-[#2E2925] flex items-center justify-between text-xs font-mono-tabular text-[#E7DED3]/75">
-                          <span>{evt.time}</span>
-                          <button
-                            type="button"
-                            onClick={handleReserveCtaClick}
-                            className="text-[#C65B2B] hover:underline uppercase tracking-wider"
-                          >
-                            Book Table →
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                <div className="text-[#171513]">
+                  <ReservationEngine />
                 </div>
               </div>
             </section>
 
-            {/* 5. Embedded Homepage Reservation Section (#reserve-section) */}
-            <section
-              id="reserve-section"
-              className="scroll-mt-20 max-w-7xl mx-auto px-6 lg:px-12 py-20 sm:py-28 border-b border-[#E7DED3] space-y-10"
-            >
-              <div className="text-center max-w-2xl mx-auto space-y-3">
-                <h2 className="text-3xl sm:text-5xl font-editorial font-normal">
-                  Reserve Your Sanctuary Table
-                </h2>
-                <p className="text-sm text-[#171513]/70">
-                  Choose your preferred dining atmosphere across our open-air jungle verandah,
-                  candlelit stone courtyard, or cooled specialty roastery lounge.
-                </p>
+            {/* 5. Curated Evening Rituals & Experiences Preview - Swapped & Light Theme */}
+            <section className="max-w-7xl mx-auto px-6 lg:px-12 py-20 sm:py-28 border-b border-[#E7DED3] space-y-12">
+              <div className="flex flex-wrap items-end justify-between gap-6">
+                <div className="space-y-2 max-w-2xl">
+                  <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#171513]">
+                    Experiences Under the Sigiriya Palms
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/events')}
+                  className="px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold uppercase tracking-wider hover:bg-[#C65B2B] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+                >
+                  All Events &amp; Cuppings
+                </button>
               </div>
 
-              <ReservationEngine />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {events
+                  .filter((e) => e.isActive)
+                  .slice(0, 3)
+                  .map((evt, idx) => (
+                    <div
+                      key={evt.id}
+                      className="bg-white border border-[#E7DED3] flex flex-col justify-between overflow-hidden shadow-xs"
+                    >
+                      <div>
+                        <div className="aspect-[16/9] overflow-hidden border-b border-[#E7DED3]">
+                          <EditorialVisual src={evt.imageUrl} alt={evt.title} />
+                        </div>
+                        <div className="p-7 space-y-3">
+                          <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-mono-tabular font-medium">
+                            0{idx + 1} · {evt.category} · {evt.date}
+                          </div>
+                          <h3 className="text-2xl font-editorial font-semibold text-[#171513]">
+                            {evt.title}
+                          </h3>
+                          <p className="text-xs text-[#171513]/70 leading-relaxed font-light">
+                            {evt.description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="px-7 py-4 border-t border-[#E7DED3] flex items-center justify-between text-xs font-mono-tabular text-[#171513]/70">
+                        <span>{evt.time}</span>
+                        <button
+                          type="button"
+                          onClick={handleReserveCtaClick}
+                          className="text-[#C65B2B] hover:underline uppercase tracking-wider font-semibold cursor-pointer"
+                        >
+                          Book Table →
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
             </section>
 
             {/* Clean Google Maps Location Window (Admin-editable, strictly no controls/clutter in window) */}
@@ -767,7 +817,7 @@ const OneLoveRouter: React.FC = () => {
             {/* 6. Attributable Traveler & Partner Voices */}
             <section className="max-w-7xl mx-auto px-6 lg:px-12 py-20 sm:py-24 space-y-10">
               <div className="text-center max-w-2xl mx-auto space-y-2">
-                <h2 className="text-3xl sm:text-4xl font-editorial font-normal">
+                <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#171513]">
                   What Travelers &amp; Collaborators Say
                 </h2>
               </div>
@@ -811,10 +861,10 @@ const OneLoveRouter: React.FC = () => {
                 <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                   Culinary &amp; Roastery Monograph · Sigiriya
                 </div>
-                <h1 className="text-4xl sm:text-6xl font-editorial font-normal">
+                <h1 className="text-4xl sm:text-6xl font-editorial font-semibold text-[#171513]">
                   Our Seasonal Menu
                 </h1>
-                <p className="text-sm text-[#171513]/70 leading-relaxed">
+                <p className="text-sm text-[#171513]/75 leading-relaxed font-light">
                   Every dish is prepared to order using heirloom Dry Zone grains, organic Dambulla
                   orchard produce, wild east-coast seafood, and single-estate Ceylon highland coffee.
                 </p>
@@ -822,7 +872,7 @@ const OneLoveRouter: React.FC = () => {
               <button
                 type="button"
                 onClick={() => navigate('/reserve')}
-                className="px-6 py-3 bg-[#C65B2B] text-white text-xs uppercase tracking-widest font-medium hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0"
+                className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
               >
                 Reserve a Table
               </button>
@@ -918,7 +968,7 @@ const OneLoveRouter: React.FC = () => {
               </div>
               <h1
                 style={{ textWrap: 'balance' }}
-                className="text-4xl sm:text-6xl font-editorial font-normal leading-tight"
+                className="text-4xl sm:text-6xl font-editorial font-semibold leading-tight text-[#171513]"
               >
                 {storyContent?.heading ||
                   'Built Around Ancient Banyan Trees in the Shadow of Sigiriya Rock.'}
@@ -926,7 +976,7 @@ const OneLoveRouter: React.FC = () => {
               {storyContent?.subheading && (
                 <p className="text-sm text-[#58644E] font-medium">{storyContent.subheading}</p>
               )}
-              <p className="text-base text-[#171513]/75 leading-relaxed">{storyContent?.body}</p>
+              <p className="text-base text-[#171513]/75 leading-relaxed font-light">{storyContent?.body}</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
@@ -942,7 +992,7 @@ const OneLoveRouter: React.FC = () => {
                   <div className="text-xs uppercase tracking-widest text-[#58644E] font-medium">
                     Earth, Timber &amp; Craft
                   </div>
-                  <h2 className="text-3xl font-editorial font-normal">
+                  <h2 className="text-3xl font-editorial font-semibold text-[#171513]">
                     Four Distinct Dining Atmospheres
                   </h2>
                   <p className="text-xs text-[#171513]/75 leading-relaxed">
@@ -1105,10 +1155,10 @@ const OneLoveRouter: React.FC = () => {
               <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                 Sanctuary Gatherings &amp; Cultural Programming
               </div>
-              <h1 className="text-4xl sm:text-6xl font-editorial font-normal">
+              <h1 className="text-4xl sm:text-6xl font-editorial font-semibold text-[#171513]">
                 Experiences &amp; Weekly Rituals
               </h1>
-              <p className="text-sm text-[#171513]/70 leading-relaxed">
+              <p className="text-sm text-[#171513]/75 leading-relaxed font-light">
                 From guided highland coffee cuppings in our roastery to candlelit Thursday &amp;
                 Saturday acoustic hearth sessions beneath the palms.
               </p>
@@ -1131,22 +1181,22 @@ const OneLoveRouter: React.FC = () => {
                     </div>
                     <div className="lg:col-span-7 p-8 sm:p-10 flex flex-col justify-between space-y-6">
                       <div className="space-y-3">
-                        <div className="text-xs uppercase tracking-widest text-[#58644E] font-mono-tabular">
+                        <div className="text-xs uppercase tracking-widest text-[#58644E] font-mono-tabular font-medium">
                           {evt.category} · {evt.date} · {evt.time}
                         </div>
-                        <h2 className="text-3xl font-editorial font-semibold">{evt.title}</h2>
-                        <p className="text-sm text-[#171513]/75 leading-relaxed">
+                        <h2 className="text-3xl font-editorial font-semibold text-[#171513]">{evt.title}</h2>
+                        <p className="text-sm text-[#171513]/75 leading-relaxed font-light">
                           {evt.description}
                         </p>
                       </div>
                       <div className="pt-4 border-t border-[#E7DED3] flex flex-wrap items-center justify-between gap-4">
-                        <span className="text-xs font-mono-tabular font-medium text-[#171513]">
+                        <span className="text-xs font-mono-tabular font-semibold text-[#171513]">
                           {evt.priceInfo}
                         </span>
                         <button
                           type="button"
                           onClick={() => navigate('/reserve')}
-                          className="px-6 py-2.5 bg-[#C65B2B] text-white text-xs uppercase tracking-widest font-medium hover:bg-[#B04E22] transition-colors"
+                          className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors shadow-sm cursor-pointer"
                         >
                           Reserve Table for Event
                         </button>
@@ -1395,7 +1445,7 @@ const OneLoveRouter: React.FC = () => {
               <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                 Table Reservations · OneLove Café Sigiriya
               </div>
-              <h1 className="text-4xl sm:text-5xl font-editorial font-normal">
+              <h1 className="text-4xl sm:text-5xl font-editorial font-semibold text-[#171513]">
                 Reserve Your Sanctuary Table
               </h1>
               <p className="text-sm text-[#171513]/70">

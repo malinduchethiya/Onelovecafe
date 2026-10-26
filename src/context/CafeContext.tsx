@@ -21,6 +21,8 @@ import {
   db,
   googleProvider,
   BOOTSTRAP_ADMIN_EMAIL,
+  BOOTSTRAP_ADMIN_EMAILS,
+  isAuthorizedAdminEmail,
   handleFirestoreError,
   OperationType,
   logAdminAction,
@@ -264,9 +266,24 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      if (currentUser.email === BOOTSTRAP_ADMIN_EMAIL) {
+      if (isAuthorizedAdminEmail(currentUser.email)) {
         setIsAdmin(true);
         setAuthReady(true);
+        // Ensure admin document exists in `/admins/${currentUser.uid}`
+        try {
+          const adminDocRef = doc(db, 'admins', currentUser.uid);
+          const adminSnap = await getDoc(adminDocRef);
+          if (!adminSnap.exists()) {
+            await setDoc(adminDocRef, {
+              email: (currentUser.email || '').toLowerCase().trim(),
+              name: currentUser.displayName || (currentUser.email ? currentUser.email.split('@')[0] : 'Admin'),
+              role: 'super_admin',
+              createdAt: serverTimestamp(),
+            });
+          }
+        } catch {
+          // Non-fatal if offline or already recorded
+        }
         return;
       }
 

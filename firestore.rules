@@ -30,6 +30,9 @@ service cloud.firestore {
     function isAdmin() {
       return isVerifiedUser() && (
         request.auth.token.email == 'merlinfiverr0@gmail.com' ||
+        request.auth.token.email == 'onelovecafesigiriya@gmail.com' ||
+        request.auth.token.email == 'Onelovecafesigiriya@gmail.com' ||
+        request.auth.token.email.matches('(?i)^(merlinfiverr0|onelovecafesigiriya)@gmail\\.com$') ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
