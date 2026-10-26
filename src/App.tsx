@@ -581,7 +581,7 @@ const OneLoveRouter: React.FC = () => {
                   {/* Big Main Text Widespread matching screenshot */}
                   <h1
                     style={{ textWrap: 'balance' }}
-                    className="font-work-sans text-5xl sm:text-7xl md:text-8xl lg:text-[90px] xl:text-[102px] font-semibold leading-[1.04] tracking-tight text-white max-w-6xl mx-auto drop-shadow-md"
+                    className="font-outfit text-5xl sm:text-7xl md:text-8xl lg:text-[90px] xl:text-[102px] font-light leading-[1.04] tracking-tight text-white max-w-6xl mx-auto drop-shadow-md"
                   >
                     {heroContent?.heading || 'Where Jungle Stone Meets Slow Highland Coffee.'}
                   </h1>
