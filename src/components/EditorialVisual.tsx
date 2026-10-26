@@ -36,7 +36,7 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({ src, alt, clas
         loading={isDataUrl ? 'eager' : 'lazy'}
         decoding={isDataUrl ? 'sync' : 'async'}
         onError={() => setImgError(true)}
-        className={`w-full h-full object-cover ${className}`}
+        className={`w-full h-full object-cover contrast-[1.15] saturate-[1.2] brightness-[1.05] ${className}`}
       />
     );
   }
@@ -46,53 +46,61 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({ src, alt, clas
     case 'hero-sanctuary':
     case 'sigiriya-mist':
       return (
-        <div className={`relative w-full h-full overflow-hidden bg-[#1D1916] ${className}`} role="img" aria-label={alt}>
-          <svg viewBox="0 0 1200 675" className="w-full h-full object-cover" preserveAspectRatio="xMidYMid slice">
+        <div className={`relative w-full h-full overflow-hidden bg-[#12160F] ${className}`} role="img" aria-label={alt}>
+          <svg viewBox="0 0 1200 675" className="w-full h-full object-cover contrast-[1.12] saturate-[1.15]" preserveAspectRatio="xMidYMid slice">
             <defs>
               <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#26201B" />
-                <stop offset="48%" stopColor="#5C3A28" />
-                <stop offset="82%" stopColor="#C65B2B" stopOpacity="0.65" />
-                <stop offset="100%" stopColor="#171513" />
+                <stop offset="0%" stopColor="#1A2616" />
+                <stop offset="38%" stopColor="#3B5428" />
+                <stop offset="72%" stopColor="#7C9D3E" stopOpacity="0.88" />
+                <stop offset="100%" stopColor="#0E130B" />
               </linearGradient>
-              <radialGradient id="sunGlow" cx="68%" cy="42%" r="38%">
-                <stop offset="0%" stopColor="#F4C089" stopOpacity="0.65" />
-                <stop offset="50%" stopColor="#C65B2B" stopOpacity="0.25" />
-                <stop offset="100%" stopColor="#171513" stopOpacity="0" />
+              <radialGradient id="sunGlow" cx="58%" cy="34%" r="48%">
+                <stop offset="0%" stopColor="#FFF6C2" stopOpacity="0.92" />
+                <stop offset="38%" stopColor="#B8D458" stopOpacity="0.52" />
+                <stop offset="75%" stopColor="#48682B" stopOpacity="0.25" />
+                <stop offset="100%" stopColor="#0E130B" stopOpacity="0" />
               </radialGradient>
+              <linearGradient id="sunlitRidge" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#8FB33E" />
+                <stop offset="45%" stopColor="#65882B" />
+                <stop offset="100%" stopColor="#263816" />
+              </linearGradient>
+              <linearGradient id="midValley" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#567729" />
+                <stop offset="60%" stopColor="#2C4219" />
+                <stop offset="100%" stopColor="#121B0C" />
+              </linearGradient>
             </defs>
             <rect width="1200" height="675" fill="url(#skyGrad)" />
-            <circle cx="810" cy="280" r="240" fill="url(#sunGlow)" />
-            <circle cx="810" cy="280" r="54" fill="#F8E3C4" fillOpacity="0.85" />
-            {/* Distant Highland Mist */}
-            <path d="M0,430 Q300,390 620,415 T1200,395 L1200,675 L0,675 Z" fill="#31392B" fillOpacity="0.7" />
+            <circle cx="700" cy="230" r="340" fill="url(#sunGlow)" />
+            {/* Sunlit Highland Tea & Jungle Ridges */}
+            <path d="M0,370 Q260,265 560,335 T1200,295 L1200,675 L0,675 Z" fill="url(#sunlitRidge)" />
             {/* Iconic Sigiriya Lion Rock Monolith Silhouette */}
             <path
-              d="M680,430 L705,275 L730,255 L855,255 L880,275 L905,430 Z"
-              fill="#231D19"
+              d="M680,385 L705,235 L730,215 L855,215 L880,235 L905,385 Z"
+              fill="#2B241E"
             />
             <path
-              d="M722,255 L848,255 L848,244 L735,244 Z"
-              fill="#3A2E27"
+              d="M722,215 L848,215 L848,203 L735,203 Z"
+              fill="#4D6A2E"
             />
-            {/* Mist layer across base of Lion Rock */}
-            <rect x="0" y="385" width="1200" height="36" fill="#F8F4EE" fillOpacity="0.08" />
-            {/* Foreground Jungle Canopy & Verandah Architecture */}
-            <path d="M0,480 Q240,435 520,475 T1200,460 L1200,675 L0,675 Z" fill="#1F261C" />
-            {/* Teak Pavilion Columns & Warm Lanterns */}
-            <rect x="110" y="0" width="18" height="675" fill="#171513" />
-            <rect x="410" y="0" width="14" height="675" fill="#171513" />
-            <rect x="0" y="54" width="1200" height="16" fill="#171513" />
-            {/* Hanging Brass & Rattan Lanterns */}
-            <line x1="260" y1="70" x2="260" y2="175" stroke="#E7DED3" strokeWidth="1.5" strokeOpacity="0.5" />
-            <ellipse cx="260" cy="195" rx="22" ry="28" fill="#C65B2B" fillOpacity="0.85" />
-            <circle cx="260" cy="195" r="8" fill="#FFF3DC" />
-            <line x1="560" y1="70" x2="560" y2="145" stroke="#E7DED3" strokeWidth="1.5" strokeOpacity="0.5" />
-            <ellipse cx="560" cy="165" rx="18" ry="24" fill="#C65B2B" fillOpacity="0.85" />
-            <circle cx="560" cy="165" r="6" fill="#FFF3DC" />
-            {/* Tropical Palm Frond Silhouettes */}
-            <path d="M980,80 Q1060,120 1160,60 Q1080,150 1180,165 Q1070,185 1140,250 Q1030,200 980,80 Z" fill="#141A12" />
-            <path d="M20,560 Q180,490 290,580 L0,675 Z" fill="#141A12" />
+            {/* Sunlit Golden Mist across Valley */}
+            <rect x="0" y="345" width="1200" height="44" fill="#FFF9D6" fillOpacity="0.18" />
+            {/* Rich Emerald Midground Canopy */}
+            <path d="M0,435 Q320,365 650,420 T1200,390 L1200,675 L0,675 Z" fill="url(#midValley)" />
+            {/* Deep Obsidian Foreground Jungle Shadow for High Contrast */}
+            <path d="M0,515 Q260,465 560,505 T1200,485 L1200,675 L0,675 Z" fill="#0B1108" />
+            {/* Warm Hanging Sanctuary Lanterns */}
+            <line x1="260" y1="0" x2="260" y2="155" stroke="#FFF6DC" strokeWidth="1.5" strokeOpacity="0.55" />
+            <ellipse cx="260" cy="175" rx="22" ry="28" fill="#D9622B" fillOpacity="0.92" />
+            <circle cx="260" cy="175" r="9" fill="#FFF8E1" />
+            <line x1="940" y1="0" x2="940" y2="135" stroke="#FFF6DC" strokeWidth="1.5" strokeOpacity="0.55" />
+            <ellipse cx="940" cy="155" rx="18" ry="24" fill="#D9622B" fillOpacity="0.92" />
+            <circle cx="940" cy="155" r="7" fill="#FFF8E1" />
+            {/* Deep High-Contrast Tropical Framing Foliage */}
+            <path d="M960,0 Q1060,95 1200,40 L1200,220 Q1065,175 960,0 Z" fill="#0A1007" />
+            <path d="M0,540 Q180,470 310,575 L0,675 Z" fill="#090E06" />
           </svg>
         </div>
       );

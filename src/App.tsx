@@ -17,6 +17,7 @@ import {
 import { CafeProvider, useCafe } from './context/CafeContext';
 import { EditorialVisual } from './components/EditorialVisual';
 import { LateriteStorySection } from './components/LateriteStorySection';
+import { CafeMenuStand } from './components/CafeMenuStand';
 import { ReservationEngine } from './components/ReservationEngine';
 import { SanctuaryMap } from './components/SanctuaryMap';
 import { AdminDashboard, AdminTab } from './components/AdminDashboard';
@@ -340,14 +341,14 @@ const OneLoveRouter: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F8F4EE] text-[#171513]">
+    <div className="min-h-screen flex flex-col bg-[#FCF9F4] text-[#110F0D]">
       <SeoHead
         currentPage={routeInfo.page}
         pathname={pathname}
         voucherCode={routeInfo.voucherCode}
       />
       {/* Strict 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-40 h-[72px] bg-[#F8F4EE]/95 backdrop-blur-sm border-b border-[#E7DED3] px-6 lg:px-12 flex items-center justify-between gap-8">
+      <header className="sticky top-0 z-40 h-[72px] bg-[#FCF9F4]/95 backdrop-blur-md border-b border-[#DFD5C6] px-6 lg:px-12 flex items-center justify-between gap-8 shadow-[0_2px_16px_rgba(17,15,13,0.05)]">
         {/* Zone 1: Single text element wordmark */}
         <a
           href="/"
@@ -355,13 +356,13 @@ const OneLoveRouter: React.FC = () => {
             e.preventDefault();
             navigate('/');
           }}
-          className="font-editorial text-2xl font-semibold tracking-wider text-[#171513] whitespace-nowrap shrink-0"
+          className="font-editorial text-2xl font-bold tracking-wider text-[#110F0D] whitespace-nowrap shrink-0"
         >
           ONELOVE CAFÉ
         </a>
 
         {/* Zone 2: 5 concise single-line text navigation links */}
-        <nav className="hidden md:flex items-center gap-8 text-xs uppercase tracking-widest font-medium text-[#171513]/75">
+        <nav className="hidden md:flex items-center gap-8 text-xs uppercase tracking-widest font-semibold text-[#110F0D]/85">
           {[
             { label: 'Our Menu', path: '/menu' },
             { label: 'Our Story', path: '/story' },
@@ -380,8 +381,8 @@ const OneLoveRouter: React.FC = () => {
                 }}
                 className={`py-1 transition-colors whitespace-nowrap shrink-0 border-b ${
                   active
-                    ? 'text-[#C65B2B] border-[#C65B2B]'
-                    : 'border-transparent hover:text-[#171513] hover:border-[#171513]/40'
+                    ? 'text-[#D9622B] border-[#D9622B]'
+                    : 'border-transparent hover:text-[#110F0D] hover:border-[#110F0D]/50'
                 }`}
               >
                 {link.label}
@@ -395,7 +396,7 @@ const OneLoveRouter: React.FC = () => {
           <button
             type="button"
             onClick={handleReserveCtaClick}
-            className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+            className="px-6 py-2.5 rounded-full bg-[#D9622B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] transition-colors whitespace-nowrap shrink-0 shadow-[0_4px_14px_rgba(217,98,43,0.35)] cursor-pointer"
           >
             Reserve a Table
           </button>
@@ -403,7 +404,7 @@ const OneLoveRouter: React.FC = () => {
             type="button"
             onClick={() => setMobileMenuOpen((v) => !v)}
             aria-label="Toggle navigation menu"
-            className="md:hidden p-2 text-[#171513]"
+            className="md:hidden p-2 text-[#110F0D]"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <MenuIcon className="w-5 h-5" />}
           </button>
@@ -439,130 +440,138 @@ const OneLoveRouter: React.FC = () => {
         {/* ==================== HOME PAGE ==================== */}
         {routeInfo.page === 'home' && (
           <div>
-            {/* 1. Immersive Full-Screen Hero Section matching reference design */}
-            <section
-              onMouseMove={handleHeroMouseMove}
-              onMouseLeave={handleHeroMouseLeave}
-              className="relative min-h-[calc(100vh-72px)] flex items-center justify-center bg-[#171513] text-white overflow-hidden"
-            >
-              {/* Background Slideshow Layer */}
-              <div
-                className="absolute inset-0 transition-transform duration-300 ease-out pointer-events-none"
-                style={{
-                  transform: `translate3d(${mouseParallax.x * 0.15}px, ${scrollY * 0.2 + mouseParallax.y * 0.15}px, 0) scale(1.01)`,
-                  willChange: 'transform',
-                }}
+            {/* 1. Immersive Full-Screen Hero Section + Straddling 3D Wooden Café Menu Stand */}
+            <div className="relative">
+              <section
+                onMouseMove={handleHeroMouseMove}
+                onMouseLeave={handleHeroMouseLeave}
+                className="relative min-h-[calc(100vh-72px)] flex items-center justify-center bg-[#0C0F0A] text-white overflow-hidden"
               >
-                {heroSlides.map((slideSrc, idx) => (
-                  <div
-                    key={`${idx}-${slideSrc.slice(0, 24)}`}
-                    className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
-                      idx === heroSlideIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                    }`}
-                  >
-                    <EditorialVisual
-                      src={slideSrc}
-                      alt={`OneLove Café Sigiriya hero slide ${idx + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                ))}
-                {/* Luminous clean dark overlay with subtle vignette matching reference screenshot */}
-                <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/65" />
-              </div>
-
-              {/* Slider Navigation Arrows (Left & Right) matching reference screenshot */}
-              {heroSlides.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handlePrevSlide}
-                    aria-label="Previous slide"
-                    className="absolute left-4 sm:left-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/40 border border-white/20 text-white hover:bg-black/75 hover:border-white/40 flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-md"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNextSlide}
-                    aria-label="Next slide"
-                    className="absolute right-4 sm:right-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/40 border border-white/20 text-white hover:bg-black/75 hover:border-white/40 flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-md"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </>
-              )}
-
-              {/* Foreground Content Layer - Centered, Big Main Text Widespread & Small Secondary Text */}
-              <div
-                className="relative z-10 max-w-6xl mx-auto w-full px-6 sm:px-12 py-16 sm:py-24 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
-                style={{
-                  transform: `translate3d(${-mouseParallax.x * 0.1}px, ${scrollY * -0.12 - mouseParallax.y * 0.1}px, 0)`,
-                  opacity: Math.max(0, 1 - scrollY / 700),
-                  willChange: 'transform, opacity',
-                }}
-              >
-                <div className="space-y-6 sm:space-y-7 flex flex-col items-center justify-center text-center w-full">
-                  {/* Big Main Text Widespread matching screenshot */}
-                  <h1
-                    style={{ textWrap: 'balance' }}
-                    className="font-outfit text-5xl sm:text-7xl md:text-8xl lg:text-[90px] xl:text-[102px] font-light leading-[1.04] tracking-tight text-white max-w-6xl mx-auto drop-shadow-md"
-                  >
-                    {heroContent?.heading || 'Where Jungle Stone Meets Slow Highland Coffee.'}
-                  </h1>
-
-                  {/* Small Secondary Text */}
-                  <p className="text-xs sm:text-sm md:text-base text-white/85 max-w-2xl mx-auto leading-relaxed font-light drop-shadow-xs px-2">
-                    {heroContent?.subheading ||
-                      'Nestled in the emerald canopy beneath Sigiriya Lion Rock, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
-                  </p>
-
-                  {/* Solid Colors Action Buttons matching reference screenshot */}
-                  <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate('/menu')}
-                      className="px-6 sm:px-7 py-3 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-md cursor-pointer"
-                    >
-                      View Menu
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleReserveCtaClick}
-                      className="px-6 sm:px-7 py-3 rounded-full bg-white text-[#171513] text-xs font-semibold uppercase tracking-wider hover:bg-[#F8F4EE] transition-colors whitespace-nowrap shrink-0 shadow-md cursor-pointer"
-                    >
-                      Reserve a Table
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate('/story')}
-                      className="px-6 sm:px-7 py-3 rounded-full bg-black/50 border border-white/30 text-white text-xs font-semibold uppercase tracking-wider hover:bg-black/75 transition-colors whitespace-nowrap shrink-0 shadow-md backdrop-blur-xs cursor-pointer"
-                    >
-                      Discover More
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Slide Indicator Dots at bottom center matching reference screenshot */}
-              {heroSlides.length > 1 && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center gap-2.5">
-                  {heroSlides.map((_, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setHeroSlideIndex(idx)}
-                      aria-label={`Show hero slide ${idx + 1}`}
-                      className={`rounded-full transition-all cursor-pointer ${
-                        idx === heroSlideIndex
-                          ? 'w-2.5 h-2.5 bg-[#C65B2B] ring-2 ring-[#C65B2B]/40'
-                          : 'w-2 h-2 bg-white/40 hover:bg-white/80'
+                {/* Background Slideshow Layer with Elevated Luminance & Contrast */}
+                <div
+                  className="absolute inset-0 transition-transform duration-300 ease-out pointer-events-none"
+                  style={{
+                    transform: `translate3d(${mouseParallax.x * 0.15}px, ${scrollY * 0.2 + mouseParallax.y * 0.15}px, 0) scale(1.01)`,
+                    willChange: 'transform',
+                  }}
+                >
+                  {heroSlides.map((slideSrc, idx) => (
+                    <div
+                      key={`${idx}-${slideSrc.slice(0, 24)}`}
+                      className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+                        idx === heroSlideIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'
                       }`}
-                    />
+                    >
+                      <EditorialVisual
+                        src={slideSrc}
+                        alt={`OneLove Café Sigiriya hero slide ${idx + 1}`}
+                        className="h-full w-full object-cover contrast-[1.18] saturate-[1.24] brightness-[1.06]"
+                      />
+                    </div>
                   ))}
+                  {/* Sunlit Chiaroscuro Lighting Overlay: Golden-Emerald Midtone Glow + Deep Obsidian Vignette */}
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_55%_42%,rgba(255,248,214,0.14)_0%,rgba(12,15,10,0.22)_52%,rgba(8,10,7,0.72)_100%)]" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-[#0A0C08]/55 via-black/15 to-[#090B07]/78" />
                 </div>
-              )}
-            </section>
+
+                {/* Slider Navigation Arrows (Left & Right) matching reference screenshot */}
+                {heroSlides.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handlePrevSlide}
+                      aria-label="Previous slide"
+                      className="absolute left-4 sm:left-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/55 border border-white/35 text-white hover:bg-black/85 hover:border-white/65 flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-lg"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleNextSlide}
+                      aria-label="Next slide"
+                      className="absolute right-4 sm:right-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/55 border border-white/35 text-white hover:bg-black/85 hover:border-white/65 flex items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-lg"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
+
+                {/* Foreground Content Layer - Centered, Big Main Text Widespread & High-Contrast Secondary Text */}
+                <div
+                  className="relative z-10 max-w-6xl mx-auto w-full px-6 sm:px-12 py-16 sm:py-24 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
+                  style={{
+                    transform: `translate3d(${-mouseParallax.x * 0.1}px, ${scrollY * -0.12 - mouseParallax.y * 0.1}px, 0)`,
+                    opacity: Math.max(0, 1 - scrollY / 700),
+                    willChange: 'transform, opacity',
+                  }}
+                >
+                  <div className="space-y-6 sm:space-y-7 flex flex-col items-center justify-center text-center w-full">
+                    {/* Big Main Text Widespread matching screenshot with luminous contrast */}
+                    <h1
+                      style={{ textWrap: 'balance' }}
+                      className="font-outfit text-5xl sm:text-7xl md:text-8xl lg:text-[90px] xl:text-[102px] font-light leading-[1.04] tracking-tight text-[#FFFFFF] max-w-6xl mx-auto drop-shadow-[0_6px_28px_rgba(0,0,0,0.68)]"
+                    >
+                      {heroContent?.heading || 'Where Jungle Stone Meets Slow Highland Coffee.'}
+                    </h1>
+
+                    {/* Crisp High-Contrast Secondary Text */}
+                    <p className="text-xs sm:text-sm md:text-base text-white/95 max-w-2xl mx-auto leading-relaxed font-normal drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)] px-2">
+                      {heroContent?.subheading ||
+                        'Nestled in the emerald canopy beneath Sigiriya Lion Rock, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
+                    </p>
+
+                    {/* High-Contrast Action Buttons matching reference screenshot */}
+                    <div className="flex flex-wrap items-center justify-center gap-3.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => navigate('/menu')}
+                        className="px-6 sm:px-7 py-3 rounded-full bg-[#D9622B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(217,98,43,0.45)] cursor-pointer"
+                      >
+                        View Menu
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleReserveCtaClick}
+                        className="px-6 sm:px-7 py-3 rounded-full bg-[#FFFDF9] text-[#110F0D] text-xs font-semibold uppercase tracking-wider hover:bg-[#F3ECE0] transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.38)] cursor-pointer"
+                      >
+                        Reserve a Table
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/story')}
+                        className="px-6 sm:px-7 py-3 rounded-full bg-[#0F0D0B]/70 border border-white/45 text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#0F0D0B]/90 hover:border-white/75 transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-xs cursor-pointer"
+                      >
+                        Discover More
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Slide Indicator Dots at bottom center matching reference screenshot */}
+                {heroSlides.length > 1 && (
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center gap-2.5">
+                    {heroSlides.map((_, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setHeroSlideIndex(idx)}
+                        aria-label={`Show hero slide ${idx + 1}`}
+                        className={`rounded-full transition-all cursor-pointer ${
+                          idx === heroSlideIndex
+                            ? 'w-2.5 h-2.5 bg-[#D9622B] ring-2 ring-[#D9622B]/50'
+                            : 'w-2 h-2 bg-white/55 hover:bg-white'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* 3D Wooden A-Frame Chalkboard "CAFÉ MENU" Stand straddling Hero & LateriteStorySection */}
+              <div className="absolute left-3 sm:left-8 lg:left-14 xl:left-24 -bottom-20 sm:-bottom-24 lg:-bottom-28 z-30">
+                <CafeMenuStand onClickMenu={() => navigate('/menu')} />
+              </div>
+            </div>
 
             {/* 2. Crafted from Laterite Earth, Teak & Monsoon Light — 5-Photo Hover-Animated Collage */}
             <LateriteStorySection onReadMonograph={() => navigate('/story')} />

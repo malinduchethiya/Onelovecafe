@@ -12,9 +12,10 @@
 
   body {
     font-family: var(--font-sans);
-    background-color: #F8F4EE;
-    color: #171513;
+    background-color: #FCF9F4;
+    color: #110F0D;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
   }
 
   h1, h2, h3, .font-editorial {
