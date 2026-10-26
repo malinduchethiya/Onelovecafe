@@ -5,6 +5,8 @@
     --font-serif: 'Cormorant Garamond', Georgia, serif;
     --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+    --font-rubik: 'Rubik', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-work-sans: 'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
   body {
@@ -16,6 +18,14 @@
 
   h1, h2, h3, .font-editorial {
     font-family: var(--font-serif);
+  }
+
+  .font-rubik {
+    font-family: var(--font-rubik);
+  }
+
+  .font-work-sans {
+    font-family: var(--font-work-sans);
   }
 
   .font-mono-tabular {

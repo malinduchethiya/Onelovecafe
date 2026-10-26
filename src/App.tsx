@@ -570,7 +570,7 @@ const OneLoveRouter: React.FC = () => {
 
               {/* Foreground Content Layer - Centered, Big Main Text Widespread & Small Secondary Text */}
               <div
-                className="relative z-10 max-w-5xl mx-auto w-full px-6 sm:px-12 py-16 sm:py-24 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
+                className="relative z-10 max-w-6xl mx-auto w-full px-6 sm:px-12 py-16 sm:py-24 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
                 style={{
                   transform: `translate3d(${-mouseParallax.x * 0.1}px, ${scrollY * -0.12 - mouseParallax.y * 0.1}px, 0)`,
                   opacity: Math.max(0, 1 - scrollY / 700),
@@ -581,7 +581,7 @@ const OneLoveRouter: React.FC = () => {
                   {/* Big Main Text Widespread matching screenshot */}
                   <h1
                     style={{ textWrap: 'balance' }}
-                    className="text-4xl sm:text-6xl md:text-7xl lg:text-[76px] xl:text-[84px] font-normal leading-[1.08] sm:leading-[1.06] tracking-tight text-white max-w-5xl mx-auto drop-shadow-sm"
+                    className="font-work-sans text-5xl sm:text-7xl md:text-8xl lg:text-[90px] xl:text-[102px] font-semibold leading-[1.04] tracking-tight text-white max-w-6xl mx-auto drop-shadow-md"
                   >
                     {heroContent?.heading || 'Where Jungle Stone Meets Slow Highland Coffee.'}
                   </h1>
