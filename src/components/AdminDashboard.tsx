@@ -1023,6 +1023,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     tables={tables}
                     zones={zones}
                     availability={availability}
+                    reservations={reservations}
                     selectedDate={new Date().toISOString().split('T')[0]}
                     selectedTime="19:00"
                     partySize={2}

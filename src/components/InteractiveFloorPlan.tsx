@@ -1,11 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { ZoomIn, ZoomOut, Maximize2, Layers, MousePointerClick } from 'lucide-react';
-import { CafeTable, SeatingZone, AvailabilitySlotRecord } from '../types/cafe';
+import { CafeTable, SeatingZone, AvailabilitySlotRecord, ReservationRecord } from '../types/cafe';
 
 interface InteractiveFloorPlanProps {
   tables: CafeTable[];
   zones: SeatingZone[];
   availability: AvailabilitySlotRecord[];
+  reservations?: ReservationRecord[];
   selectedDate: string;
   selectedTime: string;
   partySize: number;
@@ -22,6 +23,7 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
   tables,
   zones,
   availability,
+  reservations,
   selectedDate,
   selectedTime,
   partySize,
@@ -60,9 +62,29 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
     const slotId = `${selectedDate}_${normalizedTime}_${table.id}`;
     const slot = availability.find((s) => s.id === slotId);
     if (slot) {
-      if (slot.status === 'reserved') return 'reserved';
-      if (slot.status === 'occupied') return 'occupied';
-      if (slot.status === 'held' && slot.holdExpiresAtMs > nowMs) {
+      if (slot.status === 'reserved') {
+        const matchingRes =
+          reservations?.filter(
+            (r) =>
+              r.date === selectedDate &&
+              r.tableId === table.id &&
+              (r.time === selectedTime || r.time.replace(/[^a-zA-Z0-9]/g, '-') === normalizedTime)
+          ) || [];
+        const hasActive = matchingRes.some(
+          (r) => r.status === 'confirmed' || r.status === 'seated'
+        );
+        const hasCancelledOrRejected = matchingRes.some(
+          (r) => r.status === 'cancelled' || r.status === 'rejected'
+        );
+
+        if (hasCancelledOrRejected && !hasActive) {
+          // Reservation was cancelled or rejected and no active booking exists: table is available!
+        } else if (hasActive || matchingRes.length === 0) {
+          return 'reserved';
+        }
+      } else if (slot.status === 'occupied') {
+        return 'occupied';
+      } else if (slot.status === 'held' && slot.holdExpiresAtMs > nowMs) {
         return slot.sessionId === sessionId ? 'held_self' : 'held_other';
       }
     }

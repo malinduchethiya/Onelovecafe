@@ -114,6 +114,7 @@ export const ReservationEngine: React.FC<{
     tables,
     blockedDates,
     availability,
+    reservations,
     sessionId,
     holdTableSlot,
     confirmReservation,
@@ -801,6 +802,7 @@ export const ReservationEngine: React.FC<{
               tables={tables}
               zones={zones}
               availability={availability}
+              reservations={reservations}
               selectedDate={selectedDate}
               selectedTime={selectedTime}
               partySize={partySize}

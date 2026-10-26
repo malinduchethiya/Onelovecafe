@@ -561,6 +561,57 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
+    // Real-time Reservations Sync: Automatically frees tables when reservations are cancelled or rejected
+    unsubs.push(
+      onSnapshot(
+        collection(db, 'reservations'),
+        (snap) => {
+          const list = snap.docs
+            .map((d) => ({ id: d.id, ...(d.data() as Omit<ReservationRecord, 'id'>) }))
+            .sort((a, b) => `${b.date}_${b.time}`.localeCompare(`${a.date}_${a.time}`));
+          setReservations(list);
+
+          // Identify cancelled or rejected reservations and ensure the table availability is released
+          list.forEach((res) => {
+            if (res.status === 'cancelled' || res.status === 'rejected') {
+              const normTime = res.time.replace(/[^a-zA-Z0-9]/g, '-');
+              const slotId = `${res.date}_${normTime}_${res.tableId}`;
+
+              // Only free if no OTHER reservation for the exact same date/time/table is confirmed or seated
+              const hasOtherActiveReservation = list.some(
+                (other) =>
+                  other.id !== res.id &&
+                  other.date === res.date &&
+                  other.tableId === res.tableId &&
+                  (other.time === res.time ||
+                    other.time.replace(/[^a-zA-Z0-9]/g, '-') === normTime) &&
+                  (other.status === 'confirmed' || other.status === 'seated')
+              );
+
+              if (!hasOtherActiveReservation) {
+                // Release availability in Firestore so other guests can immediately reserve this table
+                setDoc(
+                  doc(db, 'availability', slotId),
+                  {
+                    date: res.date.slice(0, 10),
+                    time: res.time.slice(0, 10),
+                    tableId: res.tableId.slice(0, 40),
+                    status: 'available',
+                    holdExpiresAtMs: 0,
+                    sessionId: '',
+                    referenceCode: '',
+                    updatedAt: serverTimestamp(),
+                  },
+                  { merge: true }
+                ).catch(() => {});
+              }
+            }
+          });
+        },
+        (err) => console.warn('Reservation sync note:', err)
+      )
+    );
+
     return () => {
       unsubs.forEach((u) => u());
     };
@@ -633,7 +684,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // 3. Protected Admin Real-Time Listeners & Auto-Bootstrap Seeding
   useEffect(() => {
     if (!authReady || !isAdmin) {
-      setReservations([]);
       setInquiries([]);
       setAdmins([]);
       setAuditLogs([]);
@@ -680,19 +730,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const unsubs: (() => void)[] = [];
-
-    unsubs.push(
-      onSnapshot(
-        collection(db, 'reservations'),
-        (snap) => {
-          const list = snap.docs
-            .map((d) => ({ id: d.id, ...(d.data() as Omit<ReservationRecord, 'id'>) }))
-            .sort((a, b) => `${b.date}_${b.time}`.localeCompare(`${a.date}_${a.time}`));
-          setReservations(list);
-        },
-        (err) => handleFirestoreError(err, OperationType.LIST, 'reservations')
-      )
-    );
 
     unsubs.push(
       onSnapshot(
@@ -769,7 +806,19 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (slotSnap.exists()) {
             const data = slotSnap.data() as AvailabilitySlotRecord;
             if (data.status === 'reserved' || data.status === 'occupied') {
-              throw new Error('This table has just been reserved by another guest.');
+              // Check if any active reservation (status == 'confirmed' or 'seated') still occupies this slot
+              const hasActiveReservation = reservations.some(
+                (r) =>
+                  r.date === safeDate &&
+                  r.tableId === safeTableId &&
+                  (r.time === safeTime ||
+                    r.time.replace(/[^a-zA-Z0-9]/g, '-') === normalizedTime) &&
+                  (r.status === 'confirmed' || r.status === 'seated')
+              );
+              if (hasActiveReservation) {
+                throw new Error('This table has just been reserved by another guest.');
+              }
+              // If the reservation was cancelled or rejected, this table is free for a new reservation!
             }
             if (
               data.status === 'held' &&
@@ -811,7 +860,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { slotId, expiresAtMs };
       }
     },
-    [sessionId, settings.holdDurationMinutes]
+    [sessionId, settings.holdDurationMinutes, reservations]
   );
 
   // Direct Firestore Reservation Confirmation (Synced with Android Admin Companion App)

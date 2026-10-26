@@ -344,9 +344,10 @@ service cloud.firestore {
         (
           isAdmin() ||
           existing().status == 'available' ||
-          existing().status == 'held'
+          existing().status == 'held' ||
+          incoming().status == 'available'
         );
-      allow delete: if isValidId(slotId) && isAdmin();
+      allow delete: if isValidId(slotId) && (isAdmin() || existing().status == 'available' || existing().status == 'held');
     }
 
     // 5. Tables Collection
