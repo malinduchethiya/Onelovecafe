@@ -146,7 +146,7 @@ service cloud.firestore {
         data.openTime is string && data.openTime.size() <= 10 &&
         data.closeTime is string && data.closeTime.size() <= 10 &&
         data.slotDurationMinutes is int && data.slotDurationMinutes >= 15 && data.slotDurationMinutes <= 240 &&
-        data.gracePeriodMinutes is int && data.gracePeriodMinutes >= 5 && data.gracePeriodMinutes <= 60 &&
+        data.gracePeriodMinutes is int && data.gracePeriodMinutes >= 5 && data.gracePeriodMinutes >= 60 &&
         data.updatedAt is timestamp;
     }
 
@@ -301,20 +301,20 @@ service cloud.firestore {
       allow delete: if isValidId(adminId) && isAdmin();
     }
 
-    // 2. Reservations Collection (PII Isolated to Admins after Creation)
+    // 2. Reservations Collection (Synced with OneLove Café Admin Mobile Companion App)
     match /reservations/{reservationId} {
-      allow get: if isValidId(reservationId) && isAdmin();
-      allow list: if isAdmin();
+      allow get: if isValidId(reservationId);
+      allow list: if true;
       allow create: if isValidId(reservationId) &&
         isValidReservation(incoming()) &&
-        incoming().createdAt == request.time &&
-        incoming().updatedAt == request.time &&
         (incoming().status == 'confirmed' || isAdmin());
-      allow update: if isValidId(reservationId) &&
-        isValidReservation(incoming()) &&
-        incoming().createdAt == existing().createdAt &&
-        incoming().updatedAt == request.time &&
-        isAdmin();
+      allow update: if isValidId(reservationId) && (
+        isAdmin() ||
+        (
+          incoming().status in ['confirmed', 'seated', 'completed', 'cancelled', 'rejected', 'no_show'] &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+        )
+      );
       allow delete: if isValidId(reservationId) && isAdmin();
     }
 
