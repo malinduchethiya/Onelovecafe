@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ArrowRight, Camera, Upload, RotateCcw, Check, Sparkles } from 'lucide-react';
+import React from 'react';
+import { ArrowRight } from 'lucide-react';
 import { useCafe } from '../context/CafeContext';
 import { EditorialVisual } from './EditorialVisual';
 
@@ -8,57 +8,11 @@ interface LateriteStorySectionProps {
   showMonographButton?: boolean;
 }
 
-const COLLAGE_SLOTS = [
-  {
-    index: 1,
-    sectionKey: 'story_collage_1',
-    label: '01 · Center Main Print',
-    title: 'Wild Elephants & Sigiriya Horizon',
-    defaultSrc: 'editorial:collage-elephants-sigiriya',
-  },
-  {
-    index: 2,
-    sectionKey: 'story_collage_2',
-    label: '02 · Top-Left Canopy Print',
-    title: 'Monsoon Sunbeams Through Canopy',
-    defaultSrc: 'editorial:collage-jungle-sunbeams',
-  },
-  {
-    index: 3,
-    sectionKey: 'story_collage_3',
-    label: '03 · Top-Right Archival Print',
-    title: 'Archival Sigiriya Lithograph',
-    defaultSrc: 'editorial:collage-archival-rock',
-  },
-  {
-    index: 4,
-    sectionKey: 'story_collage_4',
-    label: '04 · Bottom-Left Pinned Print',
-    title: 'Reclaimed Railway Teak Pavilion',
-    defaultSrc: 'editorial:collage-teak-pavilion',
-  },
-  {
-    index: 5,
-    sectionKey: 'story_collage_5',
-    label: '05 · Right Taped Print',
-    title: 'Porous Red Laterite Earth Stone',
-    defaultSrc: 'editorial:collage-laterite-stone',
-  },
-];
-
 export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
   onReadMonograph,
   showMonographButton = true,
 }) => {
-  const {
-    siteContent,
-    updateCollageImageFromDevice,
-    resetCollageImage,
-  } = useCafe();
-
-  const [uploadingSlot, setUploadingSlot] = useState<number | null>(null);
-  const [recentlyUpdatedSlot, setRecentlyUpdatedSlot] = useState<number | null>(null);
-  const [showDeviceUploaderPanel, setShowDeviceUploaderPanel] = useState(false);
+  const { siteContent } = useCafe();
 
   const storyContent = siteContent.find((s) => s.sectionKey === 'story');
 
@@ -76,55 +30,6 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
       return storyContent.imageUrl;
     }
     return fallbackSrc;
-  };
-
-  const handleFileChange = async (slotIndex: number, file?: File) => {
-    if (!file) return;
-    setUploadingSlot(slotIndex);
-    try {
-      await updateCollageImageFromDevice(slotIndex, file);
-      setRecentlyUpdatedSlot(slotIndex);
-      window.setTimeout(() => {
-        setRecentlyUpdatedSlot((prev) => (prev === slotIndex ? null : prev));
-      }, 2800);
-    } finally {
-      setUploadingSlot(null);
-    }
-  };
-
-  const renderFrameUploadBadge = (slotIndex: number, shortLabel: string) => {
-    const isBusy = uploadingSlot === slotIndex;
-    const isDone = recentlyUpdatedSlot === slotIndex;
-    return (
-      <label
-        onClick={(e) => e.stopPropagation()}
-        title={`Upload ${shortLabel} from your device`}
-        className="absolute bottom-2.5 right-2.5 z-30 opacity-0 group-hover/frame:opacity-100 focus-within:opacity-100 transition-all duration-300 px-2.5 py-1.5 rounded-full bg-[#171513]/90 hover:bg-[#C65B2B] text-[#F8F4EE] text-[10px] uppercase tracking-wider font-medium inline-flex items-center gap-1.5 shadow-lg cursor-pointer backdrop-blur-xs"
-      >
-        {isBusy ? (
-          <span>Uploading...</span>
-        ) : isDone ? (
-          <>
-            <Check className="w-3 h-3 text-[#A3D9A5]" />
-            <span>Updated</span>
-          </>
-        ) : (
-          <>
-            <Camera className="w-3 h-3" />
-            <span>Update Photo</span>
-          </>
-        )}
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            handleFileChange(slotIndex, e.target.files?.[0]);
-            e.target.value = '';
-          }}
-        />
-      </label>
-    );
   };
 
   return (
@@ -149,8 +54,8 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                 'OneLove Café began as a quiet refuge along the forested road between Kimbissa and the ancient fortress of Sigiriya. We built around the existing Banyan, Frangipani, and Mara trees—using porous red laterite stone, reclaimed railway teak, and hand-troweled lime plaster so the pavilion breathes naturally with the rhythm of the jungle.'}
             </p>
 
-            <div className="pt-2 flex flex-wrap items-center gap-3">
-              {showMonographButton && (
+            {showMonographButton && (
+              <div className="pt-2 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={onReadMonograph}
@@ -159,17 +64,8 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                   <span>Read Sigiriya Monograph</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setShowDeviceUploaderPanel((v) => !v)}
-                className="px-4 py-3 rounded-full border border-[#D8CFC2] bg-white/80 hover:bg-white hover:border-[#171513] text-[#171513]/80 hover:text-[#171513] text-[11px] font-medium uppercase tracking-wider inline-flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <Camera className="w-3.5 h-3.5 text-[#C65B2B]" />
-                <span>{showDeviceUploaderPanel ? 'Hide Photo Updater' : 'Update Collage Photos'}</span>
-              </button>
-            </div>
+              </div>
+            )}
           </div>
 
           {/* RIGHT ARCHIVAL SCRAPBOOK COLLAGE COLUMN (Hover-Animated) */}
@@ -244,7 +140,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
               {/* PHOTO 2: TOP-LEFT VERTICAL PRINT (Monsoon Sunbeams Through Canopy) */}
               <div
-                className="group/frame absolute left-[5%] top-[6%] w-[34%] aspect-[3/4] z-10 bg-[#FAF6EE] p-2 sm:p-3 shadow-[0_16px_36px_rgba(23,21,19,0.18)] border border-[#E2D9C8] -rotate-[6deg] transition-all duration-500 ease-out group-hover/collage:-translate-x-2 group-hover/collage:-translate-y-1.5 group-hover/collage:-rotate-[8deg] hover:!z-40 hover:!scale-105 hover:!rotate-[-1deg] hover:!-translate-y-2.5 hover:shadow-[0_26px_55px_rgba(23,21,19,0.28)] cursor-pointer"
+                className="group/frame absolute left-[5%] top-[6%] w-[34%] aspect-[3/4] z-10 bg-[#FAF6EE] p-2 sm:p-3 shadow-[0_16px_36px_rgba(23,21,19,0.18)] border border-[#E2D9C8] -rotate-[6deg] transition-all duration-500 ease-out group-hover/collage:-translate-x-2 group-hover/collage:-translate-y-1.5 group-hover/collage:-rotate-[8deg] hover:!z-40 hover:!scale-105 hover:!rotate-[-1deg] hover:!-translate-y-2.5 hover:shadow-[0_26px_55px_rgba(23,21,19,0.28)]"
               >
                 <div className="relative w-full h-full overflow-hidden bg-[#162417]">
                   <EditorialVisual
@@ -252,13 +148,12 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                     alt="Monsoon Sunbeams Through Canopy"
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/frame:scale-108"
                   />
-                  {renderFrameUploadBadge(2, 'Top-Left Canopy Photo')}
                 </div>
               </div>
 
               {/* PHOTO 3: TOP-RIGHT ARCHIVAL MONOCHROME PRINT (Archival Sigiriya Lithograph) */}
               <div
-                className="group/frame absolute right-[4%] top-[2%] w-[46%] aspect-[16/10] z-10 bg-[#F3EFE4] p-2.5 sm:p-3.5 shadow-[0_14px_32px_rgba(23,21,19,0.14)] border border-[#DFD6C3] rotate-[4deg] transition-all duration-500 ease-out group-hover/collage:translate-x-2 group-hover/collage:-translate-y-1.5 group-hover/collage:rotate-[6deg] hover:!z-40 hover:!scale-105 hover:!rotate-[1deg] hover:!-translate-y-2 hover:shadow-[0_26px_55px_rgba(23,21,19,0.25)] cursor-pointer"
+                className="group/frame absolute right-[4%] top-[2%] w-[46%] aspect-[16/10] z-10 bg-[#F3EFE4] p-2.5 sm:p-3.5 shadow-[0_14px_32px_rgba(23,21,19,0.14)] border border-[#DFD6C3] rotate-[4deg] transition-all duration-500 ease-out group-hover/collage:translate-x-2 group-hover/collage:-translate-y-1.5 group-hover/collage:rotate-[6deg] hover:!z-40 hover:!scale-105 hover:!rotate-[1deg] hover:!-translate-y-2 hover:shadow-[0_26px_55px_rgba(23,21,19,0.25)]"
               >
                 <div className="relative w-full h-full overflow-hidden bg-[#EFECE4]">
                   <EditorialVisual
@@ -266,13 +161,12 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                     alt="Archival Sigiriya Rock Fortress Lithograph"
                     className="w-full h-full object-cover grayscale contrast-110 transition-all duration-700 group-hover/frame:grayscale-0 group-hover/frame:scale-105"
                   />
-                  {renderFrameUploadBadge(3, 'Top-Right Archival Photo')}
                 </div>
               </div>
 
               {/* PHOTO 1: CENTER-MAIN HERO LANDSCAPE PRINT (Wild Elephants & Sigiriya Horizon) */}
               <div
-                className="group/frame absolute left-[18%] top-[21%] w-[63%] aspect-[4/3] z-20 bg-[#FAF6EE] p-2.5 sm:p-4 shadow-[0_22px_50px_rgba(23,21,19,0.22)] border border-[#E2D9C8] -rotate-[0.5deg] transition-all duration-500 ease-out group-hover/collage:-translate-y-1 hover:!z-40 hover:!scale-[1.035] hover:!rotate-0 hover:!-translate-y-2 hover:shadow-[0_30px_65px_rgba(23,21,19,0.3)] cursor-pointer"
+                className="group/frame absolute left-[18%] top-[21%] w-[63%] aspect-[4/3] z-20 bg-[#FAF6EE] p-2.5 sm:p-4 shadow-[0_22px_50px_rgba(23,21,19,0.22)] border border-[#E2D9C8] -rotate-[0.5deg] transition-all duration-500 ease-out group-hover/collage:-translate-y-1 hover:!z-40 hover:!scale-[1.035] hover:!rotate-0 hover:!-translate-y-2 hover:shadow-[0_30px_65px_rgba(23,21,19,0.3)]"
               >
                 <div className="relative w-full h-full overflow-hidden bg-[#C7D7E2]">
                   <EditorialVisual
@@ -280,13 +174,12 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                     alt="Wild Sri Lankan Elephants with Sigiriya Lion Rock in Background"
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/frame:scale-105"
                   />
-                  {renderFrameUploadBadge(1, 'Main Center Photo')}
                 </div>
               </div>
 
               {/* PHOTO 4: BOTTOM-LEFT PINNED VERTICAL PRINT (Reclaimed Railway Teak Pavilion) */}
               <div
-                className="group/frame absolute left-[3%] bottom-[3%] w-[26%] aspect-[3/4] z-30 bg-[#FAF6EE] p-2 sm:p-2.5 shadow-[0_18px_38px_rgba(23,21,19,0.24)] border border-[#E2D9C8] -rotate-[7deg] transition-all duration-500 ease-out group-hover/collage:-translate-x-2.5 group-hover/collage:translate-y-2 group-hover/collage:-rotate-[9deg] hover:!z-40 hover:!scale-110 hover:!rotate-[-1.5deg] hover:!-translate-y-1 hover:shadow-[0_28px_58px_rgba(23,21,19,0.32)] cursor-pointer"
+                className="group/frame absolute left-[3%] bottom-[3%] w-[26%] aspect-[3/4] z-30 bg-[#FAF6EE] p-2 sm:p-2.5 shadow-[0_18px_38px_rgba(23,21,19,0.24)] border border-[#E2D9C8] -rotate-[7deg] transition-all duration-500 ease-out group-hover/collage:-translate-x-2.5 group-hover/collage:translate-y-2 group-hover/collage:-rotate-[9deg] hover:!z-40 hover:!scale-110 hover:!rotate-[-1.5deg] hover:!-translate-y-1 hover:shadow-[0_28px_58px_rgba(23,21,19,0.32)]"
               >
                 {/* Brass / Wood Thumbtack Pin at Top Center */}
                 <div
@@ -302,13 +195,12 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                     alt="Reclaimed Railway Teak Pavilion"
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/frame:scale-108"
                   />
-                  {renderFrameUploadBadge(4, 'Bottom-Left Teak Photo')}
                 </div>
               </div>
 
               {/* PHOTO 5: RIGHT TAPED VERTICAL PRINT (Porous Red Laterite Earth Stone) */}
               <div
-                className="group/frame absolute right-[1%] top-[30%] w-[23%] aspect-[3/4] z-30 bg-[#FAF6EE] p-2 sm:p-2.5 shadow-[0_18px_38px_rgba(23,21,19,0.22)] border border-[#E2D9C8] rotate-[7deg] transition-all duration-500 ease-out group-hover/collage:translate-x-2.5 group-hover/collage:translate-y-1 group-hover/collage:rotate-[9deg] hover:!z-40 hover:!scale-110 hover:!rotate-[1.5deg] hover:!-translate-y-1.5 hover:shadow-[0_28px_58px_rgba(23,21,19,0.32)] cursor-pointer"
+                className="group/frame absolute right-[1%] top-[30%] w-[23%] aspect-[3/4] z-30 bg-[#FAF6EE] p-2 sm:p-2.5 shadow-[0_18px_38px_rgba(23,21,19,0.22)] border border-[#E2D9C8] rotate-[7deg] transition-all duration-500 ease-out group-hover/collage:translate-x-2.5 group-hover/collage:translate-y-1 group-hover/collage:rotate-[9deg] hover:!z-40 hover:!scale-110 hover:!rotate-[1.5deg] hover:!-translate-y-1.5 hover:shadow-[0_28px_58px_rgba(23,21,19,0.32)]"
               >
                 {/* Translucent Archival Masking Tape at Top Center */}
                 <div
@@ -322,7 +214,6 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                     alt="Porous Red Laterite Earth Stone"
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/frame:scale-108"
                   />
-                  {renderFrameUploadBadge(5, 'Right Laterite Photo')}
                 </div>
               </div>
 
@@ -406,86 +297,6 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
             </div>
           </div>
         </div>
-
-        {/* EXPANDABLE ON-PAGE DEVICE IMAGE UPDATER DRAWER */}
-        {showDeviceUploaderPanel && (
-          <div className="mt-12 bg-white border border-[#E7DED3] p-6 sm:p-8 shadow-sm space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7DED3] pb-4">
-              <div>
-                <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold inline-flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" /> Interactive Collage Studio · Upload from Device
-                </div>
-                <h3 className="text-xl font-editorial font-semibold text-[#171513] mt-0.5">
-                  Customize the 5 Collage Photographs
-                </h3>
-                <p className="text-xs text-[#171513]/65">
-                  Select any of the 5 frames below to upload a new photo directly from your phone or computer.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDeviceUploaderPanel(false)}
-                className="text-xs uppercase tracking-wider font-medium text-[#171513]/60 hover:text-[#171513]"
-              >
-                Close Panel
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              {COLLAGE_SLOTS.map((slot) => {
-                const currentSrc = getSlotImage(slot.index, slot.defaultSrc);
-                const isCustom = !currentSrc.startsWith('editorial:');
-                const isUploading = uploadingSlot === slot.index;
-
-                return (
-                  <div
-                    key={slot.index}
-                    className="bg-[#F8F4EE] border border-[#E7DED3] p-3 flex flex-col justify-between space-y-3"
-                  >
-                    <div className="space-y-1.5">
-                      <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
-                        {slot.label}
-                      </div>
-                      <div className="text-xs font-semibold text-[#171513] truncate">
-                        {slot.title}
-                      </div>
-                      <div className="aspect-[4/3] bg-white border border-[#E7DED3] overflow-hidden">
-                        <EditorialVisual src={currentSrc} alt={slot.title} />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <label className="flex-1 py-2 px-2.5 bg-[#171513] hover:bg-[#C65B2B] text-[#F8F4EE] text-[11px] font-medium uppercase tracking-wider inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
-                        <Upload className="w-3 h-3" />
-                        <span>{isUploading ? 'Saving...' : 'Upload'}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            handleFileChange(slot.index, e.target.files?.[0]);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-
-                      {isCustom && (
-                        <button
-                          type="button"
-                          title="Reset to default artwork"
-                          onClick={() => resetCollageImage(slot.index)}
-                          className="p-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] transition-colors cursor-pointer"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </section>
   );

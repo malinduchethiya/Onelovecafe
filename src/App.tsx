@@ -1472,15 +1472,22 @@ const OneLoveRouter: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 text-xs text-[#F8F4EE]/70">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 text-xs text-[#F8F4EE]/70 items-start">
             <div className="space-y-3">
               <div className="font-editorial text-xl text-[#F8F4EE] tracking-wider uppercase">
                 {settings.cafeName || 'ONELOVE CAFÉ'}
               </div>
               <p className="leading-relaxed">{settings.tagline}</p>
+              <div className="pt-2">
+                <img
+                  src="/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_eee5198f.png"
+                  alt="OneLove Café Sigiriya Sri Lanka Emblem"
+                  className="w-28 h-auto object-contain"
+                />
+              </div>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 md:justify-self-center md:text-center">
               <div className="uppercase tracking-widest text-[#F8F4EE] font-semibold">
                 Navigation
               </div>
@@ -1560,20 +1567,7 @@ const OneLoveRouter: React.FC = () => {
               </ul>
             </div>
 
-            <div className="space-y-2.5">
-              <div className="uppercase tracking-widest text-[#F8F4EE] font-semibold">
-                Seating Zones
-              </div>
-              <ul className="space-y-2">
-                {zones
-                  .filter((z) => z.isActive !== false)
-                  .map((z) => (
-                    <li key={z.id}>{z.name}</li>
-                  ))}
-              </ul>
-            </div>
-
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 md:justify-self-end md:text-right">
               <div className="uppercase tracking-widest text-[#F8F4EE] font-semibold">
                 Location &amp; Concierge
               </div>
@@ -1599,13 +1593,6 @@ const OneLoveRouter: React.FC = () => {
                 className="hover:text-[#F8F4EE]"
               >
                 {footerContent?.ctaLabel || 'Directions & Policies'}
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/admin')}
-                className="hover:text-[#F8F4EE]"
-              >
-                {footerContent?.ctaLink || 'Staff & Admin Console'}
               </button>
             </div>
           </div>

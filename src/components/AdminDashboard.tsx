@@ -101,7 +101,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     saveSettings,
     updateInquiryStatus,
     uploadMediaFile,
+    updateCollageImageFromDevice,
+    resetCollageImage,
   } = useCafe();
+  const [uploadingCollageSlot, setUploadingCollageSlot] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const [seeding, setSeeding] = useState(false);
@@ -2513,6 +2516,128 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="space-y-8">
               {/* Hero Background Slideshow Manager */}
               {renderHeroSlideshowManager()}
+
+              {/* Laterite Earth, Teak & Monsoon Light — 5-Photo Collage Manager */}
+              <div className="bg-white border border-[#E7DED3] p-6 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7DED3] pb-4">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
+                      Story Section · 5-Photo Scrapbook Collage
+                    </div>
+                    <h2 className="text-xl font-editorial font-semibold text-[#171513] mt-0.5">
+                      “Crafted from Laterite Earth, Teak &amp; Monsoon Light” Collage Photos
+                    </h2>
+                    <p className="text-xs text-[#171513]/65">
+                      Upload custom photographs from your device or restore default archival artwork for each of the 5 hover-animated collage frames.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                  {[
+                    {
+                      index: 1,
+                      key: 'story_collage_1',
+                      label: '01 · Center Main Print',
+                      title: 'Wild Elephants & Sigiriya Horizon',
+                      defaultSrc: 'editorial:collage-elephants-sigiriya',
+                    },
+                    {
+                      index: 2,
+                      key: 'story_collage_2',
+                      label: '02 · Top-Left Canopy Print',
+                      title: 'Monsoon Sunbeams Through Canopy',
+                      defaultSrc: 'editorial:collage-jungle-sunbeams',
+                    },
+                    {
+                      index: 3,
+                      key: 'story_collage_3',
+                      label: '03 · Top-Right Archival Print',
+                      title: 'Archival Sigiriya Lithograph',
+                      defaultSrc: 'editorial:collage-archival-rock',
+                    },
+                    {
+                      index: 4,
+                      key: 'story_collage_4',
+                      label: '04 · Bottom-Left Pinned Print',
+                      title: 'Reclaimed Railway Teak Pavilion',
+                      defaultSrc: 'editorial:collage-teak-pavilion',
+                    },
+                    {
+                      index: 5,
+                      key: 'story_collage_5',
+                      label: '05 · Right Taped Print',
+                      title: 'Porous Red Laterite Earth Stone',
+                      defaultSrc: 'editorial:collage-laterite-stone',
+                    },
+                  ].map((slot) => {
+                    const sec = siteContent.find((s) => s.sectionKey === slot.key);
+                    const currentSrc =
+                      sec?.imageUrl && sec.imageUrl.trim().length > 0
+                        ? sec.imageUrl
+                        : slot.defaultSrc;
+                    const isCustom = !currentSrc.startsWith('editorial:');
+                    const isBusy = uploadingCollageSlot === slot.index;
+
+                    return (
+                      <div
+                        key={slot.index}
+                        className="bg-[#F8F4EE] border border-[#E7DED3] p-3.5 flex flex-col justify-between space-y-3"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
+                            {slot.label}
+                          </div>
+                          <div className="text-xs font-semibold text-[#171513] truncate">
+                            {slot.title}
+                          </div>
+                          <div className="aspect-[4/3] bg-white border border-[#E7DED3] overflow-hidden">
+                            <EditorialVisual src={currentSrc} alt={slot.title} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <label className="flex-1 py-2 px-2.5 bg-[#171513] hover:bg-[#C65B2B] text-[#F8F4EE] text-[11px] font-medium uppercase tracking-wider inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+                            <Upload className="w-3 h-3" />
+                            <span>{isBusy ? 'Saving...' : 'Upload Photo'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = '';
+                                if (!file) return;
+                                setUploadingCollageSlot(slot.index);
+                                try {
+                                  await updateCollageImageFromDevice(slot.index, file);
+                                  showToast(`Updated collage slot #${slot.index} (${slot.title}).`);
+                                } finally {
+                                  setUploadingCollageSlot(null);
+                                }
+                              }}
+                            />
+                          </label>
+
+                          {isCustom && (
+                            <button
+                              type="button"
+                              title="Reset to default artwork"
+                              onClick={async () => {
+                                await resetCollageImage(slot.index);
+                                showToast(`Reset collage slot #${slot.index} to default artwork.`);
+                              }}
+                              className="px-2.5 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] transition-colors cursor-pointer"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Editorial Website Content Sections (Hero, Story, Concierge, Footer) */}
               <div className="space-y-6">
