@@ -29,14 +29,14 @@ export const SanctuaryMap: React.FC<SanctuaryMapProps> = ({ settings, className 
   return (
     <section
       id="sanctuary-map"
-      className={`scroll-mt-24 max-w-7xl mx-auto px-6 lg:px-12 py-16 sm:py-24 border-b border-[#E7DED3] space-y-8 ${className}`}
+      className={`scroll-mt-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-14 sm:py-24 border-b border-[#E7DED3] space-y-6 sm:space-y-8 ${className}`}
       aria-label="Sanctuary Map Location"
     >
       {/* Section Header */}
-      <div className="flex flex-wrap items-end justify-between gap-6">
+      <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
         <div className="space-y-2 max-w-2xl">
           <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold flex items-center gap-1.5">
-            <Compass className="w-3.5 h-3.5 text-[#C65B2B]" />
+            <Compass className="w-3.5 h-3.5 text-[#C65B2B] shrink-0" />
             <span>Sigiriya Cultural Triangle · Geographical Position</span>
           </div>
           <h2 className="text-3xl sm:text-5xl font-editorial font-normal text-[#171513]">
@@ -48,12 +48,12 @@ export const SanctuaryMap: React.FC<SanctuaryMapProps> = ({ settings, className 
         </div>
 
         {/* Minimal external directions link */}
-        <div className="shrink-0">
+        <div className="w-full sm:w-auto shrink-0">
           <a
             href={directionsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-5 py-3 border border-[#171513] text-xs uppercase tracking-widest font-medium hover:bg-[#171513] hover:text-[#F8F4EE] transition-colors"
+            className="w-full sm:w-auto justify-center min-h-[44px] inline-flex items-center gap-2 px-5 py-3 border border-[#171513] text-xs uppercase tracking-widest font-medium hover:bg-[#171513] hover:text-[#F8F4EE] transition-colors"
           >
             <Navigation className="w-3.5 h-3.5" />
             <span>Open in Google Maps ↗</span>
@@ -66,7 +66,7 @@ export const SanctuaryMap: React.FC<SanctuaryMapProps> = ({ settings, className 
         <iframe
           src={embedUrl}
           title={title}
-          className="w-full h-[400px] sm:h-[480px] lg:h-[540px] border-0 block"
+          className="w-full h-[320px] sm:h-[480px] lg:h-[540px] border-0 block"
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
           allowFullScreen={false}

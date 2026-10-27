@@ -30,7 +30,7 @@ export const CafeMenuStand: React.FC<CafeMenuStandProps> = ({ onClickMenu }) => 
       {/* SVG 3D Perspective Teak A-Frame Chalkboard Menu Stand matching reference image */}
       <svg
         viewBox="0 0 380 470"
-        className="w-[210px] sm:w-[255px] md:w-[290px] lg:w-[320px] h-auto overflow-visible drop-shadow-[0_22px_32px_rgba(12,10,8,0.45)]"
+        className="w-[155px] xs:w-[175px] sm:w-[235px] md:w-[275px] lg:w-[315px] h-auto overflow-visible drop-shadow-[0_18px_28px_rgba(12,10,8,0.45)]"
       >
         <defs>
           {/* Realistic Soft Ground Cast Shadow on the Ivory Floor */}

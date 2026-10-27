@@ -159,6 +159,35 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
     setLastDraggedPos(null);
   };
 
+  const handleCanvasTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (draggingTableId || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    if (editable && clickToPlaceMode && selectedTableId) {
+      const coords = computeRelativeCoords(touch.clientX, touch.clientY);
+      if (onMoveTable) onMoveTable(selectedTableId, coords.x, coords.y);
+      if (onCommitTablePosition) onCommitTablePosition(selectedTableId, coords.x, coords.y);
+      return;
+    }
+    setIsDraggingCanvas(true);
+    setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y });
+  };
+
+  const handleCanvasTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    if (editable && draggingTableId && onMoveTable) {
+      const coords = computeRelativeCoords(touch.clientX, touch.clientY);
+      setLastDraggedPos({ id: draggingTableId, x: coords.x, y: coords.y });
+      onMoveTable(draggingTableId, coords.x, coords.y);
+      return;
+    }
+    if (!isDraggingCanvas) return;
+    setPan({
+      x: Math.max(-220, Math.min(220, touch.clientX - dragStart.x)),
+      y: Math.max(-160, Math.min(160, touch.clientY - dragStart.y)),
+    });
+  };
+
   const resetViewport = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -168,7 +197,7 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
     <div className="space-y-4 text-[#171513]">
       {/* Zone Filter Bar & Editor Mode Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-1.5 bg-[#EFE9DF] p-1 border border-[#E7DED3]">
+        <div className="flex items-center gap-1.5 bg-[#EFE9DF] p-1 border border-[#E7DED3] overflow-x-auto max-w-full">
           <button
             type="button"
             onClick={() => setActiveZoneFilter('all')}
@@ -211,7 +240,7 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
             >
               <MousePointerClick className="w-3.5 h-3.5" />
               {clickToPlaceMode
-                ? 'Click-to-Place Active (Click anywhere on map)'
+                ? 'Click-to-Place Active (Tap anywhere on map)'
                 : 'Enable Click-to-Place Table'}
             </button>
           )}
@@ -242,19 +271,22 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
         onMouseMove={handleCanvasMouseMove}
         onMouseUp={handleCanvasMouseUp}
         onMouseLeave={handleCanvasMouseUp}
-        className={`relative w-full h-[480px] sm:h-[560px] bg-[#141210] border border-[#2C2622] overflow-hidden select-none ${
+        onTouchStart={handleCanvasTouchStart}
+        onTouchMove={handleCanvasTouchMove}
+        onTouchEnd={handleCanvasMouseUp}
+        className={`relative w-full h-[400px] sm:h-[560px] bg-[#141210] border border-[#2C2622] overflow-hidden select-none touch-pan-y ${
           editable && clickToPlaceMode
             ? 'cursor-crosshair'
             : 'cursor-grab active:cursor-grabbing'
         }`}
       >
         {/* Top-Right Viewport Controls */}
-        <div className="absolute top-4 right-4 z-20 flex flex-col gap-2">
+        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex flex-col gap-1.5 sm:gap-2">
           <button
             type="button"
             onClick={() => setZoom((z) => Math.min(1.6, Number((z + 0.15).toFixed(2))))}
             title="Zoom in floor plan"
-            className="w-9 h-9 bg-[#F8F4EE] text-[#171513] flex items-center justify-center hover:bg-[#C65B2B] hover:text-white transition-colors"
+            className="w-9 h-9 bg-[#F8F4EE] text-[#171513] flex items-center justify-center hover:bg-[#C65B2B] hover:text-white transition-colors shadow-sm"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
@@ -262,7 +294,7 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
             type="button"
             onClick={() => setZoom((z) => Math.max(0.75, Number((z - 0.15).toFixed(2))))}
             title="Zoom out floor plan"
-            className="w-9 h-9 bg-[#F8F4EE] text-[#171513] flex items-center justify-center hover:bg-[#C65B2B] hover:text-white transition-colors"
+            className="w-9 h-9 bg-[#F8F4EE] text-[#171513] flex items-center justify-center hover:bg-[#C65B2B] hover:text-white transition-colors shadow-sm"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
@@ -270,18 +302,18 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
             type="button"
             onClick={resetViewport}
             title="Reset floor plan view"
-            className="w-9 h-9 bg-[#F8F4EE] text-[#171513] flex items-center justify-center hover:bg-[#C65B2B] hover:text-white transition-colors"
+            className="w-9 h-9 bg-[#F8F4EE] text-[#171513] flex items-center justify-center hover:bg-[#C65B2B] hover:text-white transition-colors shadow-sm"
           >
             <Maximize2 className="w-4 h-4" />
           </button>
         </div>
 
         {/* Top-Left Live Indicator */}
-        <div className="absolute top-4 left-4 z-20 px-3 py-1.5 bg-[#1F1C19]/90 border border-[#38312B] text-[11px] font-mono-tabular text-[#E7DED3]/90">
+        <div className="absolute top-3 left-3 sm:top-4 sm:left-4 max-w-[calc(100%-4rem)] truncate z-20 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#1F1C19]/90 border border-[#38312B] text-[10px] sm:text-[11px] font-mono-tabular text-[#E7DED3]/90">
           {editable
             ? clickToPlaceMode
-              ? 'Click anywhere on the floor plan / drone shot to place selected table'
-              : 'Floor Plan Editor · Drag any table node to reposition (auto-saves)'
+              ? 'Tap anywhere on the floor plan to place selected table'
+              : 'Floor Plan Editor · Drag any table node to reposition'
             : `${selectedDate} · ${selectedTime} · ${partySize} Guests`}
         </div>
 
@@ -534,12 +566,12 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
 
             const shapeClasses =
               table.shape === 'round'
-                ? 'w-12 h-12 rounded-full'
+                ? 'w-10 h-10 sm:w-12 sm:h-12 rounded-full'
                 : table.shape === 'diamond'
-                ? 'w-11 h-11 rotate-45'
+                ? 'w-9 h-9 sm:w-11 sm:h-11 rotate-45'
                 : table.shape === 'rectangle'
-                ? 'w-20 h-11 rounded-sm'
-                : 'w-12 h-12 rounded-sm';
+                ? 'w-14 h-9 sm:w-20 sm:h-11 rounded-sm'
+                : 'w-10 h-10 sm:w-12 sm:h-12 rounded-sm';
 
             return (
               <button
@@ -547,6 +579,14 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
                 type="button"
                 disabled={!isSelectable}
                 onMouseDown={(e) => {
+                  if (editable) {
+                    e.stopPropagation();
+                    onSelectTable(table);
+                    setDraggingTableId(table.id);
+                    setLastDraggedPos({ id: table.id, x: table.x, y: table.y });
+                  }
+                }}
+                onTouchStart={(e) => {
                   if (editable) {
                     e.stopPropagation();
                     onSelectTable(table);
@@ -577,12 +617,12 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
                       : 'text-center leading-none'
                   }
                 >
-                  <div className="text-[11px] font-bold font-mono-tabular">T{table.number}</div>
-                  <div className="text-[9px] opacity-80 font-mono-tabular">{table.capacity}p</div>
+                  <div className="text-[10px] sm:text-[11px] font-bold font-mono-tabular">T{table.number}</div>
+                  <div className="text-[8px] sm:text-[9px] opacity-80 font-mono-tabular">{table.capacity}p</div>
                 </div>
                 {table.isVip && (
                   <span
-                    className={`absolute -top-1.5 -right-1.5 w-3 h-3 bg-[#D49B4B] border border-[#141210] ${
+                    className={`absolute -top-1.5 -right-1.5 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-[#D49B4B] border border-[#141210] ${
                       table.shape === 'diamond' ? '-rotate-45' : ''
                     }`}
                     title="VIP Sanctuary Table"
@@ -594,8 +634,8 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
         </div>
 
         {/* Bottom Legend Bar inside Canvas */}
-        <div className="absolute bottom-3 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-[#141210]/90 border border-[#2C2622] text-[11px] text-[#E7DED3]/80">
-          <div className="flex flex-wrap items-center gap-4">
+        <div className="absolute bottom-2.5 sm:bottom-3 left-2.5 sm:left-4 right-2.5 sm:right-4 z-20 flex flex-wrap items-center justify-between gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-[#141210]/90 border border-[#2C2622] text-[10px] sm:text-[11px] text-[#E7DED3]/80">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 sm:gap-4">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-[#F8F4EE] inline-block" /> Available
             </span>
@@ -608,10 +648,10 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-[#262320] border border-[#3A3530] inline-block" />{' '}
-              Occupied / Size Filter
+              Occupied / Size
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 bg-[#D49B4B] inline-block" /> VIP Table
+              <span className="w-2.5 h-2.5 bg-[#D49B4B] inline-block" /> VIP
             </span>
           </div>
           <span className="hidden sm:inline text-[#E7DED3]/50 font-mono-tabular">
@@ -621,6 +661,51 @@ export const InteractiveFloorPlan: React.FC<InteractiveFloorPlanProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Mobile Quick-Select Table List (For effortless one-thumb selection on phones) */}
+      {!editable && (
+        <div className="sm:hidden space-y-2 pt-1">
+          <div className="text-[11px] uppercase tracking-wider text-[#171513]/65 font-semibold">
+            Quick Table Selection ({partySize} Guests)
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {tables
+              .filter((t) => activeZoneFilter === 'all' || t.zoneId === activeZoneFilter)
+              .map((table) => {
+                const status = getTableStatus(table);
+                const isSelected = selectedTableId === table.id;
+                const isSelectable = status === 'available' || status === 'held_self';
+                return (
+                  <button
+                    key={table.id}
+                    type="button"
+                    disabled={!isSelectable}
+                    onClick={() => isSelectable && onSelectTable(table)}
+                    className={`p-2.5 border text-left transition-colors min-h-[48px] flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-[#C65B2B] text-white border-[#C65B2B]'
+                        : isSelectable
+                        ? 'bg-[#F8F4EE] text-[#171513] border-[#E7DED3]'
+                        : 'bg-[#F8F4EE]/40 text-[#171513]/35 border-[#E7DED3]/60 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 text-xs font-semibold font-mono-tabular">
+                      <span>{table.label}</span>
+                      <span>{table.capacity}p</span>
+                    </div>
+                    <div
+                      className={`text-[10px] truncate mt-0.5 ${
+                        isSelected ? 'text-white/90' : ' opacity-70'
+                      }`}
+                    >
+                      {table.zoneName} · {status === 'available' ? 'Available' : status.replace('_', ' ')}
+                    </div>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

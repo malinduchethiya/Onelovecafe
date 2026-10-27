@@ -33,33 +33,33 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
   };
 
   return (
-    <section className="relative overflow-hidden bg-[#FCF9F4] border-b border-[#DFD5C6] py-20 sm:py-28">
+    <section className="relative overflow-hidden bg-[#FCF9F4] border-b border-[#DFD5C6] py-14 sm:py-22 lg:py-28">
       {/* Sunlit Ambient Paper Glow */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(255,252,245,0.95),transparent_55%),radial-gradient(circle_at_72%_48%,rgba(217,98,43,0.09),transparent_62%)]" />
 
-      <div className="relative max-w-7xl mx-auto px-6 lg:px-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 sm:gap-12 lg:gap-8 items-center">
           {/* LEFT EDITORIAL COLUMN (with top clearance when overlapping Café Menu Stand is present on Home) */}
-          <div className={`lg:col-span-5 space-y-6 z-10 ${showMonographButton ? 'pt-20 sm:pt-24 lg:pt-28' : ''}`}>
+          <div className={`lg:col-span-5 space-y-5 sm:space-y-6 z-10 ${showMonographButton ? 'pt-14 sm:pt-24 lg:pt-28' : ''}`}>
             <h2
               style={{ textWrap: 'balance' }}
-              className="text-4xl sm:text-5xl lg:text-[52px] font-editorial font-medium leading-[1.1] tracking-tight text-[#110F0D]"
+              className="text-3xl sm:text-5xl lg:text-[52px] font-editorial font-medium leading-[1.12] tracking-tight text-[#110F0D]"
             >
               {storyContent?.heading ||
                 'Crafted from Laterite Earth, Teak & Monsoon Light.'}
             </h2>
 
-            <p className="text-sm sm:text-[15px] text-[#110F0D]/85 leading-[1.78] font-normal max-w-xl">
+            <p className="text-sm sm:text-[15px] text-[#110F0D]/85 leading-[1.75] font-normal max-w-xl">
               {storyContent?.body ||
                 'OneLove Café began as a quiet refuge along the forested road between Kimbissa and the ancient fortress of Sigiriya. We built around the existing Banyan, Frangipani, and Mara trees—using porous red laterite stone, reclaimed railway teak, and hand-troweled lime plaster so the pavilion breathes naturally with the rhythm of the jungle.'}
             </p>
 
             {showMonographButton && (
-              <div className="pt-2 flex flex-wrap items-center gap-3">
+              <div className="pt-1 sm:pt-2 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={onReadMonograph}
-                  className="px-7 py-3.5 rounded-full bg-[#110F0D] text-[#FCF9F4] text-[11px] font-semibold uppercase tracking-[0.16em] inline-flex items-center gap-3 hover:bg-[#D9622B] transition-all duration-300 shadow-md cursor-pointer"
+                  className="w-full sm:w-auto justify-center min-h-[44px] px-7 py-3.5 rounded-full bg-[#110F0D] text-[#FCF9F4] text-[11px] font-semibold uppercase tracking-[0.16em] inline-flex items-center gap-3 hover:bg-[#D9622B] transition-all duration-300 shadow-md cursor-pointer"
                 >
                   <span>Read Sigiriya Monograph</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -70,7 +70,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
           {/* RIGHT ARCHIVAL SCRAPBOOK COLLAGE COLUMN (Hover-Animated) */}
           <div className="lg:col-span-7">
-            <div className="group/collage relative w-full max-w-[740px] mx-auto aspect-[16/12] sm:aspect-[16/11] select-none contrast-[1.08] saturate-[1.12]">
+            <div className="group/collage relative w-full max-w-[740px] mx-auto aspect-[4/3] sm:aspect-[16/11] select-none contrast-[1.08] saturate-[1.12]">
               {/* Background Watercolor & Torn Parchment Scrapbook Layers */}
               <div
                 aria-hidden="true"

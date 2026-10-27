@@ -309,33 +309,33 @@ export const ReservationEngine: React.FC<{
       <div className="max-w-3xl mx-auto text-[#171513]">
         <div
           id="printable-voucher"
-          className="bg-white border border-[#E7DED3] p-8 sm:p-12 space-y-8 text-[#171513]"
+          className="bg-white border border-[#E7DED3] p-5 sm:p-12 space-y-6 sm:space-y-8 text-[#171513]"
         >
-          <div className="text-center space-y-3 border-b border-[#E7DED3] pb-8">
+          <div className="text-center space-y-3 border-b border-[#E7DED3] pb-6 sm:pb-8">
             <div className="w-12 h-12 mx-auto border border-[#58644E] text-[#58644E] flex items-center justify-center">
               <Check className="w-6 h-6" />
             </div>
             <div className="text-xs tracking-widest uppercase text-[#C65B2B] font-medium">
               OneLove Café Sigiriya · Official Sanctuary Voucher
             </div>
-            <h3 className="text-3xl sm:text-4xl font-editorial font-semibold text-[#171513]">
+            <h3 className="text-2xl sm:text-4xl font-editorial font-semibold text-[#171513]">
               Reservation Confirmed
             </h3>
-            <p className="text-sm text-[#171513]/75 max-w-md mx-auto">
+            <p className="text-xs sm:text-sm text-[#171513]/75 max-w-md mx-auto break-words">
               Thank you, <span className="font-semibold text-[#171513]">{confirmedReservation.guestName}</span>. Your
               sanctuary table has been allocated in Firestore for{' '}
-              <span className="font-semibold text-[#171513]">{confirmedReservation.guestEmail}</span>.
+              <span className="font-semibold text-[#171513] break-all">{confirmedReservation.guestEmail}</span>.
             </p>
           </div>
 
           {/* Voucher Dossier Grid */}
-          <div className="bg-[#F8F4EE] border border-[#E7DED3] p-6 sm:p-8 space-y-6 text-[#171513]">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7DED3] pb-4">
+          <div className="bg-[#F8F4EE] border border-[#E7DED3] p-4 sm:p-8 space-y-5 sm:space-y-6 text-[#171513]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7DED3] pb-4">
               <div>
                 <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-semibold">
                   Voucher Reference
                 </div>
-                <div className="text-2xl font-mono-tabular font-bold text-[#171513]">
+                <div className="text-xl sm:text-2xl font-mono-tabular font-bold text-[#171513]">
                   #{confirmedReservation.referenceCode}
                 </div>
               </div>
@@ -344,44 +344,44 @@ export const ReservationEngine: React.FC<{
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6 text-xs sm:text-sm">
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Date</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Date</div>
                 <div className="font-mono-tabular font-semibold text-[#171513] mt-0.5">{confirmedReservation.date}</div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Time Slot</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Time Slot</div>
                 <div className="font-mono-tabular font-semibold text-[#171513] mt-0.5">
                   {format12Hour(confirmedReservation.time)}
                 </div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Party Size</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Party Size</div>
                 <div className="font-mono-tabular font-semibold text-[#171513] mt-0.5">
                   {confirmedReservation.partySize} Guests
                 </div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Allocated Table</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Allocated Table</div>
                 <div className="font-semibold text-[#C65B2B] mt-0.5">{confirmedReservation.tableLabel}</div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Seating Zone</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Seating Zone</div>
                 <div className="font-semibold text-[#171513] mt-0.5">{confirmedReservation.zoneName}</div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Grace Period</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Grace Period</div>
                 <div className="font-mono-tabular font-semibold text-[#171513] mt-0.5">
                   {settings.gracePeriodMinutes} Minutes
                 </div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Guest Country</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">Guest Country</div>
                 <div className="font-semibold text-[#171513] mt-0.5">{confirmedReservation.country}</div>
               </div>
               <div className="col-span-2 sm:col-span-2">
-                <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">WhatsApp</div>
-                <div className="font-mono-tabular font-semibold text-[#171513] mt-0.5">{confirmedReservation.whatsapp}</div>
+                <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-[#171513]/60 font-medium">WhatsApp</div>
+                <div className="font-mono-tabular font-semibold text-[#171513] mt-0.5 break-words">{confirmedReservation.whatsapp}</div>
               </div>
             </div>
           </div>
@@ -398,18 +398,18 @@ export const ReservationEngine: React.FC<{
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-4 border-t border-[#E7DED3]">
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-3 pt-4 border-t border-[#E7DED3]">
             <button
               type="button"
               onClick={() => handleDownloadIcs(confirmedReservation)}
-              className="px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold tracking-wider uppercase inline-flex items-center gap-2 hover:bg-[#C65B2B] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+              className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold tracking-wider uppercase inline-flex items-center gap-2 hover:bg-[#C65B2B] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" /> Add to Calendar (.ICS)
             </button>
             <button
               type="button"
               onClick={() => window.print()}
-              className="px-6 py-2.5 rounded-full border border-[#171513] text-[#171513] text-xs font-semibold tracking-wider uppercase inline-flex items-center gap-2 hover:bg-[#171513] hover:text-[#F8F4EE] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+              className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full border border-[#171513] text-[#171513] text-xs font-semibold tracking-wider uppercase inline-flex items-center gap-2 hover:bg-[#171513] hover:text-[#F8F4EE] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" /> Print Voucher
             </button>
@@ -419,7 +419,7 @@ export const ReservationEngine: React.FC<{
               )}`}
               target="_blank"
               rel="noreferrer"
-              className="px-6 py-2.5 rounded-full bg-[#58644E] text-white text-xs font-semibold tracking-wider uppercase inline-flex items-center gap-2 hover:bg-[#495440] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+              className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#58644E] text-white text-xs font-semibold tracking-wider uppercase inline-flex items-center gap-2 hover:bg-[#495440] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
             >
               <MessageCircle className="w-3.5 h-3.5" /> WhatsApp Host Desk
             </a>
@@ -430,7 +430,7 @@ export const ReservationEngine: React.FC<{
                 setSelectedTable(null);
                 setStep(1);
               }}
-              className="px-4 py-2.5 text-xs font-medium text-[#171513]/60 hover:text-[#171513] transition-colors whitespace-nowrap shrink-0"
+              className="w-full sm:w-auto text-center min-h-[40px] px-4 py-2.5 text-xs font-medium text-[#171513]/60 hover:text-[#171513] transition-colors whitespace-nowrap shrink-0"
             >
               Book Another Table
             </button>
@@ -447,9 +447,9 @@ export const ReservationEngine: React.FC<{
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 text-[#171513]">
+    <div className="max-w-4xl mx-auto space-y-5 sm:space-y-6 text-[#171513]">
       {/* 7-Step Horizontal Stepper */}
-      <div className="bg-white border border-[#E7DED3] px-4 py-5 sm:px-8 text-[#171513]">
+      <div className="bg-white border border-[#E7DED3] px-3 py-4 sm:px-8 sm:py-5 text-[#171513]">
         <div className="grid grid-cols-7 gap-1 sm:gap-2 items-center">
           {STEPS.map((s, idx) => {
             const stepNum = idx + 1;
@@ -461,10 +461,10 @@ export const ReservationEngine: React.FC<{
                 type="button"
                 disabled={stepNum > step}
                 onClick={() => stepNum < step && setStep(stepNum)}
-                className="flex flex-col items-center gap-1.5 group disabled:cursor-default"
+                className="flex flex-col items-center gap-1 sm:gap-1.5 group disabled:cursor-default min-w-0"
               >
                 <div
-                  className={`w-8 h-8 flex items-center justify-center text-xs font-mono-tabular font-medium transition-colors ${
+                  className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-[11px] sm:text-xs font-mono-tabular font-medium transition-colors ${
                     isCompleted
                       ? 'bg-[#58644E] text-white'
                       : isCurrent
@@ -475,8 +475,8 @@ export const ReservationEngine: React.FC<{
                   {isCompleted ? <Check className="w-3.5 h-3.5" /> : s.num}
                 </div>
                 <span
-                  className={`text-[10px] uppercase tracking-wider font-medium ${
-                    isCurrent ? 'text-[#C65B2B]' : isCompleted ? 'text-[#171513]' : 'text-[#171513]/40'
+                  className={`text-[9px] sm:text-[10px] uppercase tracking-tight sm:tracking-wider font-medium truncate max-w-full ${
+                    isCurrent ? 'text-[#C65B2B] font-semibold' : isCompleted ? 'text-[#171513]' : 'text-[#171513]/40'
                   }`}
                 >
                   {s.label}
@@ -505,16 +505,16 @@ export const ReservationEngine: React.FC<{
       )}
 
       {/* Main Step Card */}
-      <div className="bg-white border border-[#E7DED3] p-6 sm:p-10 text-[#171513]">
+      <div className="bg-white border border-[#E7DED3] p-4 sm:p-10 text-[#171513]">
         {/* STEP 1: SELECT DATE */}
         {step === 1 && (
-          <div className="space-y-8">
-            <div className="flex items-start justify-between gap-4 border-b border-[#E7DED3] pb-5">
+          <div className="space-y-6 sm:space-y-8">
+            <div className="flex items-start justify-between gap-4 border-b border-[#E7DED3] pb-4 sm:pb-5">
               <div>
                 <h3 className="text-2xl sm:text-3xl font-editorial font-semibold text-[#171513]">
                   Select Your Date
                 </h3>
-                <p className="text-sm text-[#171513]/65 mt-1">
+                <p className="text-xs sm:text-sm text-[#171513]/65 mt-1">
                   Choose your preferred date for tropical garden dining beneath Sigiriya Rock
                 </p>
               </div>
@@ -526,7 +526,7 @@ export const ReservationEngine: React.FC<{
               <label className="block text-xs uppercase tracking-wider text-[#171513]/60 font-medium">
                 Quick Date Selection
               </label>
-              <div className="flex flex-wrap gap-2.5">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { label: 'Tomorrow', date: getNextDateIso(1) },
                   { label: 'In 2 Days', date: getNextDateIso(2) },
@@ -538,7 +538,7 @@ export const ReservationEngine: React.FC<{
                     key={q.label}
                     type="button"
                     onClick={() => setSelectedDate(q.date)}
-                    className={`px-4 py-2 text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+                    className={`px-3.5 py-2 text-xs font-medium border transition-colors whitespace-nowrap shrink-0 min-h-[40px] ${
                       selectedDate === q.date
                         ? 'bg-[#171513] text-[#F8F4EE] border-[#171513]'
                         : 'bg-[#F8F4EE] text-[#171513] border-[#E7DED3] hover:border-[#171513]'
@@ -575,7 +575,7 @@ export const ReservationEngine: React.FC<{
             )}
 
             {/* House Policy Box */}
-            <div className="bg-[#F8F4EE] border border-[#E7DED3] p-5 space-y-2 text-xs text-[#171513]/75">
+            <div className="bg-[#F8F4EE] border border-[#E7DED3] p-4 sm:p-5 space-y-2 text-xs text-[#171513]/75">
               <div className="font-semibold uppercase tracking-wider text-[#171513]">
                 House Policy &amp; Sanctuary Rhythms
               </div>
@@ -589,7 +589,7 @@ export const ReservationEngine: React.FC<{
                 type="button"
                 disabled={Boolean(blockedRecordForDate?.isFullDay)}
                 onClick={() => setStep(2)}
-                className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors disabled:opacity-40 whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+                className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors disabled:opacity-40 whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
               >
                 Continue to Service Time <ArrowRight className="w-4 h-4" />
               </button>
@@ -657,18 +657,18 @@ export const ReservationEngine: React.FC<{
               ))}
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-[#E7DED3]">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-[#E7DED3]">
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center gap-1.5"
+                className="min-h-[40px] text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center justify-center sm:justify-start gap-1.5"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
               <button
                 type="button"
                 onClick={() => setStep(3)}
-                className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+                className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
               >
                 Continue to Party Size <ArrowRight className="w-4 h-4" />
               </button>
@@ -678,13 +678,13 @@ export const ReservationEngine: React.FC<{
 
         {/* STEP 3: PARTY SIZE */}
         {step === 3 && (
-          <div className="space-y-8">
-            <div className="flex items-start justify-between gap-4 border-b border-[#E7DED3] pb-5">
+          <div className="space-y-6 sm:space-y-8">
+            <div className="flex items-start justify-between gap-4 border-b border-[#E7DED3] pb-4 sm:pb-5">
               <div>
                 <h3 className="text-2xl sm:text-3xl font-editorial font-semibold text-[#171513]">
                   Party Size
                 </h3>
-                <p className="text-sm text-[#171513]/65 mt-1">
+                <p className="text-xs sm:text-sm text-[#171513]/65 mt-1">
                   We will highlight floor plan tables configured for your party
                 </p>
               </div>
@@ -692,7 +692,7 @@ export const ReservationEngine: React.FC<{
             </div>
 
             {/* Interactive Counter */}
-            <div className="flex items-center justify-center gap-8 py-4">
+            <div className="flex items-center justify-center gap-6 sm:gap-8 py-4">
               <button
                 type="button"
                 aria-label="Decrease guests"
@@ -726,7 +726,7 @@ export const ReservationEngine: React.FC<{
             </div>
 
             {/* Preset Party Size Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
               {[
                 { count: 2, desc: 'Couple / Duo' },
                 { count: 4, desc: 'Small Group' },
@@ -740,32 +740,32 @@ export const ReservationEngine: React.FC<{
                     setPartySize(preset.count);
                     setSelectedTable(null);
                   }}
-                  className={`p-4 border text-center transition-colors ${
+                  className={`p-3.5 sm:p-4 border text-center transition-colors ${
                     partySize === preset.count
                       ? 'bg-[#FDF3EF] border-[#C65B2B] text-[#C65B2B]'
                       : 'bg-[#F8F4EE] border-[#E7DED3] text-[#171513] hover:border-[#171513]'
                   }`}
                 >
-                  <div className="text-base font-semibold">{preset.count} Guests</div>
-                  <div className="text-[11px] uppercase tracking-wider opacity-70 mt-0.5">
+                  <div className="text-sm sm:text-base font-semibold">{preset.count} Guests</div>
+                  <div className="text-[10px] sm:text-[11px] uppercase tracking-wider opacity-70 mt-0.5">
                     {preset.desc}
                   </div>
                 </button>
               ))}
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-[#E7DED3]">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-[#E7DED3]">
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center gap-1.5"
+                className="min-h-[40px] text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center justify-center sm:justify-start gap-1.5"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
               <button
                 type="button"
                 onClick={() => setStep(4)}
-                className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+                className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
               >
                 Select Table on Floor Plan <ArrowRight className="w-4 h-4" />
               </button>
@@ -775,8 +775,8 @@ export const ReservationEngine: React.FC<{
 
         {/* STEP 4: INTERACTIVE FLOOR PLAN */}
         {step === 4 && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#E7DED3] pb-4">
+          <div className="space-y-5 sm:space-y-6">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E7DED3] pb-4">
               <div>
                 <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-medium">
                   Interactive Architectural Floor Plan
@@ -789,7 +789,7 @@ export const ReservationEngine: React.FC<{
                 </p>
               </div>
               {selectedTable && (
-                <div className="px-4 py-2 bg-[#F8F4EE] border border-[#C65B2B] text-xs">
+                <div className="w-full sm:w-auto px-3.5 py-2 bg-[#F8F4EE] border border-[#C65B2B] text-xs">
                   <div className="font-semibold text-[#171513]">
                     Selected: {selectedTable.label} ({selectedTable.zoneName})
                   </div>
@@ -812,11 +812,11 @@ export const ReservationEngine: React.FC<{
               floorPlanImageUrl={settings.floorPlanImageUrl}
             />
 
-            <div className="flex items-center justify-between pt-4 border-t border-[#E7DED3]">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-[#E7DED3]">
               <button
                 type="button"
                 onClick={() => setStep(3)}
-                className="text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center gap-1.5"
+                className="min-h-[40px] text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center justify-center sm:justify-start gap-1.5"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back
               </button>
@@ -824,7 +824,7 @@ export const ReservationEngine: React.FC<{
                 type="button"
                 disabled={!selectedTable || isHolding}
                 onClick={handleLockTableAndContinue}
-                className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors disabled:opacity-40 whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+                className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors disabled:opacity-40 whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
               >
                 {isHolding ? 'Locking Table Hold...' : 'Proceed with Table'} <ArrowRight className="w-4 h-4" />
               </button>
@@ -844,7 +844,7 @@ export const ReservationEngine: React.FC<{
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-[#171513]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 text-[#171513]">
               <div className="sm:col-span-2 space-y-1.5">
                 <label className="block text-xs uppercase tracking-wider font-semibold text-[#171513]">
                   Principal Guest Name *
@@ -877,11 +877,11 @@ export const ReservationEngine: React.FC<{
                 <label className="block text-xs uppercase tracking-wider font-semibold text-[#171513]">
                   WhatsApp Number *
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2.5">
                   <select
                     value={dialCode}
                     onChange={(e) => setDialCode(e.target.value)}
-                    className="w-40 px-3 py-3 bg-[#F8F4EE] border border-[#E7DED3] text-xs font-mono-tabular text-[#171513] font-medium focus:outline-none focus:border-[#C65B2B]"
+                    className="w-full sm:w-44 px-3 py-3 bg-[#F8F4EE] border border-[#E7DED3] text-xs font-mono-tabular text-[#171513] font-medium focus:outline-none focus:border-[#C65B2B]"
                   >
                     {DIAL_CODES.map((d) => (
                       <option key={d.code} value={d.code} className="bg-white text-[#171513]">
@@ -895,7 +895,7 @@ export const ReservationEngine: React.FC<{
                     placeholder="77 123 4567"
                     value={whatsappNumber}
                     onChange={(e) => setWhatsappNumber(e.target.value)}
-                    className="flex-1 px-4 py-3 bg-[#F8F4EE] border border-[#E7DED3] text-sm font-mono-tabular text-[#171513] placeholder-[#171513]/45 focus:outline-none focus:border-[#C65B2B]"
+                    className="w-full sm:flex-1 min-w-0 px-4 py-3 bg-[#F8F4EE] border border-[#E7DED3] text-sm font-mono-tabular text-[#171513] placeholder-[#171513]/45 focus:outline-none focus:border-[#C65B2B]"
                   />
                 </div>
               </div>
@@ -918,17 +918,17 @@ export const ReservationEngine: React.FC<{
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-[#E7DED3]">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-[#E7DED3]">
               <button
                 type="button"
                 onClick={() => setStep(4)}
-                className="text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center gap-1.5"
+                className="min-h-[40px] text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center justify-center sm:justify-start gap-1.5"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back to Floor Plan
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+                className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider inline-flex items-center gap-2 hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
               >
                 Continue to Preferences <ArrowRight className="w-4 h-4" />
               </button>
@@ -938,13 +938,13 @@ export const ReservationEngine: React.FC<{
 
         {/* STEP 6 & 7: REQUESTS & FINAL CONFIRMATION */}
         {(step === 6 || step === 7) && (
-          <div className="space-y-7">
+          <div className="space-y-6 sm:space-y-7">
             <div className="flex items-start justify-between gap-4 border-b border-[#E7DED3] pb-4">
               <div>
                 <h3 className="text-2xl sm:text-3xl font-editorial font-semibold text-[#171513]">
                   Special Occasions &amp; Final Confirmation
                 </h3>
-                <p className="text-sm text-[#171513]/65 mt-1">
+                <p className="text-xs sm:text-sm text-[#171513]/65 mt-1">
                   Tailor your dining experience at OneLove Café Sigiriya
                 </p>
               </div>
@@ -952,7 +952,7 @@ export const ReservationEngine: React.FC<{
             </div>
 
             {/* Quick Tag Selectors */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
               {['Birthday', 'Anniversary', 'Wheelchair Access', 'Baby High Chair'].map((tag) => {
                 const active = quickTags.includes(tag);
                 return (
@@ -960,7 +960,7 @@ export const ReservationEngine: React.FC<{
                     key={tag}
                     type="button"
                     onClick={() => toggleQuickTag(tag)}
-                    className={`p-3.5 border text-left text-xs font-medium transition-colors ${
+                    className={`p-3 sm:p-3.5 border text-left text-xs font-medium transition-colors min-h-[44px] ${
                       active
                         ? 'bg-[#FDF3EF] border-[#C65B2B] text-[#C65B2B]'
                         : 'bg-[#F8F4EE] border-[#E7DED3] text-[#171513] hover:border-[#171513]'
@@ -1003,16 +1003,16 @@ export const ReservationEngine: React.FC<{
             </div>
 
             {/* Dark Sanctuary Dossier Summary Box */}
-            <div className="bg-[#171513] text-[#F8F4EE] p-6 sm:p-8 space-y-5">
-              <div className="flex items-center justify-between border-b border-[#F8F4EE]/15 pb-3">
+            <div className="bg-[#171513] text-[#F8F4EE] p-5 sm:p-8 space-y-4 sm:space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F8F4EE]/15 pb-3">
                 <span className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                   Sanctuary Dossier Summary
                 </span>
-                <span className="text-[11px] font-mono-tabular text-[#F8F4EE]/50">
+                <span className="text-[10px] sm:text-[11px] font-mono-tabular text-[#F8F4EE]/50">
                   LIVE FIRESTORE TRANSACTION
                 </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-5 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-5 text-xs sm:text-sm">
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-[#F8F4EE]/50">Service Date</div>
                   <div className="font-mono-tabular font-medium mt-0.5">{selectedDate}</div>
@@ -1035,7 +1035,7 @@ export const ReservationEngine: React.FC<{
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-[#F8F4EE]/50">Principal Guest</div>
-                  <div className="font-medium mt-0.5">{guestName}</div>
+                  <div className="font-medium mt-0.5 break-words">{guestName}</div>
                 </div>
               </div>
             </div>
@@ -1046,7 +1046,7 @@ export const ReservationEngine: React.FC<{
                 type="checkbox"
                 checked={agreedPolicy}
                 onChange={(e) => setAgreedPolicy(e.target.checked)}
-                className="mt-0.5 accent-[#C65B2B]"
+                className="mt-0.5 w-4 h-4 shrink-0 accent-[#C65B2B]"
               />
               <span>
                 I understand and agree to the {settings.gracePeriodMinutes}-minute table preservation grace period,
@@ -1054,11 +1054,11 @@ export const ReservationEngine: React.FC<{
               </span>
             </label>
 
-            <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setStep(5)}
-                className="text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center gap-1.5"
+                className="min-h-[40px] text-xs uppercase tracking-wider font-medium text-[#171513]/70 hover:text-[#171513] inline-flex items-center justify-center sm:justify-start gap-1.5"
               >
                 <ArrowLeft className="w-3.5 h-3.5" /> Back to Guest Details
               </button>
@@ -1066,7 +1066,7 @@ export const ReservationEngine: React.FC<{
                 type="button"
                 disabled={submitting || !agreedPolicy}
                 onClick={handleFinalConfirm}
-                className="px-8 py-3 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors disabled:opacity-40 whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
+                className="w-full sm:w-auto justify-center min-h-[44px] px-6 sm:px-8 py-3 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors disabled:opacity-40 whitespace-nowrap shrink-0 shadow-sm cursor-pointer"
               >
                 {submitting ? 'Committing Reservation...' : 'Confirm Sanctuary Reservation'}
               </button>

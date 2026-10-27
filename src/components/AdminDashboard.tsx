@@ -493,34 +493,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="min-h-screen bg-[#F8F4EE] text-[#171513] flex flex-col lg:flex-row">
-      {/* Sidebar Navigation (260px) */}
+      {/* Sidebar Navigation (260px on desktop, horizontal bar on mobile) */}
       <aside className="w-full lg:w-64 bg-[#171513] text-[#F8F4EE] shrink-0 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-[#2C2622]">
         <div>
-          <div className="p-5 border-b border-[#2C2622] flex items-center justify-between">
+          <div className="px-4 py-3.5 lg:p-5 border-b border-[#2C2622] flex items-center justify-between gap-3">
             <div>
-              <div className="font-editorial text-xl tracking-wide font-semibold">
+              <div className="font-editorial text-lg sm:text-xl tracking-wide font-semibold">
                 ONELOVE CAFÉ
               </div>
               <div className="text-[11px] text-[#F8F4EE]/50 font-mono-tabular">
                 Sigiriya Admin Console
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => onNavigatePublic('/')}
-              className="text-xs text-[#C65B2B] hover:underline whitespace-nowrap"
-            >
-              View Site →
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onNavigatePublic('/')}
+                className="text-xs text-[#C65B2B] hover:underline whitespace-nowrap"
+              >
+                View Site →
+              </button>
+              <button
+                type="button"
+                onClick={signOutAdmin}
+                className="lg:hidden px-2.5 py-1.5 border border-[#3A322C] text-[11px] text-[#F8F4EE]/80 hover:bg-white/5 inline-flex items-center gap-1"
+              >
+                <LogOut className="w-3 h-3" /> Sign Out
+              </button>
+            </div>
           </div>
 
-          <nav className="p-3 space-y-1 flex lg:flex-col overflow-x-auto">
+          <nav className="p-2.5 lg:p-3 flex lg:flex-col gap-1.5 lg:gap-1 overflow-x-auto">
             {navItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => handleTabChange(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                className={`w-auto lg:w-full flex items-center gap-2.5 lg:gap-3 px-3 sm:px-3.5 py-2.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === item.id
                     ? 'bg-[#C65B2B] text-white'
                     : 'text-[#F8F4EE]/70 hover:text-white hover:bg-white/5'
@@ -548,7 +557,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Bar Contract for Dashboard */}
-        <header className="bg-white border-b border-[#E7DED3] px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+        <header className="bg-white border-b border-[#E7DED3] px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
           <div className="text-xs font-medium text-[#171513]/60">
             Admin Console <span className="mx-1.5">/</span>{' '}
             <span className="text-[#171513] font-semibold uppercase tracking-wider">
