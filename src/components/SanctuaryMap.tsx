@@ -23,8 +23,8 @@ export const SanctuaryMap: React.FC<SanctuaryMapProps> = ({ settings, className 
   const subtitle =
     settings.mapSubtitle?.trim() ||
     (settings.address
-      ? `${settings.address} · Sigiriya`
-      : 'Lion Rock Sanctuary Road, Kimbissa, Sigiriya · 1.5 km west of Sigiriya Lion Rock Fortress');
+      ? `${settings.address} · Central Province, Sri Lanka`
+      : 'Lion Rock Sanctuary Road, Kimbissa, Sigiriya, Central Province, Sri Lanka · 1.5 km west of Sigiriya Lion Rock Fortress');
 
   return (
     <section
@@ -37,7 +37,7 @@ export const SanctuaryMap: React.FC<SanctuaryMapProps> = ({ settings, className 
         <div className="space-y-2 max-w-2xl">
           <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold flex items-center gap-1.5">
             <Compass className="w-3.5 h-3.5 text-[#C65B2B] shrink-0" />
-            <span>Sigiriya Cultural Triangle · Geographical Position</span>
+            <span>Sigiriya Cultural Triangle · Central Province, Sri Lanka</span>
           </div>
           <h2 className="text-3xl sm:text-5xl font-editorial font-normal text-[#171513]">
             {title}

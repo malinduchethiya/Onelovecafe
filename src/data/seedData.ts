@@ -14,7 +14,7 @@ export const DEFAULT_SETTINGS: CafeSettings = {
   id: 'main',
   cafeName: 'OneLove Café',
   tagline: 'Tropical Garden Sanctuary, Specialty Ceylon Roastery & Wood-Fired Kitchen in Sigiriya',
-  address: 'Lion Rock Sanctuary Road, Kimbissa, Sigiriya 21120, Sri Lanka',
+  address: 'Lion Rock Sanctuary Road, Kimbissa, Sigiriya 21120, Central Province, Sri Lanka',
   phone: '+94 66 228 6420',
   whatsapp: '+94 77 842 9100',
   email: 'concierge@onelovecafe.lk',
@@ -37,7 +37,8 @@ export const DEFAULT_SETTINGS: CafeSettings = {
     'https://maps.google.com/maps?q=7.9541,80.7547+(OneLove+Caf%C3%A9+Sigiriya)&t=&z=15&ie=UTF8&iwloc=&output=embed',
   mapTitle: 'Our Sanctuary Location',
   mapSubtitle:
-    'Lion Rock Sanctuary Road, Kimbissa, Sigiriya · 1.5 km west of Sigiriya Lion Rock Fortress',
+    'Lion Rock Sanctuary Road, Kimbissa, Sigiriya, Central Province, Sri Lanka · 1.5 km west of Sigiriya Lion Rock Fortress',
+  menuCurrencyDisplay: 'both',
 };
 
 export const DEFAULT_ZONES: SeatingZone[] = [
@@ -645,7 +646,7 @@ export const DEFAULT_SITE_CONTENT: SiteContentSection[] = [
     kicker: 'Sigiriya Sanctuary · 07°57\'25"N 80°45\'37"E',
     heading: 'Where Jungle Stone Meets Slow Highland Coffee.',
     subheading:
-      'Nestled in the emerald canopy beneath Sigiriya Lion Rock, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.',
+      'Nestled in the emerald canopy beneath Sigiriya Lion Rock in Central Province, Sri Lanka, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.',
     body: 'Open daily from 7:30 AM after your Pidurangala sunrise climb until 10:30 PM under candlelit palms.',
     ctaLabel: 'Reserve a Table',
     ctaLink: '#reserve-section',
@@ -658,7 +659,7 @@ export const DEFAULT_SITE_CONTENT: SiteContentSection[] = [
     heading: 'Crafted from Laterite Earth, Teak & Monsoon Light.',
     subheading:
       'Designed in collaboration with local Dry Zone stonemasons, ceramicists, and highland coffee growers.',
-    body: 'OneLove Café began as a quiet refuge along the forested road between Kimbissa and the ancient fortress of Sigiriya. We built around the existing Banyan, Frangipani, and Mara trees—using porous red laterite stone, reclaimed railway teak, and hand-troweled lime plaster so the pavilion breathes naturally with the rhythm of the jungle.',
+    body: 'OneLove Café began as a quiet refuge along the forested road between Kimbissa and the ancient fortress of Sigiriya in Central Province, Sri Lanka. We built around the existing Banyan, Frangipani, and Mara trees—using porous red laterite stone, reclaimed railway teak, and hand-troweled lime plaster so the pavilion breathes naturally with the rhythm of the jungle.',
     ctaLabel: 'Explore Our Full Story',
     ctaLink: '/story',
     imageUrl: 'editorial:courtyard',

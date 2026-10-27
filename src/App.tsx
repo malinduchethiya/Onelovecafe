@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ArrowRight,
   MapPin,
@@ -22,7 +22,7 @@ import { ReservationEngine } from './components/ReservationEngine';
 import { SanctuaryMap } from './components/SanctuaryMap';
 import { AdminDashboard, AdminTab } from './components/AdminDashboard';
 import { SeoHead } from './components/SeoHead';
-import { GalleryItem } from './types/cafe';
+import { GalleryItem, MenuItem } from './types/cafe';
 
 // Error Boundary for clear diagnostics (including Firestore quota or rule messages)
 class AppErrorBoundary extends React.Component<
@@ -135,12 +135,20 @@ const OneLoveRouter: React.FC = () => {
     gallery,
     events,
     siteContent,
+    seoGlobal,
     submitInquiry,
   } = useCafe();
 
   // Menu page filter states
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [menuSearch, setMenuSearch] = useState<string>('');
+
+  const resolveMenuPriceCurrency = (item: MenuItem): 'both' | 'lkr' | 'usd' => {
+    if (item.priceCurrency && item.priceCurrency !== 'default') {
+      return item.priceCurrency;
+    }
+    return settings.menuCurrencyDisplay || 'both';
+  };
 
   // Gallery page filter & lightbox states
   const [selectedGalleryCat, setSelectedGalleryCat] = useState<string>('All');
@@ -269,24 +277,72 @@ const OneLoveRouter: React.FC = () => {
     setHeroSlideIndex((prev) => (prev + 1) % heroSlides.length);
   };
 
-  // Scroll & Mouse Movement Parallax for Hero Section
+  // Scroll & Mouse Movement Parallax for Hero Section + Dynamic Coffee Roast Transition for Selected Menu Gallery Section
   const [scrollY, setScrollY] = useState(0);
+  const [coffeeProgress, setCoffeeProgress] = useState(0);
   const [mouseParallax, setMouseParallax] = useState({ x: 0, y: 0 });
+  const homeMenuGalleryRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let ticking = false;
+    const updateScrollState = () => {
+      setScrollY(window.scrollY);
+      const targetEl = pathname === '/' ? homeMenuGalleryRef.current : null;
+
+      if (!targetEl) {
+        setCoffeeProgress(0);
+        return;
+      }
+
+      const vh = window.innerHeight || 800;
+      const rect = targetEl.getBoundingClientRect();
+      // Smooth entry ramp as the menu gallery section scrolls into the viewport
+      const entry = (vh * 0.88 - rect.top) / (vh * 0.58);
+      // Smooth exit ramp as the bottom of the menu gallery section scrolls out of the viewport
+      const exit = (rect.bottom - vh * 0.14) / (vh * 0.58);
+      const raw = Math.max(0, Math.min(1, Math.min(entry, exit)));
+      // Cubic smoothstep for an organic, stimulating progression
+      const eased = raw * raw * (3 - 2 * raw);
+      setCoffeeProgress(Number(eased.toFixed(3)));
+    };
+
     const handleScroll = () => {
       if (!ticking) {
         window.requestAnimationFrame(() => {
-          setScrollY(window.scrollY);
+          updateScrollState();
           ticking = false;
         });
         ticking = true;
       }
     };
+
+    updateScrollState();
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    window.addEventListener('resize', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, [pathname]);
+
+  // Multi-stop color interpolation: Limestone Cream (#FCF9F4) -> Caramel Crema (#945F3E) -> Roasted Espresso Coffee (#2E1A10)
+  const dynamicCoffeeBg = useMemo(() => {
+    const t = coffeeProgress;
+    if (t <= 0.005) return '#FCF9F4';
+    const lerp = (a: number, b: number, u: number) => Math.round(a + (b - a) * u);
+    if (t < 0.45) {
+      const u = t / 0.45;
+      const r = lerp(252, 148, u);
+      const g = lerp(249, 95, u);
+      const b = lerp(244, 62, u);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
+    const u = (t - 0.45) / 0.55;
+    const r = lerp(148, 46, u);
+    const g = lerp(95, 26, u);
+    const b = lerp(62, 16, u);
+    return `rgb(${r}, ${g}, ${b})`;
+  }, [coffeeProgress]);
 
   const handleHeroMouseMove = (e: React.MouseEvent<HTMLElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -348,21 +404,33 @@ const OneLoveRouter: React.FC = () => {
         voucherCode={routeInfo.voucherCode}
       />
       {/* Strict 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-40 h-[72px] bg-[#FCF9F4]/95 backdrop-blur-md border-b border-[#DFD5C6] px-4 sm:px-6 lg:px-12 flex items-center justify-between gap-3 sm:gap-8 shadow-[0_2px_16px_rgba(17,15,13,0.05)]">
-        {/* Zone 1: Single text element wordmark */}
+      <header className="sticky top-0 z-40 h-[72px] bg-transparent px-4 sm:px-6 lg:px-12 flex items-center justify-between gap-3 sm:gap-8 text-white">
+        {/* Zone 1: Brand Logo on Mobile, Wordmark on Desktop */}
         <a
           href="/"
+          aria-label="OneLove Café Sigiriya"
           onClick={(e) => {
             e.preventDefault();
             navigate('/');
           }}
-          className="font-editorial text-lg sm:text-2xl font-bold tracking-wider text-[#110F0D] whitespace-nowrap shrink-0"
+          className="flex items-center font-editorial text-lg sm:text-2xl font-bold tracking-wider text-white drop-shadow-sm whitespace-nowrap shrink-0"
         >
-          ONELOVE CAFÉ
+          <img
+            src={
+              seoGlobal?.brandLogoUrl ||
+              '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_eee5198f.png'
+            }
+            alt="OneLove Café Sigiriya"
+            width="48"
+            height="48"
+            decoding="async"
+            className="md:hidden h-11 w-auto object-contain brightness-0 invert sepia-[.18] saturate-[.45] hue-rotate-[355deg] drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]"
+          />
+          <span className="hidden md:inline text-white">ONELOVE CAFÉ</span>
         </a>
 
         {/* Zone 2: 5 concise single-line text navigation links */}
-        <nav className="hidden md:flex items-center gap-6 lg:gap-8 text-xs uppercase tracking-widest font-semibold text-[#110F0D]/85">
+        <nav className="hidden md:flex items-center gap-6 lg:gap-8 text-xs uppercase tracking-widest font-semibold text-white drop-shadow-sm">
           {[
             { label: 'Our Menu', path: '/menu' },
             { label: 'Our Story', path: '/story' },
@@ -382,7 +450,7 @@ const OneLoveRouter: React.FC = () => {
                 className={`py-1 transition-colors whitespace-nowrap shrink-0 border-b ${
                   active
                     ? 'text-[#D9622B] border-[#D9622B]'
-                    : 'border-transparent hover:text-[#110F0D] hover:border-[#110F0D]/50'
+                    : 'text-white border-transparent hover:text-white/80 hover:border-white/70'
                 }`}
               >
                 {link.label}
@@ -393,18 +461,21 @@ const OneLoveRouter: React.FC = () => {
 
         {/* Zone 3: 1 Primary Action */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={handleReserveCtaClick}
-            className="px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-full bg-[#D9622B] text-white text-[11px] sm:text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] transition-colors whitespace-nowrap shrink-0 shadow-[0_4px_14px_rgba(217,98,43,0.35)] cursor-pointer"
+          <a
+            href="/reserve"
+            onClick={(e) => {
+              e.preventDefault();
+              handleReserveCtaClick();
+            }}
+            className="px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-full bg-[#D9622B] text-white text-[11px] sm:text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] transition-colors whitespace-nowrap shrink-0 shadow-[0_4px_14px_rgba(217,98,43,0.35)] cursor-pointer inline-flex items-center justify-center"
           >
             Reserve a Table
-          </button>
+          </a>
           <button
             type="button"
             onClick={() => setMobileMenuOpen((v) => !v)}
             aria-label="Toggle navigation menu"
-            className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 text-[#110F0D]"
+            className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center p-2 text-white drop-shadow-sm"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <MenuIcon className="w-5 h-5" />}
           </button>
@@ -413,7 +484,10 @@ const OneLoveRouter: React.FC = () => {
 
       {/* Mobile Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="sticky top-[72px] z-30 md:hidden bg-[#FCF9F4] border-b border-[#DFD5C6] px-4 sm:px-6 py-4 space-y-1 shadow-lg max-h-[calc(100vh-72px)] overflow-y-auto">
+        <nav
+          aria-label="Mobile Navigation"
+          className="sticky top-[72px] z-30 md:hidden bg-[#FCF9F4] border-b border-[#DFD5C6] px-4 sm:px-6 py-4 space-y-1 shadow-lg max-h-[calc(100vh-72px)] overflow-y-auto"
+        >
           {[
             { label: 'Home', path: '/' },
             { label: 'Our Menu', path: '/menu' },
@@ -423,16 +497,19 @@ const OneLoveRouter: React.FC = () => {
             { label: 'Contact & Location', path: '/contact' },
             { label: 'Reserve a Table', path: '/reserve' },
           ].map((item) => (
-            <button
+            <a
               key={item.path}
-              type="button"
-              onClick={() => navigate(item.path)}
+              href={item.path}
+              onClick={(e) => {
+                e.preventDefault();
+                navigate(item.path);
+              }}
               className="w-full min-h-[44px] flex items-center text-left py-2.5 text-sm font-medium border-b border-[#E7DED3]/60 text-[#110F0D]"
             >
               {item.label}
-            </button>
+            </a>
           ))}
-        </div>
+        </nav>
       )}
 
       {/* MAIN PAGE CONTENT */}
@@ -445,7 +522,7 @@ const OneLoveRouter: React.FC = () => {
               <section
                 onMouseMove={handleHeroMouseMove}
                 onMouseLeave={handleHeroMouseLeave}
-                className="relative min-h-[calc(100vh-72px)] flex items-center justify-center bg-[#0C0F0A] text-white overflow-hidden"
+                className="relative -mt-[72px] pt-[72px] min-h-screen flex items-center justify-center bg-[#0C0F0A] text-white overflow-hidden"
               >
                 {/* Background Slideshow Layer with Elevated Luminance & Contrast */}
                 <div
@@ -464,7 +541,8 @@ const OneLoveRouter: React.FC = () => {
                     >
                       <EditorialVisual
                         src={slideSrc}
-                        alt={`OneLove Café Sigiriya hero slide ${idx + 1}`}
+                        alt={`OneLove Café Sigiriya, Sri Lanka hero slide ${idx + 1}`}
+                        priority={idx === 0}
                         className="h-full w-full object-cover contrast-[1.18] saturate-[1.24] brightness-[1.06]"
                       />
                     </div>
@@ -506,43 +584,55 @@ const OneLoveRouter: React.FC = () => {
                   }}
                 >
                   <div className="space-y-5 sm:space-y-7 flex flex-col items-center justify-center text-center w-full">
-                    {/* Big Main Text Widespread matching screenshot with luminous contrast */}
+                    {/* Big Main Text Widespread matching screenshot with luminous contrast + crawlable brand H1 prefix */}
                     <h1
                       style={{ textWrap: 'balance' }}
                       className="font-outfit text-3xl sm:text-6xl md:text-7xl lg:text-[90px] xl:text-[102px] font-light leading-[1.06] sm:leading-[1.04] tracking-tight text-[#FFFFFF] max-w-6xl mx-auto drop-shadow-[0_6px_28px_rgba(0,0,0,0.68)]"
                     >
+                      <span className="sr-only">
+                        OneLove Café Sigiriya — Café &amp; Restaurant in Sigiriya, Central Province, Sri Lanka:{' '}
+                      </span>
                       {heroContent?.heading || 'Where Jungle Stone Meets Slow Highland Coffee.'}
                     </h1>
 
                     {/* Crisp High-Contrast Secondary Text */}
                     <p className="text-xs sm:text-sm md:text-base text-white/95 max-w-2xl mx-auto leading-relaxed font-normal drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)] px-1 sm:px-2">
                       {heroContent?.subheading ||
-                        'Nestled in the emerald canopy beneath Sigiriya Lion Rock, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
+                        'Nestled in the emerald canopy beneath Sigiriya Lion Rock in Central Province, Sri Lanka, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
                     </p>
 
                     {/* High-Contrast Action Buttons matching reference screenshot */}
                     <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 pt-2 w-full">
-                      <button
-                        type="button"
-                        onClick={() => navigate('/menu')}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#D9622B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(217,98,43,0.45)] cursor-pointer"
+                      <a
+                        href="/menu"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate('/menu');
+                        }}
+                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#D9622B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(217,98,43,0.45)] cursor-pointer inline-flex items-center justify-center"
                       >
                         View Menu
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleReserveCtaClick}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#FFFDF9] text-[#110F0D] text-xs font-semibold uppercase tracking-wider hover:bg-[#F3ECE0] transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.38)] cursor-pointer"
+                      </a>
+                      <a
+                        href="/reserve"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleReserveCtaClick();
+                        }}
+                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#FFFDF9] text-[#110F0D] text-xs font-semibold uppercase tracking-wider hover:bg-[#F3ECE0] transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.38)] cursor-pointer inline-flex items-center justify-center"
                       >
                         Reserve a Table
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/story')}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#0F0D0B]/70 border border-white/45 text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#0F0D0B]/90 hover:border-white/75 transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-xs cursor-pointer"
+                      </a>
+                      <a
+                        href="/story"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate('/story');
+                        }}
+                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#0F0D0B]/70 border border-white/45 text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#0F0D0B]/90 hover:border-white/75 transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-xs cursor-pointer inline-flex items-center justify-center"
                       >
                         Discover More
-                      </button>
+                      </a>
                     </div>
                   </div>
                 </div>
@@ -576,59 +666,121 @@ const OneLoveRouter: React.FC = () => {
             {/* 2. Crafted from Laterite Earth, Teak & Monsoon Light — 5-Photo Hover-Animated Collage */}
             <LateriteStorySection onReadMonograph={() => navigate('/story')} />
 
-            {/* 3. Featured Culinary & Roastery Selections */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-14 sm:py-24 lg:py-28 border-b border-[#E7DED3] space-y-8 sm:space-y-12">
-              <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
-                <div className="space-y-2 max-w-2xl">
-                  <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#171513]">
-                    Signature Plates &amp; Highland Pour-Overs
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => navigate('/menu')}
-                  className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold uppercase tracking-wider hover:bg-[#C65B2B] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center"
-                >
-                  View Complete Menu
-                </button>
-              </div>
+            {/* 3. Featured Culinary & Roastery Selections (Selected Section: Scroll-Driven Roasted Coffee Background) */}
+            <section
+              ref={homeMenuGalleryRef}
+              style={{
+                backgroundColor: dynamicCoffeeBg,
+                borderColor:
+                  coffeeProgress > 0.35
+                    ? `rgba(231, 222, 211, ${Math.max(0.18, 1 - coffeeProgress * 0.75)})`
+                    : '#E7DED3',
+              }}
+              className="relative overflow-hidden w-full py-14 sm:py-24 lg:py-28 border-b transition-colors duration-500 ease-out"
+            >
+              {/* Section-Scoped Stimulating Roasted Coffee Aura Overlay */}
+              <div
+                aria-hidden="true"
+                style={{ opacity: coffeeProgress }}
+                className="pointer-events-none absolute inset-0 transition-opacity duration-700 ease-out bg-[radial-gradient(circle_at_20%_25%,rgba(217,114,54,0.24),transparent_55%),radial-gradient(circle_at_80%_75%,rgba(138,76,38,0.32),transparent_60%)]"
+              />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {featuredDishes.map((dish) => (
-                  <article
-                    key={dish.id}
-                    className="bg-white border border-[#E7DED3] flex flex-col justify-between group"
+              <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 space-y-8 sm:space-y-12">
+                <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+                  <div className="space-y-2 max-w-2xl">
+                    <div
+                      style={{
+                        color: coffeeProgress > 0.35 ? '#F3A871' : '#C65B2B',
+                      }}
+                      className="text-[11px] uppercase tracking-[0.2em] font-semibold transition-colors duration-500 ease-out"
+                    >
+                      Single-Estate Ceylon Roast &amp; Wood-Fired Kitchen
+                    </div>
+                    <h2
+                      style={{
+                        color: coffeeProgress > 0.35 ? '#FCF6EE' : '#171513',
+                      }}
+                      className="text-3xl sm:text-5xl font-editorial font-semibold transition-colors duration-500 ease-out"
+                    >
+                      Signature Plates &amp; Highland Pour-Overs
+                    </h2>
+                  </div>
+                  <a
+                    href="/menu"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate('/menu');
+                    }}
+                    className={`w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all duration-500 whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center ${
+                      coffeeProgress > 0.35
+                        ? 'bg-[#D9622B] text-[#FFFDF9] hover:bg-[#BF5220] shadow-[0_8px_24px_rgba(0,0,0,0.35)]'
+                        : 'bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B]'
+                    }`}
                   >
-                    <div>
-                      <div className="aspect-[4/3] overflow-hidden border-b border-[#E7DED3]">
-                        <EditorialVisual
-                          src={dish.imageUrl}
-                          alt={dish.name}
-                          className="group-hover:scale-105 transition-transform duration-300"
-                        />
-                      </div>
-                      <div className="p-5 space-y-2">
-                        {/* Zero-pill metadata */}
-                        <div className="text-[11px] text-[#58644E] uppercase tracking-wider">
-                          {dish.categoryName}
-                          {dish.dietaryTags.length > 0 && ` · ${dish.dietaryTags.join(' · ')}`}
+                    View Complete Menu
+                  </a>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+                  {featuredDishes.map((dish) => (
+                    <article
+                      key={dish.id}
+                      className="bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between group shadow-[0_10px_28px_rgba(17,11,7,0.12)]"
+                    >
+                      <div>
+                        <div className="aspect-[4/3] overflow-hidden border-b border-[#E7DED3]">
+                          <EditorialVisual
+                            src={dish.imageUrl}
+                            alt={dish.name}
+                            className="group-hover:scale-105 transition-transform duration-300"
+                          />
                         </div>
-                        <h3 className="text-lg font-editorial font-semibold text-[#171513]">
-                          {dish.name}
-                        </h3>
-                        <p className="text-xs text-[#171513]/70 leading-relaxed">
-                          {dish.description}
-                        </p>
+                        <div className="p-3 sm:p-5 space-y-1.5 sm:space-y-2">
+                          {/* Zero-pill metadata */}
+                          <div className="text-[9px] sm:text-[11px] text-[#58644E] uppercase tracking-wider line-clamp-1">
+                            {dish.categoryName}
+                            {dish.dietaryTags.length > 0 && ` · ${dish.dietaryTags.join(' · ')}`}
+                          </div>
+                          <h3 className="text-sm sm:text-lg font-editorial font-semibold text-[#171513] leading-snug">
+                            {dish.name}
+                          </h3>
+                          <p className="text-[11px] sm:text-xs text-[#171513]/70 leading-relaxed line-clamp-2 sm:line-clamp-none">
+                            {dish.description}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="px-5 py-3.5 border-t border-[#E7DED3] flex items-center justify-between text-xs font-mono-tabular">
-                      <span className="font-semibold text-[#171513]">
-                        LKR {dish.priceLkr.toLocaleString()}
-                      </span>
-                      <span className="text-[#171513]/55">USD ${dish.priceUsd.toFixed(2)}</span>
-                    </div>
-                  </article>
-                ))}
+                      <div className="px-3 sm:px-5 py-2.5 sm:py-3.5 border-t border-[#E7DED3] flex flex-wrap items-center justify-between gap-1 text-[10px] sm:text-xs font-mono-tabular">
+                        {(() => {
+                          const currencyMode = resolveMenuPriceCurrency(dish);
+                          if (currencyMode === 'lkr') {
+                            return (
+                              <span className="font-semibold text-[#171513]">
+                                LKR {dish.priceLkr.toLocaleString()}
+                              </span>
+                            );
+                          }
+                          if (currencyMode === 'usd') {
+                            return (
+                              <span className="font-semibold text-[#171513]">
+                                USD ${dish.priceUsd.toFixed(2)}
+                              </span>
+                            );
+                          }
+                          return (
+                            <>
+                              <span className="font-semibold text-[#171513]">
+                                LKR {dish.priceLkr.toLocaleString()}
+                              </span>
+                              <span className="text-[#171513]/55">
+                                USD ${dish.priceUsd.toFixed(2)}
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </div>
             </section>
 
@@ -662,13 +814,16 @@ const OneLoveRouter: React.FC = () => {
                     Experiences Under the Sigiriya Palms
                   </h2>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => navigate('/events')}
+                <a
+                  href="/events"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigate('/events');
+                  }}
                   className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold uppercase tracking-wider hover:bg-[#C65B2B] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center"
                 >
                   All Events &amp; Cuppings
-                </button>
+                </a>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -817,41 +972,64 @@ const OneLoveRouter: React.FC = () => {
                   placeholder="Search dishes, hoppers, coffee..."
                   value={menuSearch}
                   onChange={(e) => setMenuSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E7DED3] text-xs focus:outline-none focus:border-[#C65B2B]"
+                  className="w-full pl-10 pr-4 py-2.5 bg-white text-[#171513] border border-[#E7DED3] text-xs focus:outline-none focus:border-[#C65B2B]"
                 />
               </div>
             </div>
 
-            {/* Menu Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+            {/* Menu Grid (Menu item cards strictly remain bg-white) */}
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-8">
               {filteredMenuItems.map((item) => (
                 <article
                   key={item.id}
-                  className="bg-white border border-[#E7DED3] flex flex-col justify-between"
+                  className="bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between shadow-[0_10px_28px_rgba(17,11,7,0.12)]"
                 >
                   <div>
                     <div className="aspect-[4/3] overflow-hidden border-b border-[#E7DED3]">
                       <EditorialVisual src={item.imageUrl} alt={item.name} />
                     </div>
-                    <div className="p-5 sm:p-6 space-y-2.5">
-                      <div className="text-[11px] uppercase tracking-wider text-[#58644E]">
+                    <div className="p-3 sm:p-6 space-y-1.5 sm:space-y-2.5">
+                      <div className="text-[9px] sm:text-[11px] uppercase tracking-wider text-[#58644E] line-clamp-1">
                         {item.categoryName}
                         {item.dietaryTags.length > 0 && ` · ${item.dietaryTags.join(' · ')}`}
                         {!item.isAvailable && ' · Currently Resting'}
                       </div>
-                      <h2 className="text-xl font-editorial font-semibold text-[#171513]">
+                      <h2 className="text-sm sm:text-xl font-editorial font-semibold text-[#171513] leading-snug">
                         {item.name}
                       </h2>
-                      <p className="text-xs text-[#171513]/70 leading-relaxed">
+                      <p className="text-[11px] sm:text-xs text-[#171513]/70 leading-relaxed line-clamp-2 sm:line-clamp-none">
                         {item.description}
                       </p>
                     </div>
                   </div>
-                  <div className="px-5 sm:px-6 py-4 border-t border-[#E7DED3] flex items-center justify-between text-xs font-mono-tabular">
-                    <span className="font-semibold text-[#171513]">
-                      LKR {item.priceLkr.toLocaleString()}
-                    </span>
-                    <span className="text-[#171513]/55">USD ${item.priceUsd.toFixed(2)}</span>
+                  <div className="px-3 sm:px-6 py-2.5 sm:py-4 border-t border-[#E7DED3] flex flex-wrap items-center justify-between gap-1 text-[10px] sm:text-xs font-mono-tabular">
+                    {(() => {
+                      const currencyMode = resolveMenuPriceCurrency(item);
+                      if (currencyMode === 'lkr') {
+                        return (
+                          <span className="font-semibold text-[#171513]">
+                            LKR {item.priceLkr.toLocaleString()}
+                          </span>
+                        );
+                      }
+                      if (currencyMode === 'usd') {
+                        return (
+                          <span className="font-semibold text-[#171513]">
+                            USD ${item.priceUsd.toFixed(2)}
+                          </span>
+                        );
+                      }
+                      return (
+                        <>
+                          <span className="font-semibold text-[#171513]">
+                            LKR {item.priceLkr.toLocaleString()}
+                          </span>
+                          <span className="text-[#171513]/55">
+                            USD ${item.priceUsd.toFixed(2)}
+                          </span>
+                        </>
+                      );
+                    })()}
                   </div>
                 </article>
               ))}
@@ -1389,20 +1567,26 @@ const OneLoveRouter: React.FC = () => {
               </div>
             </div>
             <div className="flex flex-wrap gap-3 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={handleReserveCtaClick}
+              <a
+                href="/reserve"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleReserveCtaClick();
+                }}
                 className="flex-1 sm:flex-initial justify-center min-h-[44px] px-6 py-3 bg-[#C65B2B] text-white text-xs uppercase tracking-widest font-medium hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 inline-flex items-center"
               >
                 {footerContent?.kicker || 'Reserve at OneLove'}
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/menu')}
+              </a>
+              <a
+                href="/menu"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/menu');
+                }}
                 className="flex-1 sm:flex-initial justify-center min-h-[44px] px-6 py-3 border border-[#F8F4EE]/25 text-xs uppercase tracking-widest font-medium hover:bg-white/5 transition-colors whitespace-nowrap shrink-0 inline-flex items-center"
               >
                 {footerContent?.subheading || 'Explore Menu'}
-              </button>
+              </a>
             </div>
           </div>
 
@@ -1416,6 +1600,10 @@ const OneLoveRouter: React.FC = () => {
                 <img
                   src="/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_eee5198f.png"
                   alt="OneLove Café Sigiriya Sri Lanka Emblem"
+                  loading="lazy"
+                  decoding="async"
+                  width="112"
+                  height="112"
                   className="w-28 h-auto object-contain"
                 />
               </div>
@@ -1520,14 +1708,17 @@ const OneLoveRouter: React.FC = () => {
               {footerContent?.body ||
                 `© ${new Date().getFullYear()} ${settings.cafeName || 'OneLove Café'} Sigiriya. All rights reserved.`}
             </div>
-            <div className="flex items-center gap-6">
-              <button
-                type="button"
-                onClick={() => navigate('/contact')}
+             <div className="flex items-center gap-6">
+              <a
+                href="/contact"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/contact');
+                }}
                 className="hover:text-[#F8F4EE]"
               >
                 {footerContent?.ctaLabel || 'Directions & Policies'}
-              </button>
+              </a>
             </div>
           </div>
         </div>

@@ -175,6 +175,7 @@
         "description": { "type": "string", "maxLength": 400 },
         "priceLkr": { "type": "number" },
         "priceUsd": { "type": "number" },
+        "priceCurrency": { "type": "string", "enum": ["default", "both", "lkr", "usd"] },
         "imageUrl": { "type": "string", "maxLength": 900000 },
         "dietaryTags": { "type": "array" },
         "isFeatured": { "type": "boolean" },
@@ -260,6 +261,7 @@
         "googleMapsEmbedUrl": { "type": "string", "maxLength": 2000 },
         "mapTitle": { "type": "string", "maxLength": 120 },
         "mapSubtitle": { "type": "string", "maxLength": 250 },
+        "menuCurrencyDisplay": { "type": "string", "enum": ["both", "lkr", "usd"] },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["cafeName", "tagline", "address", "phone", "whatsapp", "email", "gracePeriodMinutes", "holdDurationMinutes", "maxPartySize", "bookingPolicy", "updatedAt"]

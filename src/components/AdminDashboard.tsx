@@ -33,6 +33,8 @@ import {
   SeatingZone,
   MenuCategory,
   MenuItem,
+  MenuCurrencyDisplay,
+  MenuItemCurrencyOption,
   GalleryItem,
   CafeEvent,
   ReservationRecord,
@@ -1420,6 +1422,77 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 5: MENU & CATEGORY MANAGER */}
           {activeTab === 'menu' && (
             <div className="space-y-8">
+              {/* Menu Price Currency Display Control (Global + Per-Item Sync) */}
+              <div className="bg-white border border-[#E7DED3] p-6 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-1 max-w-2xl">
+                    <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
+                      Menu Pricing &amp; Currency Display · Live Website Control
+                    </div>
+                    <h2 className="text-xl font-editorial font-semibold text-[#171513]">
+                      Menu Price Currency Format (LKR / USD)
+                    </h2>
+                    <p className="text-xs text-[#171513]/65">
+                      Choose whether menu item prices across the homepage and `/menu` page display in{' '}
+                      <strong>Sri Lankan Rupees (LKR)</strong>, <strong>US Dollars (USD)</strong>, or{' '}
+                      <strong>Both Currencies</strong>. You can also override the currency or edit
+                      exact LKR &amp; USD prices for any individual dish below.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 bg-[#F8F4EE] p-1.5 border border-[#E7DED3]">
+                    {(
+                      [
+                        { id: 'both', label: 'Show Both (LKR & USD)' },
+                        { id: 'lkr', label: 'LKR Only (Rs.)' },
+                        { id: 'usd', label: 'USD Only ($)' },
+                      ] as { id: MenuCurrencyDisplay; label: string }[]
+                    ).map((opt) => {
+                      const currentGlobal = settings.menuCurrencyDisplay || 'both';
+                      const isActive = currentGlobal === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={async () => {
+                            await saveSettings({
+                              ...settings,
+                              menuCurrencyDisplay: opt.id,
+                            });
+                            // If any items had a custom override, reset them to follow the new global choice
+                            const itemsWithOverride = menuItems.filter(
+                              (m) => m.priceCurrency && m.priceCurrency !== 'default'
+                            );
+                            for (const itm of itemsWithOverride) {
+                              await saveMenuItem({ ...itm, priceCurrency: 'default' });
+                            }
+                            if (editingMenuItem) {
+                              setEditingMenuItem({ ...editingMenuItem, priceCurrency: 'default' });
+                            }
+                            showToast(
+                              `Menu prices updated to display ${
+                                opt.id === 'both'
+                                  ? 'Both LKR & USD'
+                                  : opt.id === 'lkr'
+                                  ? 'LKR Only'
+                                  : 'USD Only'
+                              } across the website.`
+                            );
+                          }}
+                          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
+                            isActive
+                              ? 'bg-[#C65B2B] text-white shadow-xs'
+                              : 'bg-white text-[#171513]/75 hover:text-[#171513] border border-[#E7DED3]'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
               {/* Menu Categories Manager (Add, Edit, Delete) */}
               <div className="bg-white border border-[#E7DED3] p-6 space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7DED3] pb-4">
@@ -1669,6 +1742,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="divide-y divide-[#E7DED3] text-xs">
                     {menuItems.map((item) => {
                       const isCurrentlyEditing = editingMenuItem?.id === item.id;
+                      const effectiveCurrency: MenuCurrencyDisplay =
+                        item.priceCurrency && item.priceCurrency !== 'default'
+                          ? item.priceCurrency
+                          : settings.menuCurrencyDisplay || 'both';
                       return (
                         <div
                           key={item.id}
@@ -1680,18 +1757,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="w-14 h-14 border border-[#E7DED3] overflow-hidden shrink-0 bg-[#F8F4EE]">
                               <EditorialVisual src={item.imageUrl} alt={item.name} />
                             </div>
-                            <div className="space-y-0.5">
+                            <div className="space-y-1">
                               <div className="font-semibold text-sm text-[#171513]">{item.name}</div>
-                              <div className="text-[#171513]/60">
-                                {item.categoryName} ·{' '}
-                                <span className="font-mono-tabular">
-                                  LKR {item.priceLkr.toLocaleString()} (${item.priceUsd.toFixed(2)})
+                              <div className="text-[#171513]/60 flex flex-wrap items-center gap-1.5">
+                                <span>{item.categoryName}</span>
+                                <span>·</span>
+                                <span className="font-mono-tabular text-[#171513]">
+                                  LKR {item.priceLkr.toLocaleString()}
                                 </span>
+                                <span>/</span>
+                                <span className="font-mono-tabular text-[#171513]">
+                                  USD ${item.priceUsd.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
+                                Showing on Menu:{' '}
+                                {effectiveCurrency === 'lkr'
+                                  ? `LKR ${item.priceLkr.toLocaleString()} Only`
+                                  : effectiveCurrency === 'usd'
+                                  ? `USD $${item.priceUsd.toFixed(2)} Only`
+                                  : `LKR ${item.priceLkr.toLocaleString()} & USD $${item.priceUsd.toFixed(2)}`}
                               </div>
                             </div>
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
+                            {/* Per-Item Currency Selector right on row */}
+                            <select
+                              aria-label={`Price currency display for ${item.name}`}
+                              value={item.priceCurrency || 'default'}
+                              onChange={async (e) => {
+                                const nextCurrency = e.target.value as MenuItemCurrencyOption;
+                                const updated = { ...item, priceCurrency: nextCurrency };
+                                await saveMenuItem(updated);
+                                if (editingMenuItem?.id === item.id) {
+                                  setEditingMenuItem(updated);
+                                }
+                                showToast(
+                                  `Updated "${item.name}" price display to ${
+                                    nextCurrency === 'default'
+                                      ? `Global Default (${(settings.menuCurrencyDisplay || 'both').toUpperCase()})`
+                                      : nextCurrency.toUpperCase()
+                                  }.`
+                                );
+                              }}
+                              className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] text-[#171513] font-medium text-xs focus:outline-none focus:border-[#C65B2B]"
+                            >
+                              <option value="default">
+                                Currency: Global ({(settings.menuCurrencyDisplay || 'both').toUpperCase()})
+                              </option>
+                              <option value="both">Show Both (LKR &amp; USD)</option>
+                              <option value="lkr">Show LKR Only</option>
+                              <option value="usd">Show USD Only</option>
+                            </select>
+
                             {/* Direct 1-Click Photo Upload on Row */}
                             <label className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] hover:border-[#171513] cursor-pointer inline-flex items-center gap-1 font-medium">
                               <Upload className="w-3 h-3 text-[#C65B2B]" />
@@ -1757,7 +1876,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               }}
                               className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] transition-colors inline-flex items-center gap-1 font-medium"
                             >
-                              <Edit3 className="w-3 h-3" /> Edit
+                              <Edit3 className="w-3 h-3" /> Edit Price &amp; Details
                             </button>
 
                             <button
@@ -1882,37 +2001,92 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[#171513]/60 mb-1">Price (LKR)</label>
-                        <input
-                          type="number"
-                          required
-                          value={editingMenuItem.priceLkr}
-                          onChange={(e) =>
-                            setEditingMenuItem({
-                              ...editingMenuItem,
-                              priceLkr: Number(e.target.value),
-                            })
-                          }
-                          className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] font-mono-tabular"
-                        />
+                    <div className="p-3 bg-[#F8F4EE] border border-[#E7DED3] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="block font-semibold text-[#171513]">
+                          Price &amp; Currency Display
+                        </label>
+                        <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B]">
+                          USD / LKR
+                        </span>
                       </div>
+
                       <div>
-                        <label className="block text-[#171513]/60 mb-1">Price (USD)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          required
-                          value={editingMenuItem.priceUsd}
-                          onChange={(e) =>
-                            setEditingMenuItem({
-                              ...editingMenuItem,
-                              priceUsd: Number(e.target.value),
-                            })
-                          }
-                          className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] font-mono-tabular"
-                        />
+                        <label className="block text-[#171513]/60 mb-1">
+                          Show Price On Menu In
+                        </label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {(
+                            [
+                              {
+                                id: 'default',
+                                label: `Global (${(settings.menuCurrencyDisplay || 'both').toUpperCase()})`,
+                              },
+                              { id: 'both', label: 'Both LKR & USD' },
+                              { id: 'lkr', label: 'LKR Only (Rs.)' },
+                              { id: 'usd', label: 'USD Only ($)' },
+                            ] as { id: MenuItemCurrencyOption; label: string }[]
+                          ).map((opt) => {
+                            const activeOpt = editingMenuItem.priceCurrency || 'default';
+                            const isSelected = activeOpt === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() =>
+                                  setEditingMenuItem({
+                                    ...editingMenuItem,
+                                    priceCurrency: opt.id,
+                                  })
+                                }
+                                className={`px-2.5 py-1.5 text-[11px] font-medium border transition-colors ${
+                                  isSelected
+                                    ? 'bg-[#171513] text-[#F8F4EE] border-[#171513]'
+                                    : 'bg-white text-[#171513]/75 border-[#E7DED3] hover:border-[#171513]'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[#171513]/60 mb-1">Price (LKR)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="10"
+                            required
+                            value={editingMenuItem.priceLkr}
+                            onChange={(e) =>
+                              setEditingMenuItem({
+                                ...editingMenuItem,
+                                priceLkr: Number(e.target.value),
+                              })
+                            }
+                            className="w-full px-3 py-2 bg-white border border-[#E7DED3] font-mono-tabular"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[#171513]/60 mb-1">Price (USD $)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.05"
+                            required
+                            value={editingMenuItem.priceUsd}
+                            onChange={(e) =>
+                              setEditingMenuItem({
+                                ...editingMenuItem,
+                                priceUsd: Number(e.target.value),
+                              })
+                            }
+                            className="w-full px-3 py-2 bg-white border border-[#E7DED3] font-mono-tabular"
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -3506,6 +3680,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         }
                         className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] font-mono-tabular"
                       />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[#171513]/60 mb-1">
+                        Menu Price Currency Display (Global Website Default)
+                      </label>
+                      <select
+                        value={settingsForm.menuCurrencyDisplay || 'both'}
+                        onChange={(e) =>
+                          setSettingsForm({
+                            ...settingsForm,
+                            menuCurrencyDisplay: e.target.value as MenuCurrencyDisplay,
+                          })
+                        }
+                        className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
+                      >
+                        <option value="both">Show Both Currencies (LKR &amp; USD $)</option>
+                        <option value="lkr">Show Sri Lankan Rupees Only (LKR)</option>
+                        <option value="usd">Show US Dollars Only (USD $)</option>
+                      </select>
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-[#171513]/60 mb-1">House Booking Policy</label>

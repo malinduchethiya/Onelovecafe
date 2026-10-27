@@ -39,6 +39,19 @@
       ]
     }
   ],
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.onelovecafesigiriya.com"
+        }
+      ],
+      "destination": "https://onelovecafesigiriya.com/:path*",
+      "statusCode": 301
+    }
+  ],
   "rewrites": [
     {
       "source": "/sitemap.xml",

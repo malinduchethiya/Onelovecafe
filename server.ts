@@ -22,23 +22,75 @@ interface SeoRuntimeState {
   pages: Record<SeoPageKey, PageSeoConfig>;
 }
 
+function normalizeRuntimeSeoState(rawState: Partial<SeoRuntimeState>): SeoRuntimeState {
+  const globalConfig: GlobalSeoConfig = {
+    ...DEFAULT_GLOBAL_SEO,
+    ...(rawState.global || {}),
+  };
+
+  if (
+    !globalConfig.defaultTitle ||
+    globalConfig.defaultTitle.includes('Breakfast, Brunch & Coffee')
+  ) {
+    globalConfig.defaultTitle = DEFAULT_GLOBAL_SEO.defaultTitle;
+  }
+  if (
+    !globalConfig.defaultDescription ||
+    globalConfig.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls')
+  ) {
+    globalConfig.defaultDescription = DEFAULT_GLOBAL_SEO.defaultDescription;
+  }
+  if (!globalConfig.telephone || globalConfig.telephone === '+94 66 228 6410') {
+    globalConfig.telephone = DEFAULT_GLOBAL_SEO.telephone;
+  }
+  globalConfig.alternateNames = Array.from(
+    new Set([...(DEFAULT_GLOBAL_SEO.alternateNames || []), ...(globalConfig.alternateNames || [])])
+  );
+
+  const pagesConfig: Record<SeoPageKey, PageSeoConfig> = {
+    ...DEFAULT_PAGE_SEO,
+    ...(rawState.pages || {}),
+  };
+
+  if (
+    pagesConfig.home &&
+    (!pagesConfig.home.title || pagesConfig.home.title.includes('Breakfast, Brunch & Coffee'))
+  ) {
+    pagesConfig.home = {
+      ...pagesConfig.home,
+      title: DEFAULT_PAGE_SEO.home.title,
+      ogTitle: DEFAULT_PAGE_SEO.home.ogTitle,
+    };
+  }
+  if (
+    pagesConfig.home &&
+    (!pagesConfig.home.metaDescription ||
+      pagesConfig.home.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls'))
+  ) {
+    pagesConfig.home = {
+      ...pagesConfig.home,
+      metaDescription: DEFAULT_PAGE_SEO.home.metaDescription,
+      ogDescription: DEFAULT_PAGE_SEO.home.ogDescription,
+    };
+  }
+
+  return {
+    global: globalConfig,
+    pages: pagesConfig,
+  };
+}
+
 function loadSeoState(): SeoRuntimeState {
   try {
     if (fs.existsSync(SEO_CACHE_FILE)) {
       const raw = fs.readFileSync(SEO_CACHE_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<SeoRuntimeState>;
-      return {
-        global: { ...DEFAULT_GLOBAL_SEO, ...(parsed.global || {}) },
-        pages: { ...DEFAULT_PAGE_SEO, ...(parsed.pages || {}) },
-      };
+      return normalizeRuntimeSeoState(parsed);
     }
   } catch {
     // Fallback to defaults if cache file is unreadable
   }
-  return {
-    global: { ...DEFAULT_GLOBAL_SEO },
-    pages: { ...DEFAULT_PAGE_SEO },
-  };
+  return normalizeRuntimeSeoState({});
 }
 
 let seoState: SeoRuntimeState = loadSeoState();
@@ -311,10 +363,21 @@ async function startServer() {
 
   app.use(express.json({ limit: '2mb' }));
 
-  // Security headers
+  // Security headers & canonical 301 redirect from www to non-www production domain
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+    const rawHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+    const host = rawHost.split(',')[0].trim().toLowerCase();
+    if (host.startsWith('www.onelovecafesigiriya.com') || host.startsWith('www.onelovecafe.lk')) {
+      const canonicalDomain = (
+        seoState.global.canonicalDomain || 'https://onelovecafesigiriya.com'
+      ).replace(/\/+$/, '');
+      res.redirect(301, `${canonicalDomain}${req.originalUrl || '/'}`);
+      return;
+    }
+
     next();
   });
 
@@ -347,15 +410,11 @@ async function startServer() {
   app.post('/api/seo/sync', (req, res) => {
     try {
       const body = req.body || {};
-      const nextGlobal: GlobalSeoConfig = {
-        ...seoState.global,
-        ...(body.global || {}),
-      };
-      const nextPages: Record<SeoPageKey, PageSeoConfig> = {
-        ...seoState.pages,
-        ...(body.pages || {}),
-      };
-      saveSeoStateToDisk({ global: nextGlobal, pages: nextPages });
+      const normalized = normalizeRuntimeSeoState({
+        global: { ...seoState.global, ...(body.global || {}) },
+        pages: { ...seoState.pages, ...(body.pages || {}) },
+      });
+      saveSeoStateToDisk(normalized);
       res.status(200).json({ ok: true, success: true });
     } catch (err) {
       res.status(400).json({

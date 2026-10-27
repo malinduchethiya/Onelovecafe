@@ -124,6 +124,9 @@ export interface MenuCategory {
   updatedAt?: unknown;
 }
 
+export type MenuCurrencyDisplay = 'both' | 'lkr' | 'usd';
+export type MenuItemCurrencyOption = 'default' | 'both' | 'lkr' | 'usd';
+
 export interface MenuItem {
   id: string;
   name: string;
@@ -132,6 +135,7 @@ export interface MenuItem {
   description: string;
   priceLkr: number;
   priceUsd: number;
+  priceCurrency?: MenuItemCurrencyOption;
   imageUrl: string; // Base64 Data URL or editorial key
   dietaryTags: string[];
   isFeatured: boolean;
@@ -207,6 +211,7 @@ export interface CafeSettings {
   googleMapsEmbedUrl?: string; // Google Maps embed URL, iframe code, share link, or query
   mapTitle?: string; // Section title for the map
   mapSubtitle?: string; // Section subtitle or location description
+  menuCurrencyDisplay?: MenuCurrencyDisplay; // Global currency display mode for menu items ('both' | 'lkr' | 'usd')
   updatedAt?: unknown;
 }
 

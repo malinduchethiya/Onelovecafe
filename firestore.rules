@@ -174,13 +174,14 @@ service cloud.firestore {
 
     function isValidMenuItem(data) {
       return data.keys().hasAll(['name', 'categoryId', 'categoryName', 'description', 'priceLkr', 'priceUsd', 'imageUrl', 'dietaryTags', 'isFeatured', 'isAvailable', 'updatedAt']) &&
-        data.keys().hasOnly(['name', 'categoryId', 'categoryName', 'description', 'priceLkr', 'priceUsd', 'imageUrl', 'dietaryTags', 'isFeatured', 'isAvailable', 'updatedAt']) &&
+        data.keys().hasOnly(['name', 'categoryId', 'categoryName', 'description', 'priceLkr', 'priceUsd', 'priceCurrency', 'imageUrl', 'dietaryTags', 'isFeatured', 'isAvailable', 'updatedAt']) &&
         data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
         data.categoryId is string && data.categoryId.size() >= 1 && data.categoryId.size() <= 60 &&
         data.categoryName is string && data.categoryName.size() >= 1 && data.categoryName.size() <= 60 &&
         data.description is string && data.description.size() >= 1 && data.description.size() <= 400 &&
         data.priceLkr is number && data.priceLkr >= 0 &&
         data.priceUsd is number && data.priceUsd >= 0 &&
+        (!('priceCurrency' in data) || (data.priceCurrency in ['default', 'both', 'lkr', 'usd'])) &&
         data.imageUrl is string && data.imageUrl.size() <= 900000 &&
         data.dietaryTags is list && data.dietaryTags.size() <= 10 &&
         (data.dietaryTags.size() == 0 || data.dietaryTags[0] is string) &&
@@ -243,7 +244,7 @@ service cloud.firestore {
           'instagram', 'coordinates', 'gracePeriodMinutes', 'holdDurationMinutes',
           'maxPartySize', 'sameDayCutoffHour', 'bookingPolicy',
           'heroImages', 'heroSlideshowSpeedSeconds', 'floorPlanImageUrl',
-          'googleMapsEmbedUrl', 'mapTitle', 'mapSubtitle', 'updatedAt'
+          'googleMapsEmbedUrl', 'mapTitle', 'mapSubtitle', 'menuCurrencyDisplay', 'updatedAt'
         ]) &&
         data.cafeName is string && data.cafeName.size() >= 1 && data.cafeName.size() <= 80 &&
         data.tagline is string && data.tagline.size() <= 160 &&
@@ -264,6 +265,7 @@ service cloud.firestore {
         (!('googleMapsEmbedUrl' in data) || (data.googleMapsEmbedUrl is string && data.googleMapsEmbedUrl.size() <= 2000)) &&
         (!('mapTitle' in data) || (data.mapTitle is string && data.mapTitle.size() <= 120)) &&
         (!('mapSubtitle' in data) || (data.mapSubtitle is string && data.mapSubtitle.size() <= 250)) &&
+        (!('menuCurrencyDisplay' in data) || (data.menuCurrencyDisplay in ['both', 'lkr', 'usd'])) &&
         data.updatedAt is timestamp;
     }
 

@@ -51,19 +51,24 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
             <p className="text-sm sm:text-[15px] text-[#110F0D]/85 leading-[1.75] font-normal max-w-xl">
               {storyContent?.body ||
-                'OneLove Café began as a quiet refuge along the forested road between Kimbissa and the ancient fortress of Sigiriya. We built around the existing Banyan, Frangipani, and Mara trees—using porous red laterite stone, reclaimed railway teak, and hand-troweled lime plaster so the pavilion breathes naturally with the rhythm of the jungle.'}
+                'OneLove Café began as a quiet refuge along the forested road between Kimbissa and the ancient fortress of Sigiriya in Central Province, Sri Lanka. We built around the existing Banyan, Frangipani, and Mara trees—using porous red laterite stone, reclaimed railway teak, and hand-troweled lime plaster so the pavilion breathes naturally with the rhythm of the jungle.'}
             </p>
 
             {showMonographButton && (
               <div className="pt-1 sm:pt-2 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={onReadMonograph}
+                <a
+                  href="/story"
+                  onClick={(e) => {
+                    if (onReadMonograph) {
+                      e.preventDefault();
+                      onReadMonograph();
+                    }
+                  }}
                   className="w-full sm:w-auto justify-center min-h-[44px] px-7 py-3.5 rounded-full bg-[#110F0D] text-[#FCF9F4] text-[11px] font-semibold uppercase tracking-[0.16em] inline-flex items-center gap-3 hover:bg-[#D9622B] transition-all duration-300 shadow-md cursor-pointer"
                 >
                   <span>Read Sigiriya Monograph</span>
                   <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                </a>
               </div>
             )}
           </div>

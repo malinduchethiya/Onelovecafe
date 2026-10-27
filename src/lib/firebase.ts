@@ -3,8 +3,8 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import {
   getFirestore,
   initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
+  setLogLevel,
   doc,
   getDocFromServer,
   serverTimestamp,
@@ -26,14 +26,20 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
+// Suppress transient WebChannel transport fallback warnings in iframe preview environments
+try {
+  setLogLevel('silent');
+} catch {
+  // Ignore if unsupported
+}
+
 function initDb() {
   try {
     return initializeFirestore(
       app,
       {
-        localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager(),
-        }),
+        experimentalAutoDetectLongPolling: true,
+        localCache: memoryLocalCache(),
       },
       firebaseConfig.firestoreDatabaseId
     );
@@ -117,7 +123,7 @@ async function testConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
+      console.warn('Firestore connection initializing via long-polling fallback.');
     }
   }
 }

@@ -270,12 +270,64 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     mergeSiteContentWithDefaults(readLocalCache('onelove_cache_siteContent', INITIAL_SITE_CONTENT))
   );
   const [availability, setAvailability] = useState<AvailabilitySlotRecord[]>([]);
-  const [seoGlobal, setSeoGlobal] = useState<GlobalSeoConfig>(() =>
-    readLocalCache('onelove_cache_seoGlobal', DEFAULT_GLOBAL_SEO)
-  );
-  const [seoPages, setSeoPages] = useState<Record<SeoPageKey, PageSeoConfig>>(() =>
-    readLocalCache('onelove_cache_seoPages', DEFAULT_PAGE_SEO)
-  );
+  const [seoGlobal, setSeoGlobal] = useState<GlobalSeoConfig>(() => {
+    const cached = readLocalCache('onelove_cache_seoGlobal', DEFAULT_GLOBAL_SEO);
+    return {
+      ...DEFAULT_GLOBAL_SEO,
+      ...cached,
+      defaultTitle:
+        !cached.defaultTitle || cached.defaultTitle.includes('Breakfast, Brunch & Coffee')
+          ? DEFAULT_GLOBAL_SEO.defaultTitle
+          : cached.defaultTitle,
+      defaultDescription:
+        !cached.defaultDescription ||
+        cached.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls')
+          ? DEFAULT_GLOBAL_SEO.defaultDescription
+          : cached.defaultDescription,
+      telephone:
+        !cached.telephone || cached.telephone === '+94 66 228 6410'
+          ? DEFAULT_GLOBAL_SEO.telephone
+          : cached.telephone,
+      alternateNames: Array.from(
+        new Set([
+          ...(DEFAULT_GLOBAL_SEO.alternateNames || []),
+          ...(cached.alternateNames || []),
+        ])
+      ),
+    };
+  });
+  const [seoPages, setSeoPages] = useState<Record<SeoPageKey, PageSeoConfig>>(() => {
+    const cached = readLocalCache('onelove_cache_seoPages', DEFAULT_PAGE_SEO);
+    const homePage = cached.home || DEFAULT_PAGE_SEO.home;
+    return {
+      ...DEFAULT_PAGE_SEO,
+      ...cached,
+      home: {
+        ...DEFAULT_PAGE_SEO.home,
+        ...homePage,
+        title:
+          !homePage.title || homePage.title.includes('Breakfast, Brunch & Coffee')
+            ? DEFAULT_PAGE_SEO.home.title
+            : homePage.title,
+        ogTitle:
+          !homePage.ogTitle ||
+          homePage.ogTitle.includes('Breakfast, Brunch & Specialty Coffee') ||
+          homePage.ogTitle.includes('Breakfast, Brunch & Coffee')
+            ? DEFAULT_PAGE_SEO.home.ogTitle
+            : homePage.ogTitle,
+        metaDescription:
+          !homePage.metaDescription ||
+          homePage.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls')
+            ? DEFAULT_PAGE_SEO.home.metaDescription
+            : homePage.metaDescription,
+        ogDescription:
+          !homePage.ogDescription ||
+          homePage.ogDescription.includes('Tropical garden café, specialty Ceylon coffee roastery')
+            ? DEFAULT_PAGE_SEO.home.ogDescription
+            : homePage.ogDescription,
+      },
+    };
+  });
 
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
@@ -575,6 +627,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     // Real-time Reservations Sync: Automatically frees tables when reservations are cancelled or rejected
+    const releasedReservationIds = new Set<string>();
     unsubs.push(
       onSnapshot(
         collection(db, 'reservations'),
@@ -584,9 +637,18 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .sort((a, b) => `${b.date}_${b.time}`.localeCompare(`${a.date}_${a.time}`));
           setReservations(list);
 
-          // Identify cancelled or rejected reservations and ensure the table availability is released
-          list.forEach((res) => {
+          // Identify newly cancelled or rejected reservations and ensure the table availability is released once
+          snap.docChanges().forEach((change) => {
+            if (change.type === 'removed') return;
+            const res = {
+              id: change.doc.id,
+              ...(change.doc.data() as Omit<ReservationRecord, 'id'>),
+            };
             if (res.status === 'cancelled' || res.status === 'rejected') {
+              const releaseKey = `${res.id}_${res.status}`;
+              if (releasedReservationIds.has(releaseKey)) return;
+              releasedReservationIds.add(releaseKey);
+
               const normTime = res.time.replace(/[^a-zA-Z0-9]/g, '-');
               const slotId = `${res.date}_${normTime}_${res.tableId}`;
 
@@ -601,8 +663,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   (other.status === 'confirmed' || other.status === 'seated')
               );
 
-              if (!hasOtherActiveReservation) {
-                // Release availability in Firestore so other guests can immediately reserve this table
+              if (!hasOtherActiveReservation && change.type === 'modified') {
+                // Release availability in Firestore when a reservation transitions to cancelled/rejected
                 setDoc(
                   doc(db, 'availability', slotId),
                   {
@@ -637,6 +699,25 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...DEFAULT_GLOBAL_SEO,
               ...data,
               id: 'main',
+              defaultTitle:
+                !data.defaultTitle || data.defaultTitle.includes('Breakfast, Brunch & Coffee')
+                  ? DEFAULT_GLOBAL_SEO.defaultTitle
+                  : data.defaultTitle,
+              defaultDescription:
+                !data.defaultDescription ||
+                data.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls')
+                  ? DEFAULT_GLOBAL_SEO.defaultDescription
+                  : data.defaultDescription,
+              telephone:
+                !data.telephone || data.telephone === '+94 66 228 6410'
+                  ? DEFAULT_GLOBAL_SEO.telephone
+                  : data.telephone,
+              alternateNames: Array.from(
+                new Set([
+                  ...(DEFAULT_GLOBAL_SEO.alternateNames || []),
+                  ...(data.alternateNames || []),
+                ])
+              ),
             };
             setSeoGlobal(mergedGlobal);
             writeLocalCache('onelove_cache_seoGlobal', mergedGlobal);
@@ -658,11 +739,44 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             snap.docs.forEach((d) => {
               const key = d.id as SeoPageKey;
               if (key in nextMap) {
-                nextMap[key] = {
+                const rawPage = d.data() as Omit<PageSeoConfig, 'id'>;
+                const mergedPage: PageSeoConfig = {
                   ...DEFAULT_PAGE_SEO[key],
-                  ...(d.data() as Omit<PageSeoConfig, 'id'>),
+                  ...rawPage,
                   id: key,
                 };
+                if (key === 'home') {
+                  if (
+                    !mergedPage.title ||
+                    mergedPage.title.includes('Breakfast, Brunch & Coffee')
+                  ) {
+                    mergedPage.title = DEFAULT_PAGE_SEO.home.title;
+                  }
+                  if (
+                    !mergedPage.ogTitle ||
+                    mergedPage.ogTitle.includes('Breakfast, Brunch & Specialty Coffee') ||
+                    mergedPage.ogTitle.includes('Breakfast, Brunch & Coffee')
+                  ) {
+                    mergedPage.ogTitle = DEFAULT_PAGE_SEO.home.ogTitle;
+                  }
+                  if (
+                    !mergedPage.metaDescription ||
+                    mergedPage.metaDescription.includes(
+                      'Enjoy specialty coffee, fresh smoothie bowls'
+                    )
+                  ) {
+                    mergedPage.metaDescription = DEFAULT_PAGE_SEO.home.metaDescription;
+                  }
+                  if (
+                    !mergedPage.ogDescription ||
+                    mergedPage.ogDescription.includes(
+                      'Tropical garden café, specialty Ceylon coffee roastery'
+                    )
+                  ) {
+                    mergedPage.ogDescription = DEFAULT_PAGE_SEO.home.ogDescription;
+                  }
+                }
+                nextMap[key] = mergedPage;
               }
             });
             setSeoPages(nextMap);
@@ -1508,6 +1622,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const { id, ...data } = item;
+      const validItemCurrency =
+        data.priceCurrency && ['default', 'both', 'lkr', 'usd'].includes(data.priceCurrency)
+          ? data.priceCurrency
+          : 'default';
       await setDoc(doc(db, 'menuItems', id), {
         name: (data.name || 'Untitled Dish').slice(0, 100),
         categoryId: (data.categoryId || 'cat_coffee').slice(0, 60),
@@ -1515,6 +1633,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         description: (data.description || 'Crafted fresh in Sigiriya.').slice(0, 400),
         priceLkr: Math.max(0, Number(data.priceLkr) || 0),
         priceUsd: Math.max(0, Number(data.priceUsd) || 0),
+        priceCurrency: validItemCurrency,
         imageUrl: (data.imageUrl || '').slice(0, 900000),
         dietaryTags: (data.dietaryTags || []).slice(0, 10),
         isFeatured: Boolean(data.isFeatured),
@@ -1734,6 +1853,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         Math.max(1, Number(data.heroSlideshowSpeedSeconds) || 5)
       );
 
+      const validMenuCurrency =
+        data.menuCurrencyDisplay && ['both', 'lkr', 'usd'].includes(data.menuCurrencyDisplay)
+          ? data.menuCurrencyDisplay
+          : 'both';
+
       await setDoc(doc(db, 'settings', id || 'main'), {
         cafeName: (data.cafeName || 'OneLove Café').slice(0, 80),
         tagline: (data.tagline || '').slice(0, 160),
@@ -1754,6 +1878,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         googleMapsEmbedUrl: (data.googleMapsEmbedUrl || '').slice(0, 2000),
         mapTitle: (data.mapTitle || 'Our Sanctuary Location').slice(0, 120),
         mapSubtitle: (data.mapSubtitle || '').slice(0, 250),
+        menuCurrencyDisplay: validMenuCurrency,
         updatedAt: serverTimestamp(),
       });
       await logAdminAction('SAVE_SETTINGS', 'settings', id || 'main', 'Updated global café settings & media');

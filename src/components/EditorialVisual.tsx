@@ -4,9 +4,15 @@ interface EditorialVisualProps {
   src: string;
   alt: string;
   className?: string;
+  priority?: boolean;
 }
 
-export const EditorialVisual: React.FC<EditorialVisualProps> = ({ src, alt, className = '' }) => {
+export const EditorialVisual: React.FC<EditorialVisualProps> = ({
+  src,
+  alt,
+  className = '',
+  priority = false,
+}) => {
   const [imgError, setImgError] = useState(false);
 
   React.useEffect(() => {
@@ -33,7 +39,8 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({ src, alt, clas
         src={src}
         alt={alt}
         referrerPolicy="no-referrer"
-        loading={isDataUrl ? 'eager' : 'lazy'}
+        loading={priority || isDataUrl ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : undefined}
         decoding={isDataUrl ? 'sync' : 'async'}
         onError={() => setImgError(true)}
         className={`w-full h-full object-cover contrast-[1.15] saturate-[1.2] brightness-[1.05] ${className}`}

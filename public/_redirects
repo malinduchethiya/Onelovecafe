@@ -1,0 +1,11 @@
+# Permanent 301 Redirect from www to canonical production domain
+https://www.onelovecafesigiriya.com/* https://onelovecafesigiriya.com/:splat 301!
+http://www.onelovecafesigiriya.com/* https://onelovecafesigiriya.com/:splat 301!
+http://onelovecafesigiriya.com/* https://onelovecafesigiriya.com/:splat 301!
+
+# Preserve direct access to XML Sitemap & Robots
+/sitemap.xml /sitemap.xml 200
+/robots.txt /robots.txt 200
+
+# SPA History Routing Fallback
+/* /index.html 200
