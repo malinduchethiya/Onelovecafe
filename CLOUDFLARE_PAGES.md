@@ -44,11 +44,12 @@ If you prefer to keep `firebase-applet-config.json` private or override settings
 
 ---
 
-## 🚦 SPA Routing & Assets (Already Handled)
+## 🚦 SPA Routing, Static Assets & Canonical Redirects
 
-- `dist/200.html`: Automatically generated during `vite build` (via `spa-fallback-200` plugin in `vite.config.ts`). Cloudflare Pages natively uses `200.html` to serve the SPA on deep links (`/menu`, `/reserve`, `/admin`, etc.) without redirect loops (avoiding Wrangler error 100324).
-- `public/_headers`: Sets XML/plaintext headers and caching for `sitemap.xml` and `robots.txt`.
-- Output is generated in `dist/` with all static assets in `dist/assets/`.
+- **`wrangler.jsonc`**: Configured with `"assets": { "directory": "./dist", "binding": "ASSETS", "not_found_handling": "single-page-application" }` and Worker entry point `"main": "./src/worker.ts"`. This serves static files (`index.html`, `sitemap.xml`, `robots.txt`, `favicon.ico`, `favicon-*.png`, `apple-touch-icon.png`, `site.webmanifest`, `assets/*`) directly from the edge while routing deep SPA paths (`/menu`, `/reserve`, `/story`, `/gallery`, `/events`, `/contact`, `/admin`) to `index.html` without catch-all redirect loops.
+- **`public/_redirects`**: Contains only valid relative internal redirects (`/visit /contact 301`) with standard HTTP status codes.
+- **Domain-Level `www` Redirect**: Redirecting `https://www.onelovecafesigiriya.com/*` to `https://onelovecafesigiriya.com/*` (301) is managed at the domain edge in **Cloudflare Dashboard → Rules → Redirect Rules** (never in `_redirects`).
+- **`public/_headers`**: Sets XML/plaintext headers and caching for `sitemap.xml` and `robots.txt`, plus `X-Robots-Tag: noindex, nofollow` for `/admin*`.
 
 ---
 

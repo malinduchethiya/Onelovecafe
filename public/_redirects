@@ -1,11 +1,5 @@
-# Permanent 301 Redirect from www to canonical production domain
-https://www.onelovecafesigiriya.com/* https://onelovecafesigiriya.com/:splat 301!
-http://www.onelovecafesigiriya.com/* https://onelovecafesigiriya.com/:splat 301!
-http://onelovecafesigiriya.com/* https://onelovecafesigiriya.com/:splat 301!
+# Internal relative redirects for OneLove Café Sigiriya
+# Note: Domain-level www-to-root redirects are managed in Cloudflare Redirect Rules.
+# Note: SPA history routing fallback is handled via Wrangler assets.not_found_handling = "single-page-application".
+/visit /contact 301
 
-# Preserve direct access to XML Sitemap & Robots
-/sitemap.xml /sitemap.xml 200
-/robots.txt /robots.txt 200
-
-# SPA History Routing Fallback
-/* /index.html 200
