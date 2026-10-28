@@ -3,6 +3,7 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import {
   getFirestore,
   initializeFirestore,
+  persistentLocalCache,
   memoryLocalCache,
   setLogLevel,
   doc,
@@ -39,12 +40,23 @@ function initDb() {
       app,
       {
         experimentalAutoDetectLongPolling: true,
-        localCache: memoryLocalCache(),
+        localCache: persistentLocalCache(),
       },
       firebaseConfig.firestoreDatabaseId
     );
   } catch {
-    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    try {
+      return initializeFirestore(
+        app,
+        {
+          experimentalAutoDetectLongPolling: true,
+          localCache: memoryLocalCache(),
+        },
+        firebaseConfig.firestoreDatabaseId
+      );
+    } catch {
+      return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    }
   }
 }
 
@@ -95,9 +107,10 @@ export function handleFirestoreError(
   error: unknown,
   operationType: OperationType,
   path: string | null
-): never {
+): void {
+  const rawMessage = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: rawMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -113,6 +126,16 @@ export function handleFirestoreError(
     operationType,
     path,
   };
+
+  // If Firestore free-tier daily quota is temporarily exhausted, keep local cache active without throwing uncaught listener errors
+  if (
+    rawMessage.toLowerCase().includes('quota') ||
+    rawMessage.toLowerCase().includes('resource-exhausted')
+  ) {
+    console.warn('Firestore quota notice (serving cached sanctuary data):', errInfo);
+    return;
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
@@ -129,7 +152,7 @@ async function testConnection() {
 }
 testConnection();
 
-// Helper to record admin audit log entries
+// Helper to record admin audit log entries (non-blocking if quota is reached)
 export async function logAdminAction(
   action: string,
   targetCollection: string,
@@ -139,7 +162,6 @@ export async function logAdminAction(
   const user = auth.currentUser;
   if (!user || !user.email) return;
   const logId = `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-  const path = `auditLogs/${logId}`;
   try {
     await setDoc(doc(collection(db, 'auditLogs'), logId), {
       actorEmail: user.email.slice(0, 120),
@@ -150,7 +172,8 @@ export async function logAdminAction(
       summary: summary.slice(0, 300),
       createdAt: serverTimestamp(),
     });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+  } catch {
+    // Non-fatal if audit log write is skipped due to quota
   }
 }
+

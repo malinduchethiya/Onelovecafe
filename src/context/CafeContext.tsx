@@ -14,7 +14,8 @@ import {
   runTransaction,
   serverTimestamp,
   getDoc,
-  getDocs,
+  query,
+  limit,
 } from 'firebase/firestore';
 import {
   auth,
@@ -963,7 +964,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     unsubs.push(
       onSnapshot(
-        collection(db, 'auditLogs'),
+        query(collection(db, 'auditLogs'), limit(25)),
         (snap) => {
           const list = snap.docs.map((d) => ({
             id: d.id,
@@ -1357,15 +1358,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return updated.sort((a, b) => a.number - b.number);
       });
 
-      const snap = await getDocs(collection(db, 'tables'));
-      if (snap.empty) {
-        for (const t of DEFAULT_TABLES) {
-          if (t.id === table.id) continue;
-          const { id: tid, ...tdata } = t;
-          await setDoc(doc(db, 'tables', tid), { ...tdata, updatedAt: serverTimestamp() });
-        }
-      }
-
       const { id, ...data } = table;
       await setDoc(doc(db, 'tables', id), {
         label: data.label.slice(0, 30),
@@ -1391,16 +1383,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteTable = useCallback(async (tableId: string) => {
     try {
       setTables((prev) => prev.filter((t) => t.id !== tableId));
-      const snap = await getDocs(collection(db, 'tables'));
-      if (snap.empty) {
-        for (const t of DEFAULT_TABLES) {
-          if (t.id === tableId) continue;
-          const { id: tid, ...tdata } = t;
-          await setDoc(doc(db, 'tables', tid), { ...tdata, updatedAt: serverTimestamp() });
-        }
-      } else {
-        await deleteDoc(doc(db, 'tables', tableId));
-      }
+      await deleteDoc(doc(db, 'tables', tableId));
       await logAdminAction('DELETE_TABLE', 'tables', tableId, `Deleted table ${tableId}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `tables/${tableId}`);
@@ -1414,18 +1397,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const updated = exists ? prev.map((z) => (z.id === zone.id ? zone : z)) : [...prev, zone];
         return updated.sort((a, b) => a.sortOrder - b.sortOrder);
       });
-
-      const snap = await getDocs(collection(db, 'seatingZones'));
-      if (snap.empty) {
-        for (const defZone of DEFAULT_ZONES) {
-          if (defZone.id === zone.id) continue;
-          const { id: zid, ...zdata } = defZone;
-          await setDoc(doc(db, 'seatingZones', zid), {
-            ...zdata,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
 
       const { id, ...data } = zone;
       await setDoc(doc(db, 'seatingZones', id), {
@@ -1446,19 +1417,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteZone = useCallback(async (zoneId: string) => {
     try {
       setZones((prev) => prev.filter((z) => z.id !== zoneId));
-      const snap = await getDocs(collection(db, 'seatingZones'));
-      if (snap.empty) {
-        for (const defZone of DEFAULT_ZONES) {
-          if (defZone.id === zoneId) continue;
-          const { id: zid, ...zdata } = defZone;
-          await setDoc(doc(db, 'seatingZones', zid), {
-            ...zdata,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      } else {
-        await deleteDoc(doc(db, 'seatingZones', zoneId));
-      }
+      await deleteDoc(doc(db, 'seatingZones', zoneId));
       await logAdminAction('DELETE_ZONE', 'seatingZones', zoneId, `Deleted seating zone ${zoneId}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `seatingZones/${zoneId}`);
@@ -1537,18 +1496,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         prev.map((m) => (m.categoryId === cat.id ? { ...m, categoryName: cat.name } : m))
       );
 
-      const snap = await getDocs(collection(db, 'menuCategories'));
-      if (snap.empty) {
-        for (const defCat of DEFAULT_MENU_CATEGORIES) {
-          if (defCat.id === cat.id) continue;
-          const { id: cid, ...cdata } = defCat;
-          await setDoc(doc(db, 'menuCategories', cid), {
-            ...cdata,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
-
       const { id, ...data } = cat;
       const safeSlug = (
         data.slug ||
@@ -1581,20 +1528,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteMenuCategory = useCallback(async (id: string) => {
     try {
       setMenuCategories((prev) => prev.filter((c) => c.id !== id));
-
-      const snap = await getDocs(collection(db, 'menuCategories'));
-      if (snap.empty) {
-        for (const defCat of DEFAULT_MENU_CATEGORIES) {
-          if (defCat.id === id) continue;
-          const { id: cid, ...cdata } = defCat;
-          await setDoc(doc(db, 'menuCategories', cid), {
-            ...cdata,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      } else {
-        await deleteDoc(doc(db, 'menuCategories', id));
-      }
+      await deleteDoc(doc(db, 'menuCategories', id));
       await logAdminAction(
         'DELETE_MENU_CATEGORY',
         'menuCategories',
@@ -1608,26 +1542,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveMenuItem = useCallback(async (item: MenuItem) => {
     try {
-      // Optimistic local state update so UI reflects immediately
       setMenuItems((prev) => {
         const exists = prev.some((m) => m.id === item.id);
         const next = exists ? prev.map((m) => (m.id === item.id ? item : m)) : [item, ...prev];
         writeLocalCache('onelove_cache_menuItems', next);
         return next;
       });
-
-      // Ensure default items are persisted if collection was unseeded
-      const snap = await getDocs(collection(db, 'menuItems'));
-      if (snap.empty) {
-        for (const defItem of DEFAULT_MENU_ITEMS) {
-          if (defItem.id === item.id) continue;
-          const { id: did, ...ddata } = defItem;
-          await setDoc(doc(db, 'menuItems', did), {
-            ...ddata,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
 
       const { id, ...data } = item;
       const validItemCurrency =
@@ -1656,26 +1576,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteMenuItem = useCallback(async (id: string) => {
     try {
-      // Optimistic local state update
       setMenuItems((prev) => {
         const next = prev.filter((m) => m.id !== id);
         writeLocalCache('onelove_cache_menuItems', next);
         return next;
       });
-
-      const snap = await getDocs(collection(db, 'menuItems'));
-      if (snap.empty) {
-        for (const defItem of DEFAULT_MENU_ITEMS) {
-          if (defItem.id === id) continue;
-          const { id: did, ...ddata } = defItem;
-          await setDoc(doc(db, 'menuItems', did), {
-            ...ddata,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      } else {
-        await deleteDoc(doc(db, 'menuItems', id));
-      }
+      await deleteDoc(doc(db, 'menuItems', id));
       await logAdminAction('DELETE_MENU_ITEM', 'menuItems', id, `Deleted menu item ${id}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `menuItems/${id}`);
@@ -1693,20 +1599,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
 
-      const snap = await getDocs(collection(db, 'gallery'));
-      if (snap.empty) {
-        for (const defG of DEFAULT_GALLERY) {
-          if (defG.id === item.id) continue;
-          const { id: gid, ...gdata } = defG;
-          await setDoc(doc(db, 'gallery', gid), { ...gdata, createdAt: serverTimestamp() });
-        }
-      }
-
       const { id, ...data } = item;
-      const existingSnap = await getDoc(doc(db, 'gallery', id));
-      const createdAtVal = existingSnap.exists()
-        ? existingSnap.data().createdAt
-        : serverTimestamp();
+      const existingSnap = await getDoc(doc(db, 'gallery', id)).catch(() => null);
+      const createdAtVal =
+        existingSnap && existingSnap.exists()
+          ? existingSnap.data().createdAt
+          : serverTimestamp();
       await setDoc(doc(db, 'gallery', id), {
         title: (data.title || 'Sanctuary Moment').slice(0, 100),
         category: data.category,
@@ -1730,16 +1628,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         writeLocalCache('onelove_cache_gallery', next);
         return next;
       });
-      const snap = await getDocs(collection(db, 'gallery'));
-      if (snap.empty) {
-        for (const defG of DEFAULT_GALLERY) {
-          if (defG.id === id) continue;
-          const { id: gid, ...gdata } = defG;
-          await setDoc(doc(db, 'gallery', gid), { ...gdata, createdAt: serverTimestamp() });
-        }
-      } else {
-        await deleteDoc(doc(db, 'gallery', id));
-      }
+      await deleteDoc(doc(db, 'gallery', id));
       await logAdminAction('DELETE_GALLERY_ITEM', 'gallery', id, `Deleted gallery item ${id}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `gallery/${id}`);
@@ -1754,15 +1643,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         writeLocalCache('onelove_cache_events', next);
         return next;
       });
-
-      const snap = await getDocs(collection(db, 'events'));
-      if (snap.empty) {
-        for (const defEvt of DEFAULT_EVENTS) {
-          if (defEvt.id === evt.id) continue;
-          const { id: eid, ...edata } = defEvt;
-          await setDoc(doc(db, 'events', eid), { ...edata, updatedAt: serverTimestamp() });
-        }
-      }
 
       const { id, ...data } = evt;
       await setDoc(doc(db, 'events', id), {
@@ -1791,16 +1671,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         writeLocalCache('onelove_cache_events', next);
         return next;
       });
-      const snap = await getDocs(collection(db, 'events'));
-      if (snap.empty) {
-        for (const defEvt of DEFAULT_EVENTS) {
-          if (defEvt.id === id) continue;
-          const { id: eid, ...edata } = defEvt;
-          await setDoc(doc(db, 'events', eid), { ...edata, updatedAt: serverTimestamp() });
-        }
-      } else {
-        await deleteDoc(doc(db, 'events', id));
-      }
+      await deleteDoc(doc(db, 'events', id));
       await logAdminAction('DELETE_EVENT', 'events', id, `Deleted event ${id}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `events/${id}`);
@@ -1815,15 +1686,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         writeLocalCache('onelove_cache_siteContent', next);
         return next;
       });
-
-      const snap = await getDocs(collection(db, 'siteContent'));
-      if (snap.empty) {
-        for (const defSec of DEFAULT_SITE_CONTENT) {
-          if (defSec.id === section.id) continue;
-          const { id: sid, ...sdata } = defSec;
-          await setDoc(doc(db, 'siteContent', sid), { ...sdata, updatedAt: serverTimestamp() });
-        }
-      }
 
       const { id, ...data } = section;
       await setDoc(doc(db, 'siteContent', id), {
@@ -1871,6 +1733,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const CHUNK_LIMIT = 850_000;
       const firestoreHeroRefs: string[] = [];
       const optimisticHeroSections: SiteContentSection[] = [];
+      const firestoreSlideWrites: Array<{
+        docId: string;
+        payload: Omit<SiteContentSection, 'id'>;
+        cleanupPart2DocId?: string;
+      }> = [];
 
       for (let i = 0; i < rawHeroImages.length; i++) {
         const img = rawHeroImages[i];
@@ -1880,8 +1747,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const part1 = img.slice(0, CHUNK_LIMIT);
           const part2 = img.length > CHUNK_LIMIT ? img.slice(CHUNK_LIMIT, CHUNK_LIMIT * 2) : '';
 
-          const sec1: SiteContentSection = {
-            id: slideDocId,
+          const sec1Payload: Omit<SiteContentSection, 'id'> = {
             sectionKey: slideKey,
             kicker: `Hero Slide 0${i + 1}`,
             heading: `Homepage 4K Hero Slide 0${i + 1}`,
@@ -1891,18 +1757,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ctaLink: '/',
             imageUrl: part1,
           };
-          optimisticHeroSections.push(sec1);
-
-          await setDoc(doc(db, 'siteContent', slideDocId), {
-            ...sec1,
-            updatedAt: serverTimestamp(),
-          });
+          optimisticHeroSections.push({ id: slideDocId, ...sec1Payload });
 
           const slidePart2Key = `${slideKey}_p2`;
           const slidePart2DocId = `sec_${slidePart2Key}`;
+
           if (part2.length > 0) {
-            const sec2: SiteContentSection = {
-              id: slidePart2DocId,
+            const sec2Payload: Omit<SiteContentSection, 'id'> = {
               sectionKey: slidePart2Key,
               kicker: `Hero Slide 0${i + 1} Part 2`,
               heading: `Homepage 4K Hero Slide 0${i + 1} (Part 2)`,
@@ -1912,13 +1773,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ctaLink: '/',
               imageUrl: part2,
             };
-            optimisticHeroSections.push(sec2);
-            await setDoc(doc(db, 'siteContent', slidePart2DocId), {
-              ...sec2,
-              updatedAt: serverTimestamp(),
-            });
+            optimisticHeroSections.push({ id: slidePart2DocId, ...sec2Payload });
+            firestoreSlideWrites.push({ docId: slideDocId, payload: sec1Payload });
+            firestoreSlideWrites.push({ docId: slidePart2DocId, payload: sec2Payload });
           } else {
-            await deleteDoc(doc(db, 'siteContent', slidePart2DocId)).catch(() => {});
+            firestoreSlideWrites.push({
+              docId: slideDocId,
+              payload: sec1Payload,
+              cleanupPart2DocId: slidePart2DocId,
+            });
           }
 
           firestoreHeroRefs.push(`siteContent:${slideKey}`);
@@ -1936,6 +1799,16 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           writeLocalCache('onelove_cache_siteContent', next);
           return next;
         });
+      }
+
+      for (const writeOp of firestoreSlideWrites) {
+        await setDoc(doc(db, 'siteContent', writeOp.docId), {
+          ...writeOp.payload,
+          updatedAt: serverTimestamp(),
+        });
+        if (writeOp.cleanupPart2DocId) {
+          await deleteDoc(doc(db, 'siteContent', writeOp.cleanupPart2DocId)).catch(() => {});
+        }
       }
 
       await setDoc(doc(db, 'settings', id || 'main'), {
@@ -2176,18 +2049,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         writeLocalCache('onelove_cache_seoPages', next);
         return next;
       });
-
-      const snap = await getDocs(collection(db, 'seoPages'));
-      if (snap.empty) {
-        for (const defKey of Object.keys(DEFAULT_PAGE_SEO) as SeoPageKey[]) {
-          if (defKey === page.id) continue;
-          const { id: pid, ...pdata } = DEFAULT_PAGE_SEO[defKey];
-          await setDoc(doc(db, 'seoPages', pid), {
-            ...pdata,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
 
       const { id, ...data } = page;
       await setDoc(doc(db, 'seoPages', id), {
