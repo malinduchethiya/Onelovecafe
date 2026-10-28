@@ -1,7 +1,7 @@
 import { GlobalSeoConfig, PageSeoConfig, SeoKeywordCategory, SeoPageKey } from '../types/seo';
 
 export const DEFAULT_BRAND_FAVICON_PATH =
-  '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_eee5198f.png';
+  '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02_10c5e84e.jpg';
 
 export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   id: 'main',
