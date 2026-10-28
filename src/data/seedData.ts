@@ -34,7 +34,7 @@ export const DEFAULT_SETTINGS: CafeSettings = {
   heroSlideshowSpeedSeconds: 5,
   floorPlanImageUrl: '',
   googleMapsEmbedUrl:
-    'https://maps.google.com/maps?q=7.9541,80.7547+(OneLove+Caf%C3%A9+Sigiriya)&t=&z=15&ie=UTF8&iwloc=&output=embed',
+    'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3951.519119209636!2d80.75919917521524!3d7.945183805011316!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3afca1006494c8f3%3A0x3133ed7279811046!2sOne%20Love%20cafe%20sigiriya!5e0!3m2!1sen!2sid!4v1793156766855!5m2!1sen!2sid',
   mapTitle: 'Our Sanctuary Location',
   mapSubtitle:
     'Lion Rock Sanctuary Road, Kimbissa, Sigiriya, Central Province, Sri Lanka · 1.5 km west of Sigiriya Lion Rock Fortress',

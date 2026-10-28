@@ -21,6 +21,8 @@ import { EditorialVisual } from './components/EditorialVisual';
 import { LateriteStorySection } from './components/LateriteStorySection';
 import { ReservationEngine } from './components/ReservationEngine';
 import { SanctuaryMap } from './components/SanctuaryMap';
+import { GoogleMapsRatingCard } from './components/GoogleMapsRatingCard';
+import { OFFICIAL_ONELOVE_MAPS_PLACE_URL } from './lib/mapUtils';
 import { AdminDashboard, AdminTab } from './components/AdminDashboard';
 import { SeoHead } from './components/SeoHead';
 import { GalleryItem, MenuItem } from './types/cafe';
@@ -230,28 +232,17 @@ const OneLoveRouter: React.FC = () => {
     [siteContent]
   );
 
-  // Hero Background Slideshow list & timer
+  // Hero Background Slideshow list & timer (strictly mirrors Admin Panel settings.heroImages)
   const heroSlides = useMemo(() => {
-    const rawSlides =
-      Array.isArray(settings.heroImages) && settings.heroImages.length > 0
-        ? settings.heroImages
-        : [];
-    const combined =
-      heroContent?.imageUrl &&
-      !heroContent.imageUrl.startsWith('editorial:') &&
-      !rawSlides.includes(heroContent.imageUrl)
-        ? [heroContent.imageUrl, ...rawSlides]
-        : rawSlides.length > 0
-        ? rawSlides
-        : heroContent?.imageUrl
-        ? [heroContent.imageUrl]
-        : [];
-
-    const realUploadedSlides = combined.filter(
-      (img) => typeof img === 'string' && img.trim().length > 0 && !img.startsWith('editorial:')
-    );
-    return realUploadedSlides.length > 0 ? realUploadedSlides : combined;
-  }, [settings.heroImages, heroContent?.imageUrl]);
+    const rawSlides = Array.isArray(settings.heroImages)
+      ? settings.heroImages.filter((img) => typeof img === 'string' && img.trim().length > 0)
+      : [];
+    const realUploadedSlides = rawSlides.filter((img) => !img.startsWith('editorial:'));
+    if (realUploadedSlides.length > 0) {
+      return realUploadedSlides;
+    }
+    return rawSlides;
+  }, [settings.heroImages]);
 
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
 
@@ -431,25 +422,35 @@ const OneLoveRouter: React.FC = () => {
 
       const menuCards = gsap.utils.toArray<HTMLElement>('[data-gsap-menu-card]');
       if (menuCards.length > 0) {
-        ScrollTrigger.batch(menuCards, {
-          start: 'top 88%',
-          onEnter: (batch) => {
-            gsap.fromTo(
-              batch,
-              { y: 38, opacity: 0, scale: 0.97 },
-              {
-                y: 0,
-                opacity: 1,
-                scale: 1,
-                duration: 0.75,
-                stagger: 0.06,
-                ease: 'power3.out',
-                overwrite: true,
-              }
-            );
-          },
-          once: true,
-        });
+        const rowSize = 4;
+        for (let i = 0; i < menuCards.length; i += rowSize) {
+          const row = menuCards.slice(i, i + rowSize);
+          row.forEach((card) => {
+            card.style.transition = 'none';
+          });
+          gsap.fromTo(
+            row,
+            { y: 26, opacity: 0 },
+            {
+              y: 0,
+              opacity: 1,
+              duration: 0.65,
+              stagger: 0.06,
+              ease: 'power3.out',
+              onComplete: () => {
+                gsap.set(row, { clearProps: 'transform,opacity' });
+                row.forEach((card) => {
+                  card.style.transition = '';
+                });
+              },
+              scrollTrigger: {
+                trigger: row[0],
+                start: 'top 90%',
+                toggleActions: 'play none none none',
+              },
+            }
+          );
+        }
       }
 
       // 3. Reserve Your Sanctuary Table Section
@@ -496,18 +497,27 @@ const OneLoveRouter: React.FC = () => {
 
       const expCards = gsap.utils.toArray<HTMLElement>('[data-gsap-exp-card]');
       if (expCards.length > 0) {
+        expCards.forEach((card) => {
+          card.style.transition = 'none';
+        });
         gsap.fromTo(
           expCards,
-          { y: 44, opacity: 0 },
+          { y: 32, opacity: 0 },
           {
             y: 0,
             opacity: 1,
-            duration: 0.85,
-            stagger: 0.14,
+            duration: 0.75,
+            stagger: 0.12,
             ease: 'power3.out',
+            onComplete: () => {
+              gsap.set(expCards, { clearProps: 'transform,opacity' });
+              expCards.forEach((card) => {
+                card.style.transition = '';
+              });
+            },
             scrollTrigger: {
               trigger: expCards[0],
-              start: 'top 85%',
+              start: 'top 86%',
               toggleActions: 'play none none none',
             },
           }
@@ -517,18 +527,27 @@ const OneLoveRouter: React.FC = () => {
       // 5. Traveler & Partner Voices Section
       const voiceItems = gsap.utils.toArray<HTMLElement>('[data-gsap-voice]');
       if (voiceItems.length > 0) {
+        voiceItems.forEach((item) => {
+          item.style.transition = 'none';
+        });
         gsap.fromTo(
           voiceItems,
-          { y: 36, opacity: 0 },
+          { y: 28, opacity: 0 },
           {
             y: 0,
             opacity: 1,
-            duration: 0.85,
-            stagger: 0.15,
+            duration: 0.75,
+            stagger: 0.12,
             ease: 'power3.out',
+            onComplete: () => {
+              gsap.set(voiceItems, { clearProps: 'transform,opacity' });
+              voiceItems.forEach((item) => {
+                item.style.transition = '';
+              });
+            },
             scrollTrigger: {
               trigger: voiceItems[0],
-              start: 'top 85%',
+              start: 'top 86%',
               toggleActions: 'play none none none',
             },
           }
@@ -540,37 +559,40 @@ const OneLoveRouter: React.FC = () => {
       if (subpageHeaders.length > 0) {
         gsap.fromTo(
           subpageHeaders,
-          { y: 28, opacity: 0 },
+          { y: 24, opacity: 0 },
           {
             y: 0,
             opacity: 1,
-            duration: 0.8,
-            stagger: 0.1,
+            duration: 0.7,
+            stagger: 0.08,
             ease: 'power3.out',
+            clearProps: 'transform,opacity',
           }
         );
       }
 
       const subpageCards = gsap.utils.toArray<HTMLElement>('[data-gsap-subcard]');
       if (subpageCards.length > 0) {
-        ScrollTrigger.batch(subpageCards, {
-          start: 'top 90%',
-          onEnter: (batch) => {
-            gsap.fromTo(
-              batch,
-              { y: 30, opacity: 0 },
-              {
-                y: 0,
-                opacity: 1,
-                duration: 0.65,
-                stagger: 0.05,
-                ease: 'power2.out',
-                overwrite: true,
-              }
-            );
-          },
-          once: true,
+        subpageCards.forEach((card) => {
+          card.style.transition = 'none';
         });
+        gsap.fromTo(
+          subpageCards,
+          { y: 20, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.5,
+            stagger: 0.035,
+            ease: 'power2.out',
+            onComplete: () => {
+              gsap.set(subpageCards, { clearProps: 'transform,opacity' });
+              subpageCards.forEach((card) => {
+                card.style.transition = '';
+              });
+            },
+          }
+        );
       }
 
       // 7. Quiet Architectural Footer Reveal
@@ -596,7 +618,15 @@ const OneLoveRouter: React.FC = () => {
     }, rootEl);
 
     return () => ctx.revert();
-  }, [pathname, routeInfo.page, selectedCategory, selectedGalleryCat]);
+  }, [
+    pathname,
+    routeInfo.page,
+    selectedCategory,
+    selectedGalleryCat,
+    featuredDishes.length,
+    filteredMenuItems.length,
+    filteredGallery.length,
+  ]);
 
   // Protected Admin Route
   if (routeInfo.page === 'admin') {
@@ -905,13 +935,13 @@ const OneLoveRouter: React.FC = () => {
                     ? `rgba(231, 222, 211, ${Math.max(0.18, 1 - coffeeProgress * 0.75)})`
                     : '#E7DED3',
               }}
-              className="relative overflow-hidden w-full py-14 sm:py-24 lg:py-28 border-b transition-colors duration-500 ease-out"
+              className="relative overflow-hidden w-full py-14 sm:py-24 lg:py-28 border-b"
             >
               {/* Section-Scoped Stimulating Roasted Coffee Aura Overlay */}
               <div
                 aria-hidden="true"
                 style={{ opacity: coffeeProgress }}
-                className="pointer-events-none absolute inset-0 transition-opacity duration-700 ease-out bg-[radial-gradient(circle_at_20%_25%,rgba(217,114,54,0.24),transparent_55%),radial-gradient(circle_at_80%_75%,rgba(138,76,38,0.32),transparent_60%)]"
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_25%,rgba(217,114,54,0.24),transparent_55%),radial-gradient(circle_at_80%_75%,rgba(138,76,38,0.32),transparent_60%)]"
               />
 
               <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 space-y-8 sm:space-y-12">
@@ -921,7 +951,7 @@ const OneLoveRouter: React.FC = () => {
                       style={{
                         color: coffeeProgress > 0.35 ? '#F3A871' : '#C65B2B',
                       }}
-                      className="text-[11px] uppercase tracking-[0.2em] font-semibold transition-colors duration-500 ease-out"
+                      className="text-[11px] uppercase tracking-[0.2em] font-semibold transition-colors duration-300 ease-out"
                     >
                       Single-Estate Ceylon Roast &amp; Wood-Fired Kitchen
                     </div>
@@ -929,7 +959,7 @@ const OneLoveRouter: React.FC = () => {
                       style={{
                         color: coffeeProgress > 0.35 ? '#FCF6EE' : '#171513',
                       }}
-                      className="text-3xl sm:text-5xl font-editorial font-semibold transition-colors duration-500 ease-out"
+                      className="text-3xl sm:text-5xl font-editorial font-semibold transition-colors duration-300 ease-out"
                     >
                       Signature Plates &amp; Highland Pour-Overs
                     </h2>
@@ -1155,6 +1185,11 @@ const OneLoveRouter: React.FC = () => {
                     </span>
                   </footer>
                 </blockquote>
+              </div>
+
+              {/* Google Maps 5-Star Rating & Review Featuring Card at the lower part of What Travelers & Collaborators Say */}
+              <div className="pt-2 sm:pt-4">
+                <GoogleMapsRatingCard />
               </div>
             </section>
           </div>
@@ -1594,7 +1629,7 @@ const OneLoveRouter: React.FC = () => {
                         <MessageCircle className="w-3.5 h-3.5" /> Chat on WhatsApp
                       </a>
                       <a
-                        href="https://www.google.com/maps/search/?api=1&query=Sigiriya+Lion+Rock+Sri+Lanka"
+                        href={OFFICIAL_ONELOVE_MAPS_PLACE_URL}
                         target="_blank"
                         rel="noreferrer"
                         className="min-h-[40px] px-4 py-2 border border-[#171513] text-[#171513] uppercase tracking-wider font-medium inline-flex items-center gap-1.5"

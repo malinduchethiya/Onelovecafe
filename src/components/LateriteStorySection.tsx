@@ -80,33 +80,39 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
       // 3. 5 Archival Polaroid Frames — Fan-Out Deal Animation
       const frames = gsap.utils.toArray<HTMLElement>('[data-collage-frame]');
+      const restingRotations = [-6, 4, -0.5, -7, 7];
       frames.forEach((frame, idx) => {
-        const startX = idx === 0 ? -40 : idx === 1 ? 45 : idx === 2 ? 0 : idx === 3 ? -55 : 55;
-        const startY = idx === 2 ? 35 : idx < 2 ? -30 : 45;
-        const startRot = idx % 2 === 0 ? -14 : 14;
+        const startX = idx === 0 ? -36 : idx === 1 ? 40 : idx === 2 ? 0 : idx === 3 ? -44 : 44;
+        const startY = idx === 2 ? 28 : idx < 2 ? -24 : 36;
+        const endRot = restingRotations[idx] ?? 0;
+        const startRot = endRot + (idx % 2 === 0 ? -10 : 10);
 
+        frame.style.transition = 'none';
         gsap.fromTo(
           frame,
           {
             x: startX,
             y: startY,
             rotation: startRot,
-            scale: 0.86,
+            scale: 0.88,
             opacity: 0,
           },
           {
             x: 0,
             y: 0,
-            rotation: 0,
+            rotation: endRot,
             scale: 1,
             opacity: 1,
-            duration: 1.05,
-            delay: 0.08 + idx * 0.11,
-            ease: 'back.out(1.35)',
-            clearProps: 'transform',
+            duration: 0.95,
+            delay: 0.06 + idx * 0.09,
+            ease: 'power3.out',
+            onComplete: () => {
+              gsap.set(frame, { clearProps: 'transform,opacity' });
+              frame.style.transition = '';
+            },
             scrollTrigger: {
               trigger: sectionEl,
-              start: 'top 74%',
+              start: 'top 78%',
               toggleActions: 'play none none none',
             },
           }
@@ -296,7 +302,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                 data-collage-botanical="top-left"
                 viewBox="0 0 220 260"
                 aria-hidden="true"
-                className="pointer-events-none absolute -left-[2%] top-[2%] w-[26%] sm:w-[24%] z-0 drop-shadow-md transition-transform duration-700 ease-out origin-bottom-right group-hover/collage:-rotate-6 group-hover/collage:-translate-x-2 group-hover/collage:-translate-y-1.5"
+                className="pointer-events-none absolute -left-[2%] top-[2%] w-[26%] sm:w-[24%] z-0 drop-shadow-md origin-bottom-right"
               >
                 {/* Stem */}
                 <path
@@ -420,7 +426,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                 data-collage-botanical="bottom-right"
                 viewBox="0 0 280 260"
                 aria-hidden="true"
-                className="pointer-events-none absolute right-[1%] -bottom-[2%] w-[34%] sm:w-[32%] z-35 drop-shadow-[0_12px_20px_rgba(23,21,19,0.22)] transition-transform duration-700 ease-out origin-center group-hover/collage:scale-106 group-hover/collage:rotate-3 group-hover/collage:translate-x-1.5"
+                className="pointer-events-none absolute right-[1%] -bottom-[2%] w-[34%] sm:w-[32%] z-35 drop-shadow-[0_12px_20px_rgba(23,21,19,0.22)] origin-center"
               >
                 {/* Delicate Line-Art Botanical Sketch Behind Leaves */}
                 <g stroke="#9B8D78" strokeWidth="1" fill="none" opacity="0.55">

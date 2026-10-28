@@ -66,10 +66,12 @@ export const SanctuaryMap: React.FC<SanctuaryMapProps> = ({ settings, className 
         <iframe
           src={embedUrl}
           title={title}
-          className="w-full h-[320px] sm:h-[480px] lg:h-[540px] border-0 block"
+          width="600"
+          height="450"
+          className="w-full h-[340px] sm:h-[480px] lg:h-[540px] border-0 block"
           loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          allowFullScreen={false}
+          referrerPolicy="strict-origin-when-cross-origin"
+          allowFullScreen
         />
       </div>
     </section>

@@ -205,9 +205,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   // Hero Slideshow Helper Handlers
+  const rawAdminHeroImages = Array.isArray(settings.heroImages)
+    ? settings.heroImages.filter((img) => typeof img === 'string' && img.trim().length > 0)
+    : [];
+  const uploadedAdminHeroImages = rawAdminHeroImages.filter((img) => !img.startsWith('editorial:'));
   const currentHeroImages =
-    Array.isArray(settings.heroImages) && settings.heroImages.length > 0
-      ? settings.heroImages
+    uploadedAdminHeroImages.length > 0
+      ? uploadedAdminHeroImages
+      : rawAdminHeroImages.length > 0
+      ? rawAdminHeroImages
       : ['editorial:hero-sanctuary'];
   const currentSlideshowSpeed = settings.heroSlideshowSpeedSeconds || 5;
 

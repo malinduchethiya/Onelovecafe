@@ -243,9 +243,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authReady, setAuthReady] = useState(false);
   const [sessionId] = useState<string>(getOrCreateSessionId);
 
-  const [settings, setSettings] = useState<CafeSettings>(() =>
-    readLocalCache('onelove_cache_settings', INITIAL_SETTINGS)
-  );
+  const [settings, setSettings] = useState<CafeSettings>(() => {
+    const cached = readLocalCache('onelove_cache_settings', INITIAL_SETTINGS);
+    if (!cached.googleMapsEmbedUrl || cached.googleMapsEmbedUrl.includes('7.9541,80.7547')) {
+      return { ...cached, googleMapsEmbedUrl: DEFAULT_SETTINGS.googleMapsEmbedUrl };
+    }
+    return cached;
+  });
   const [zones, setZones] = useState<SeatingZone[]>(() =>
     readLocalCache('onelove_cache_zones', DEFAULT_ZONES)
   );
@@ -425,6 +429,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   : DEFAULT_SETTINGS.heroSlideshowSpeedSeconds,
               floorPlanImageUrl:
                 typeof data.floorPlanImageUrl === 'string' ? data.floorPlanImageUrl : '',
+              googleMapsEmbedUrl:
+                !data.googleMapsEmbedUrl || data.googleMapsEmbedUrl.includes('7.9541,80.7547')
+                  ? DEFAULT_SETTINGS.googleMapsEmbedUrl
+                  : data.googleMapsEmbedUrl,
             };
             setSettings(nextSettings);
             writeLocalCache('onelove_cache_settings', nextSettings);
