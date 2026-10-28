@@ -3,6 +3,9 @@ import { GlobalSeoConfig, PageSeoConfig, SeoKeywordCategory, SeoPageKey } from '
 export const DEFAULT_BRAND_FAVICON_PATH =
   '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02_10c5e84e.jpg';
 
+export const DEFAULT_BRAND_LOGO_PATH =
+  '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png';
+
 export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   id: 'main',
   siteName: 'OneLove Café',
@@ -23,8 +26,8 @@ export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   canonicalDomain: 'https://onelovecafesigiriya.com',
   language: 'en',
   googleVerificationTag: '',
-  defaultOgImageUrl: DEFAULT_BRAND_FAVICON_PATH,
-  brandLogoUrl: DEFAULT_BRAND_FAVICON_PATH,
+  defaultOgImageUrl: DEFAULT_BRAND_LOGO_PATH,
+  brandLogoUrl: DEFAULT_BRAND_LOGO_PATH,
   faviconSourceUrl: DEFAULT_BRAND_FAVICON_PATH,
   favicon48Url: '/favicon-48x48.png',
   favicon96Url: '/favicon-96x96.png',

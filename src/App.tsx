@@ -704,7 +704,7 @@ const OneLoveRouter: React.FC = () => {
           <img
             src={
               seoGlobal?.brandLogoUrl ||
-              '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02_10c5e84e.jpg'
+              '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png'
             }
             alt="OneLove Café Sigiriya"
             width="48"
@@ -2121,7 +2121,7 @@ const OneLoveRouter: React.FC = () => {
               <p className="leading-relaxed">{settings.tagline}</p>
               <div className="pt-2">
                 <img
-                  src="/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02_10c5e84e.jpg"
+                  src="/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png"
                   alt="OneLove Café Sigiriya Sri Lanka Emblem"
                   loading="lazy"
                   decoding="async"

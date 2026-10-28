@@ -149,6 +149,13 @@ interface CafeContextValue {
   uploadMediaFile: (file: File, folder?: string) => Promise<string>;
   updateCollageImageFromDevice: (slotIndex: number, file: File) => Promise<void>;
   resetCollageImage: (slotIndex: number) => Promise<void>;
+  storageStatus: {
+    configured: boolean;
+    provider: string;
+    bucket?: string | null;
+    publicUrl?: string | null;
+  } | null;
+  checkStorageStatus: () => Promise<void>;
 }
 
 const CafeContext = createContext<CafeContextValue | null>(null);
@@ -827,6 +834,35 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 300);
     return () => window.clearTimeout(timer);
   }, [seoGlobal, seoPages]);
+
+  // Cloudflare R2 Storage Status
+  const [storageStatus, setStorageStatus] = useState<{
+    configured: boolean;
+    provider: string;
+    bucket?: string | null;
+    publicUrl?: string | null;
+  } | null>(null);
+
+  const checkStorageStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/storage/status');
+      if (res.ok) {
+        const data = await res.json();
+        setStorageStatus({
+          configured: Boolean(data.configured),
+          provider: data.provider || 'inline',
+          bucket: data.bucket || null,
+          publicUrl: data.publicUrl || null,
+        });
+      }
+    } catch {
+      setStorageStatus({ configured: false, provider: 'inline' });
+    }
+  }, []);
+
+  useEffect(() => {
+    checkStorageStatus();
+  }, [checkStorageStatus]);
 
   // Seed initial sanctuary data into Firestore when an admin clicks Seed or first initializes
   const seedDatabaseIfNeeded = useCallback(async () => {
@@ -1893,14 +1929,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  // Convert uploaded device image (including 4K/8K photos) into compressed Base64 data URL for Firestore storage
+  // Upload image to Cloudflare R2 bucket with automatic fallback to local compressed Base64
   const uploadMediaFile = useCallback(async (file: File, folder = 'menu'): Promise<string> => {
     const isHeroSlideshow = folder === 'hero';
     const isLargeBackdrop = folder === 'floorplan' || folder === 'menu_gallery_bg';
     const maxWidth = isHeroSlideshow ? 2880 : isLargeBackdrop ? 2560 : 1920;
     const maxHeight = isHeroSlideshow ? 1620 : isLargeBackdrop ? 1440 : 1280;
     const quality = isHeroSlideshow ? 0.88 : isLargeBackdrop ? 0.86 : 0.85;
-    // Target ~400KB Base64 per 4K Hero slide so 2 slides fit directly inline in settings/main (and overflow slides use siteContent)
     const maxBase64Length = isHeroSlideshow ? 400_000 : 780_000;
 
     const base64DataUrl = await fileToCompressedBase64(
@@ -1910,11 +1945,41 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       quality,
       maxBase64Length
     );
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataUrl: base64DataUrl,
+          filename: file.name,
+          folder,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.url) {
+          await logAdminAction(
+            data.storage === 'r2' ? 'R2_OBJECT_UPLOAD' : 'ENCODE_BASE64_IMAGE',
+            folder,
+            file.name.slice(0, 60),
+            data.storage === 'r2'
+              ? `Uploaded image to Cloudflare R2 bucket (${data.url})`
+              : `Saved image payload for ${folder}`
+          );
+          return data.url;
+        }
+      }
+    } catch (uploadErr) {
+      console.warn('R2 upload endpoint error, falling back to local compressed dataUrl:', uploadErr);
+    }
+
     await logAdminAction(
       'ENCODE_BASE64_IMAGE',
       folder,
       file.name.slice(0, 60),
-      `Converted device image (${file.name}) to Base64 for Firestore storage`
+      `Stored device image (${file.name}) as Base64 payload`
     );
     return base64DataUrl;
   }, []);
@@ -2184,6 +2249,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         uploadMediaFile,
         updateCollageImageFromDevice,
         resetCollageImage,
+        storageStatus,
+        checkStorageStatus,
       }}
     >
       {children}

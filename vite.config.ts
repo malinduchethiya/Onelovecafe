@@ -17,7 +17,7 @@ export default defineConfig(() => {
         buildStart() {
           const defaultIconSource = path.resolve(
             __dirname,
-            'public/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_eee5198f.png'
+            'public/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02_10c5e84e.jpg'
           );
           if (fs.existsSync(defaultIconSource)) {
             const faviconTargets = [

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   LayoutDashboard,
   CalendarCheck,
@@ -22,6 +22,10 @@ import {
   RefreshCw,
   Sliders,
   Globe,
+  Cloud,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { useCafe } from '../context/CafeContext';
 import { InteractiveFloorPlan } from './InteractiveFloorPlan';
@@ -108,6 +112,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     uploadMediaFile,
     updateCollageImageFromDevice,
     resetCollageImage,
+    storageStatus,
+    checkStorageStatus,
   } = useCafe();
   const [uploadingCollageSlot, setUploadingCollageSlot] = useState<number | null>(null);
 
@@ -157,6 +163,154 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Content section drafts & Master Image Audit state
   const [contentDrafts, setContentDrafts] = useState<Record<string, SiteContentSection>>({});
+  const [migratingImages, setMigratingImages] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<string | null>(null);
+
+  // Count base64 images stored in Firestore eligible for R2 migration
+  const base64Count = useMemo(() => {
+    let count = 0;
+    menuItems.forEach((m) => {
+      if (m.imageUrl && m.imageUrl.startsWith('data:image/')) count++;
+    });
+    gallery.forEach((g) => {
+      if (g.imageUrl && g.imageUrl.startsWith('data:image/')) count++;
+    });
+    events.forEach((e) => {
+      if (e.imageUrl && e.imageUrl.startsWith('data:image/')) count++;
+    });
+    if (settings.floorPlanImageUrl && settings.floorPlanImageUrl.startsWith('data:image/')) count++;
+    (settings.heroImages || []).forEach((h) => {
+      if (typeof h === 'string' && h.startsWith('data:image/')) count++;
+    });
+    return count;
+  }, [menuItems, gallery, events, settings]);
+
+  const handleMigrateAllImages = async () => {
+    if (!storageStatus?.configured) {
+      showToast('Please verify Cloudflare R2 bucket credentials before migrating.');
+      return;
+    }
+    setMigratingImages(true);
+    setMigrationStatus('Initializing image migration to Cloudflare R2...');
+    let migrated = 0;
+    try {
+      // 1. Menu items
+      for (const item of menuItems) {
+        if (item.imageUrl && item.imageUrl.startsWith('data:image/')) {
+          setMigrationStatus(`Migrating menu photo for "${item.name}"...`);
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataUrl: item.imageUrl,
+              filename: `${item.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}.jpg`,
+              folder: 'menu',
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok && data.url) {
+              await saveMenuItem({ ...item, imageUrl: data.url });
+              migrated++;
+            }
+          }
+        }
+      }
+
+      // 2. Gallery items
+      for (const item of gallery) {
+        if (item.imageUrl && item.imageUrl.startsWith('data:image/')) {
+          setMigrationStatus(`Migrating gallery photo "${item.title}"...`);
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataUrl: item.imageUrl,
+              filename: `${item.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.jpg`,
+              folder: 'gallery',
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok && data.url) {
+              await saveGalleryItem({ ...item, imageUrl: data.url });
+              migrated++;
+            }
+          }
+        }
+      }
+
+      // 3. Events
+      for (const item of events) {
+        if (item.imageUrl && item.imageUrl.startsWith('data:image/')) {
+          setMigrationStatus(`Migrating event cover "${item.title}"...`);
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataUrl: item.imageUrl,
+              filename: `${item.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.jpg`,
+              folder: 'events',
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok && data.url) {
+              await saveEvent({ ...item, imageUrl: data.url });
+              migrated++;
+            }
+          }
+        }
+      }
+
+      // 4. Hero Slides
+      let heroChanged = false;
+      const nextHeroImages: string[] = [];
+      const currentHeroImages = settings.heroImages || [];
+      for (let i = 0; i < currentHeroImages.length; i++) {
+        const h = currentHeroImages[i];
+        if (typeof h === 'string' && h.startsWith('data:image/')) {
+          setMigrationStatus(`Migrating hero slide 0${i + 1}...`);
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              dataUrl: h,
+              filename: `hero-slide-${i + 1}.jpg`,
+              folder: 'hero',
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok && data.url) {
+              nextHeroImages.push(data.url);
+              migrated++;
+              heroChanged = true;
+            } else {
+              nextHeroImages.push(h);
+            }
+          } else {
+            nextHeroImages.push(h);
+          }
+        } else {
+          nextHeroImages.push(h);
+        }
+      }
+
+      if (heroChanged) {
+        await saveSettings({ ...settings, heroImages: nextHeroImages });
+      }
+
+      setMigrationStatus(null);
+      showToast(`Migration complete! Successfully moved ${migrated} images to cdn.onelovecafesigiriya.com.`);
+    } catch (err) {
+      console.error('Migration error:', err);
+      showToast('An error occurred during image migration.');
+      setMigrationStatus(null);
+    } finally {
+      setMigratingImages(false);
+    }
+  };
   const [uploadingSectionId, setUploadingSectionId] = useState<string | null>(null);
   const [uploadingAuditKey, setUploadingAuditKey] = useState<string | null>(null);
 
@@ -4198,6 +4352,175 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         directory `dist`, Fallback file `index.html`.
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Cloudflare R2 Object Storage Card */}
+                <div className="bg-white border border-[#E7DED3] p-6 space-y-4 text-xs lg:col-span-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7DED3] pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <Cloud className="w-5 h-5 text-[#C65B2B]" />
+                      <div>
+                        <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
+                          Zero-Egress Object Storage
+                        </div>
+                        <h2 className="text-xl font-editorial font-semibold mt-0.5">
+                          Cloudflare R2 Storage Bucket
+                        </h2>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold tracking-wider uppercase ${
+                          storageStatus?.configured
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        {storageStatus?.configured ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            Connected to R2
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                            Fallback Mode (R2 Ready)
+                          </>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await checkStorageStatus();
+                          showToast('Storage status refreshed.');
+                        }}
+                        className="px-2.5 py-1 text-[11px] border border-[#E7DED3] text-[#171513]/70 hover:bg-[#F8F4EE] flex items-center gap-1"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Check Status
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-[#F8F4EE] p-4 border border-[#E7DED3] space-y-1">
+                      <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-semibold">
+                        Storage Engine
+                      </div>
+                      <div className="text-sm font-semibold text-[#171513]">
+                        {storageStatus?.configured ? 'Cloudflare R2 Bucket' : 'Adaptive Local / Inline'}
+                      </div>
+                      <p className="text-[11px] text-[#171513]/70">
+                        {storageStatus?.configured
+                          ? 'Zero egress fees. CDN edge cached across Cloudflare.'
+                          : 'Stores images inline until R2 credentials are set.'}
+                      </p>
+                    </div>
+
+                    <div className="bg-[#F8F4EE] p-4 border border-[#E7DED3] space-y-1">
+                      <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-semibold">
+                        Target Bucket
+                      </div>
+                      <div className="text-sm font-semibold text-[#171513] font-mono truncate">
+                        {storageStatus?.bucket || 'onelove-assets'}
+                      </div>
+                      <p className="text-[11px] text-[#171513]/70">
+                        Configured via R2_BUCKET_NAME env variable or R2_BUCKET binding.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#F8F4EE] p-4 border border-[#E7DED3] space-y-1">
+                      <div className="text-[11px] uppercase tracking-wider text-[#171513]/60 font-semibold">
+                        Public CDN Endpoint
+                      </div>
+                      <div className="text-sm font-semibold text-[#171513] font-mono truncate">
+                        {storageStatus?.publicUrl || 'https://cdn.onelovecafesigiriya.com'}
+                      </div>
+                      <p className="text-[11px] text-[#171513]/70">
+                        Images are served at edge speeds with high cache longevity.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#F8F4EE] border border-[#E7DED3] p-4 space-y-3 text-[11px]">
+                    <div className="font-semibold text-[#171513]">
+                      How to link your Cloudflare R2 bucket:
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-[#171513]/80">
+                      <li>
+                        In Cloudflare Dashboard, open <strong>R2</strong> and click <strong>Create bucket</strong> (e.g. named <code className="bg-white px-1 py-0.5 border border-[#E7DED3]">onelove-assets</code>).
+                      </li>
+                      <li>
+                        Under bucket <strong>Settings</strong> &gt; <strong>Public Access</strong>, connect a domain (e.g. <code className="bg-white px-1 py-0.5 border border-[#E7DED3]">cdn.onelovecafesigiriya.com</code>) or allow the free <code className="bg-white px-1 py-0.5 border border-[#E7DED3]">r2.dev</code> URL.
+                      </li>
+                      <li>
+                        In Cloudflare Pages, open your project <strong>Settings</strong> &gt; <strong>Environment Variables</strong> and add either format:
+                        <div className="mt-1.5 grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] font-mono">
+                          <div className="bg-white p-2.5 border border-[#E7DED3] space-y-1">
+                            <div className="text-[9px] uppercase tracking-wider text-[#C65B2B] font-sans font-bold">Standard S3 API Credentials</div>
+                            <div>S3_ENDPOINT = https://&lt;account_id&gt;.r2.cloudflarestorage.com</div>
+                            <div>S3_ACCESS_KEY_ID = &lt;your_access_key&gt;</div>
+                            <div>S3_SECRET_ACCESS_KEY = &lt;your_secret_key&gt;</div>
+                            <div>S3_BUCKET_NAME = onelove-assets</div>
+                            <div>S3_PUBLIC_URL = https://cdn.onelovecafesigiriya.com</div>
+                          </div>
+                          <div className="bg-white p-2.5 border border-[#E7DED3] space-y-1">
+                            <div className="text-[9px] uppercase tracking-wider text-[#C65B2B] font-sans font-bold">Cloudflare R2 Format</div>
+                            <div>R2_ACCOUNT_ID = &lt;your_cloudflare_account_id&gt;</div>
+                            <div>R2_ACCESS_KEY_ID = &lt;your_r2_access_key&gt;</div>
+                            <div>R2_SECRET_ACCESS_KEY = &lt;your_r2_secret_key&gt;</div>
+                            <div>R2_BUCKET_NAME = onelove-assets</div>
+                            <div>R2_PUBLIC_URL = https://cdn.onelovecafesigiriya.com</div>
+                          </div>
+                        </div>
+                      </li>
+                    </ol>
+                  </div>
+
+                  {/* One-Click Image Migration to R2 */}
+                  <div className="bg-white border border-[#E7DED3] p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="text-xs font-semibold text-[#171513] flex items-center gap-1.5">
+                        <Database className="w-3.5 h-3.5 text-[#C65B2B]" />
+                        Firestore to Cloudflare R2 Image Migration
+                      </div>
+                      <p className="text-[11px] text-[#171513]/70">
+                        {base64Count > 0
+                          ? `Found ${base64Count} image(s) stored inline in Firestore. Migrate them to cdn.onelovecafesigiriya.com to drastically shrink document sizes and prevent quota limits.`
+                          : 'All media assets are served via CDN URLs or clean identifiers. Your Firestore documents are fully optimized.'}
+                      </p>
+                      {migrationStatus && (
+                        <div className="text-[11px] text-[#C65B2B] font-mono-tabular flex items-center gap-1.5">
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          {migrationStatus}
+                        </div>
+                      )}
+                    </div>
+                    {base64Count > 0 && (
+                      <button
+                        type="button"
+                        disabled={migratingImages || !storageStatus?.configured}
+                        onClick={handleMigrateAllImages}
+                        className={`px-4 py-2 text-xs uppercase tracking-wider font-semibold transition-colors shrink-0 flex items-center gap-1.5 ${
+                          storageStatus?.configured && !migratingImages
+                            ? 'bg-[#C65B2B] text-white hover:bg-[#A9491E]'
+                            : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {migratingImages ? (
+                          <>
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            Migrating ({base64Count})...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-3 h-3" />
+                            Migrate {base64Count} Image{base64Count > 1 ? 's' : ''} to R2
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

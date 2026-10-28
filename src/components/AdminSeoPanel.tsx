@@ -20,6 +20,7 @@ import {
 import { useCafe } from '../context/CafeContext';
 import {
   DEFAULT_BRAND_FAVICON_PATH,
+  DEFAULT_BRAND_LOGO_PATH,
   DEFAULT_GLOBAL_SEO,
   DEFAULT_PAGE_SEO,
   SEO_KEYWORD_LIBRARY,
@@ -1722,7 +1723,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
               </div>
               <div className="h-36 bg-[#171513] border border-[#E7DED3] flex items-center justify-center p-4">
                 <img
-                  src={globalForm.brandLogoUrl || DEFAULT_BRAND_FAVICON_PATH}
+                  src={globalForm.brandLogoUrl || DEFAULT_BRAND_LOGO_PATH}
                   alt="OneLove Café Brand Logo"
                   className="max-h-28 w-auto object-contain"
                 />

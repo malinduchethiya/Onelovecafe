@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import {
   DEFAULT_BRAND_FAVICON_PATH,
   DEFAULT_GLOBAL_SEO,
@@ -11,7 +12,31 @@ export interface WorkerEnv {
   ASSETS?: {
     fetch: (request: Request | string | URL) => Promise<Response>;
   };
+  R2_BUCKET?: {
+    put: (
+      key: string,
+      value: ArrayBuffer | ArrayBufferView | ReadableStream | string | Blob,
+      options?: {
+        httpMetadata?: {
+          contentType?: string;
+          cacheControl?: string;
+        };
+      }
+    ) => Promise<unknown>;
+  };
+  R2_PUBLIC_URL?: string;
   APP_URL?: string;
+  R2_ACCOUNT_ID?: string;
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  R2_BUCKET_NAME?: string;
+  S3_ENDPOINT?: string;
+  S3_ACCESS_KEY_ID?: string;
+  S3_SECRET_ACCESS_KEY?: string;
+  S3_BUCKET_NAME?: string;
+  S3_PUBLIC_URL?: string;
+  S3_REGION?: string;
 }
 
 interface SeoRuntimeState {
@@ -255,6 +280,153 @@ export default {
         service: 'onelove-cafe-sigiriya',
         timestamp: new Date().toISOString(),
       });
+    }
+
+    if (pathname === '/api/storage/status' && request.method === 'GET') {
+      const hasR2Binding = Boolean(env.R2_BUCKET);
+      const hasS3Creds = Boolean(
+        (env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID) &&
+          (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)
+      );
+      const isConfigured = hasR2Binding || hasS3Creds;
+      const publicUrl =
+        env.R2_PUBLIC_URL ||
+        env.S3_PUBLIC_URL ||
+        (isConfigured ? 'https://cdn.onelovecafesigiriya.com' : null);
+      const bucketName =
+        env.R2_BUCKET_NAME ||
+        env.S3_BUCKET_NAME ||
+        (hasR2Binding ? 'onelove-assets' : null);
+
+      return jsonResponse({
+        ok: true,
+        success: true,
+        configured: isConfigured,
+        provider: hasR2Binding
+          ? 'cloudflare-r2'
+          : hasS3Creds
+          ? 'cloudflare-r2-s3'
+          : 'inline',
+        bucket: bucketName,
+        publicUrl,
+      });
+    }
+
+    if (pathname === '/api/upload' && request.method === 'POST') {
+      if (!checkRateLimit(`upload_${clientIp}`, 30, 60_000)) {
+        return jsonResponse(
+          {
+            ok: false,
+            success: false,
+            error: 'Upload rate limit reached. Please wait a moment and try again.',
+          },
+          429
+        );
+      }
+
+      try {
+        const body = (await request.json()) as { dataUrl?: string; filename?: string; folder?: string };
+        const { dataUrl, filename, folder } = body || {};
+
+        if (!dataUrl || typeof dataUrl !== 'string') {
+          return jsonResponse({ ok: false, success: false, error: 'dataUrl is required.' }, 400);
+        }
+
+        const hasR2Binding = Boolean(env.R2_BUCKET);
+        const hasS3Creds = Boolean(
+          (env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID) &&
+            (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)
+        );
+
+        if (!hasR2Binding && !hasS3Creds) {
+          return jsonResponse({
+            ok: true,
+            success: true,
+            url: dataUrl,
+            storage: 'inline',
+            configured: false,
+            message: 'R2 storage credentials not configured; stored as inline payload.',
+          });
+        }
+
+        const matches = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+        if (!matches || !matches[2]) {
+          return jsonResponse({ ok: false, success: false, error: 'Invalid dataUrl.' }, 400);
+        }
+
+        const mimeType = matches[1];
+        const rawBase64 = matches[2];
+        const binaryString = atob(rawBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const ext = mimeType.replace('image/', '').replace('jpeg', 'jpg');
+        const safeFolder = (folder || 'media').replace(/[^a-zA-Z0-9_-]/g, '');
+        const rawName = (filename || 'image')
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[^a-zA-Z0-9_-]/g, '-')
+          .slice(0, 40);
+        const key = `${safeFolder}/${Date.now()}-${rawName}.${ext}`;
+
+        const publicBase = (
+          env.R2_PUBLIC_URL ||
+          env.S3_PUBLIC_URL ||
+          'https://cdn.onelovecafesigiriya.com'
+        ).replace(/\/$/, '');
+        const publicUrl = `${publicBase}/${key}`;
+
+        if (hasR2Binding && env.R2_BUCKET) {
+          await env.R2_BUCKET.put(key, bytes, {
+            httpMetadata: {
+              contentType: mimeType,
+              cacheControl: 'public, max-age=31536000, immutable',
+            },
+          });
+        } else if (hasS3Creds) {
+          const accountId = env.R2_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID;
+          const accessKeyId = (env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID)!;
+          const secretAccessKey = (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)!;
+          const bucket = env.R2_BUCKET_NAME || env.S3_BUCKET_NAME || 'onelove-assets';
+          let endpoint = env.S3_ENDPOINT;
+          if (!endpoint && accountId) {
+            endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+          }
+          const s3 = new S3Client({
+            region: env.S3_REGION || 'auto',
+            ...(endpoint ? { endpoint } : {}),
+            credentials: { accessKeyId, secretAccessKey },
+          });
+          await s3.send(
+            new PutObjectCommand({
+              Bucket: bucket,
+              Key: key,
+              Body: bytes,
+              ContentType: mimeType,
+              CacheControl: 'public, max-age=31536000, immutable',
+            })
+          );
+        }
+
+        return jsonResponse({
+          ok: true,
+          success: true,
+          url: publicUrl,
+          key,
+          storage: 'r2',
+          size: bytes.byteLength,
+        });
+      } catch (err) {
+        return jsonResponse(
+          {
+            ok: false,
+            success: false,
+            error: err instanceof Error ? err.message : 'R2 upload failed',
+          },
+          500
+        );
+      }
     }
 
     if (pathname === '/api/seo/config' && request.method === 'GET') {

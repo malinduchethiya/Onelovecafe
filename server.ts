@@ -4,6 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { z } from 'zod';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import {
   DEFAULT_BRAND_FAVICON_PATH,
   DEFAULT_GLOBAL_SEO,
@@ -357,11 +358,56 @@ const InquiryPayloadSchema = z.object({
   honeypot: z.string().max(0).optional(),
 });
 
+// Cloudflare R2 / S3-Compatible Object Storage Client
+function getR2Client(): { s3: S3Client; bucket: string; publicUrl: string } | null {
+  const accountId = process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+  const accessKeyId =
+    process.env.R2_ACCESS_KEY_ID ||
+    process.env.S3_ACCESS_KEY_ID ||
+    process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey =
+    process.env.R2_SECRET_ACCESS_KEY ||
+    process.env.S3_SECRET_ACCESS_KEY ||
+    process.env.AWS_SECRET_ACCESS_KEY;
+  const bucket =
+    process.env.R2_BUCKET_NAME ||
+    process.env.S3_BUCKET_NAME ||
+    process.env.AWS_S3_BUCKET ||
+    'onelove-assets';
+  const publicUrl =
+    process.env.R2_PUBLIC_URL ||
+    process.env.S3_PUBLIC_URL ||
+    process.env.AWS_S3_PUBLIC_URL ||
+    '';
+  const region = process.env.S3_REGION || process.env.AWS_REGION || 'auto';
+
+  // Endpoint can be directly passed (e.g., https://<account_id>.r2.cloudflarestorage.com) or inferred
+  let endpoint = process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT;
+  if (!endpoint && accountId) {
+    endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+  }
+
+  if (!accessKeyId || !secretAccessKey) {
+    return null;
+  }
+
+  const s3 = new S3Client({
+    region,
+    ...(endpoint ? { endpoint } : {}),
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
+
+  return { s3, bucket, publicUrl };
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '20mb' }));
 
   // Security headers & canonical 301 redirect from www to non-www production domain
   app.use((req, res, next) => {
@@ -443,6 +489,110 @@ async function startServer() {
       service: 'onelove-cafe-sigiriya',
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // Cloudflare R2 Storage Status Endpoint
+  app.get('/api/storage/status', (_req, res) => {
+    const r2 = getR2Client();
+    res.status(200).json({
+      ok: true,
+      success: true,
+      configured: Boolean(r2),
+      provider: r2 ? 'cloudflare-r2' : 'inline',
+      bucket: r2?.bucket || null,
+      publicUrl: r2?.publicUrl || null,
+    });
+  });
+
+  // Cloudflare R2 Secure Upload Endpoint
+  app.post('/api/upload', async (req, res) => {
+    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit(`upload_${clientIp}`, 30, 60_000)) {
+      res.status(429).json({
+        ok: false,
+        success: false,
+        error: 'Upload rate limit reached. Please wait a moment and try again.',
+      });
+      return;
+    }
+
+    try {
+      const { dataUrl, filename, folder } = req.body || {};
+      if (!dataUrl || typeof dataUrl !== 'string') {
+        res.status(400).json({
+          ok: false,
+          success: false,
+          error: 'dataUrl is required for image upload.',
+        });
+        return;
+      }
+
+      const r2 = getR2Client();
+      if (!r2) {
+        // Fallback: If R2 is not configured in environment, return the compressed dataUrl
+        res.status(200).json({
+          ok: true,
+          success: true,
+          url: dataUrl,
+          storage: 'inline',
+          configured: false,
+          message: 'Cloudflare R2 credentials not configured; stored as inline payload.',
+        });
+        return;
+      }
+
+      // Parse base64 dataUrl
+      const matches = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+      if (!matches || !matches[2]) {
+        res.status(400).json({
+          ok: false,
+          success: false,
+          error: 'Invalid image dataUrl format.',
+        });
+        return;
+      }
+
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+
+      // Sanitize extension and folder
+      const ext = mimeType.replace('image/', '').replace('jpeg', 'jpg');
+      const safeFolder = (folder || 'media').replace(/[^a-zA-Z0-9_-]/g, '');
+      const rawName = (filename || 'image')
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '-')
+        .slice(0, 40);
+      const key = `${safeFolder}/${Date.now()}-${rawName}.${ext}`;
+
+      await r2.s3.send(
+        new PutObjectCommand({
+          Bucket: r2.bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: mimeType,
+          CacheControl: 'public, max-age=31536000, immutable',
+        })
+      );
+
+      const publicBase = r2.publicUrl.replace(/\/$/, '');
+      const publicUrl = publicBase ? `${publicBase}/${key}` : `/${key}`;
+
+      res.status(200).json({
+        ok: true,
+        success: true,
+        url: publicUrl,
+        key,
+        storage: 'r2',
+        size: buffer.length,
+      });
+    } catch (err) {
+      console.error('Cloudflare R2 upload error:', err);
+      res.status(500).json({
+        ok: false,
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to upload image to Cloudflare R2.',
+      });
+    }
   });
 
   // Server-side Reservation Pre-Commit Validation & Rate Limiting
