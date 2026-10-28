@@ -258,7 +258,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ...settings,
         heroImages: nextHeroImages,
       });
-      showToast(`Replaced Slide #${index + 1} with new Base64 image in Firestore.`);
+      showToast(`Replaced Slide #${index + 1} with 4K UHD image in Firestore.`);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Failed to replace hero slideshow image.'
+      );
     } finally {
       setUploadingHeroSlides(false);
     }
@@ -289,14 +293,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#E7DED3] pb-4">
         <div>
           <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-            Homepage Hero Background Slideshow · Base64 Firestore Storage
+            Homepage Hero Background Slideshow · 4K UHD Multi-Chunk Firestore Storage
           </div>
           <h2 className="text-xl font-editorial font-semibold mt-0.5">
-            Hero Background Slideshow &amp; Transition Speed
+            Hero Background Slideshow &amp; Transition Speed (Supports 4K / High-Res Photos)
           </h2>
           <p className="text-xs text-[#171513]/65 mt-0.5">
-            Upload multiple photographs from your device to cycle in the homepage hero background,
-            replace or remove individual slides, and adjust the transition speed.
+            Upload high-resolution 4K (3840×2160) photographs of any file size from your device to
+            cycle in the homepage hero background, replace or remove individual slides, and adjust
+            the transition speed.
           </p>
         </div>
 
@@ -304,8 +309,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <Upload className="w-3.5 h-3.5" />
           <span>
             {uploadingHeroSlides
-              ? 'Encoding & Saving to Firestore...'
-              : '+ Upload Slideshow Images from Device'}
+              ? 'Processing 4K Image & Saving to Firestore...'
+              : '+ Upload 4K Slideshow Images from Device'}
           </span>
           <input
             type="file"
@@ -406,7 +411,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!file) return;
     setUploadingMenuGalleryBg(true);
     try {
-      const b64 = await uploadMediaFile(file, 'hero');
+      const b64 = await uploadMediaFile(file, 'menu_gallery_bg');
       const payload: SiteContentSection = {
         id: menuGalleryBgSection?.id || 'sec_menu_gallery_bg',
         sectionKey: 'menu_gallery_bg',
@@ -2975,7 +2980,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h2 className="text-xl font-editorial font-semibold">
                   Editorial Section Copy, Footer Copy &amp; Section Photography
                 </h2>
-                {siteContent.map((sec) => {
+                {siteContent
+                  .filter(
+                    (sec) =>
+                      !sec.sectionKey.startsWith('hero_slide_') &&
+                      sec.sectionKey !== 'menu_gallery_bg'
+                  )
+                  .map((sec) => {
                   const draft = contentDrafts[sec.id] || sec;
                   const isFooterSec = sec.sectionKey === 'footer';
                   const isHeroSec = sec.sectionKey === 'hero';

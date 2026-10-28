@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   User,
   onAuthStateChanged,
@@ -1853,7 +1853,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSettings(newSettings);
       writeLocalCache('onelove_cache_settings', newSettings);
       const { id, ...data } = newSettings;
-      const cleanedHeroImages = Array.isArray(data.heroImages)
+      const rawHeroImages = Array.isArray(data.heroImages)
         ? data.heroImages.filter((img) => typeof img === 'string' && img.length > 0).slice(0, 12)
         : DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'];
       const speedSec = Math.min(
@@ -1865,6 +1865,78 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data.menuCurrencyDisplay && ['both', 'lkr', 'usd'].includes(data.menuCurrencyDisplay)
           ? data.menuCurrencyDisplay
           : 'both';
+
+      // Offload Base64 4K Hero Slides into dedicated siteContent documents (up to 2 chunks of 850KB = 1.7MB per 4K slide)
+      // so that settings/main never exceeds Firestore's 1MB single-document limit.
+      const CHUNK_LIMIT = 850_000;
+      const firestoreHeroRefs: string[] = [];
+      const optimisticHeroSections: SiteContentSection[] = [];
+
+      for (let i = 0; i < rawHeroImages.length; i++) {
+        const img = rawHeroImages[i];
+        if (img.startsWith('data:image')) {
+          const slideKey = `hero_slide_${i}`;
+          const slideDocId = `sec_${slideKey}`;
+          const part1 = img.slice(0, CHUNK_LIMIT);
+          const part2 = img.length > CHUNK_LIMIT ? img.slice(CHUNK_LIMIT, CHUNK_LIMIT * 2) : '';
+
+          const sec1: SiteContentSection = {
+            id: slideDocId,
+            sectionKey: slideKey,
+            kicker: `Hero Slide 0${i + 1}`,
+            heading: `Homepage 4K Hero Slide 0${i + 1}`,
+            subheading: '4K UHD Hero Background Image',
+            body: `Dedicated Firestore storage for 4K Hero slide #${i + 1}.`,
+            ctaLabel: 'Explore',
+            ctaLink: '/',
+            imageUrl: part1,
+          };
+          optimisticHeroSections.push(sec1);
+
+          await setDoc(doc(db, 'siteContent', slideDocId), {
+            ...sec1,
+            updatedAt: serverTimestamp(),
+          });
+
+          const slidePart2Key = `${slideKey}_p2`;
+          const slidePart2DocId = `sec_${slidePart2Key}`;
+          if (part2.length > 0) {
+            const sec2: SiteContentSection = {
+              id: slidePart2DocId,
+              sectionKey: slidePart2Key,
+              kicker: `Hero Slide 0${i + 1} Part 2`,
+              heading: `Homepage 4K Hero Slide 0${i + 1} (Part 2)`,
+              subheading: '4K UHD Hero Background Continuation',
+              body: `Continuation chunk for 4K Hero slide #${i + 1}.`,
+              ctaLabel: 'Explore',
+              ctaLink: '/',
+              imageUrl: part2,
+            };
+            optimisticHeroSections.push(sec2);
+            await setDoc(doc(db, 'siteContent', slidePart2DocId), {
+              ...sec2,
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            await deleteDoc(doc(db, 'siteContent', slidePart2DocId)).catch(() => {});
+          }
+
+          firestoreHeroRefs.push(`siteContent:${slideKey}`);
+        } else {
+          firestoreHeroRefs.push(img);
+        }
+      }
+
+      if (optimisticHeroSections.length > 0) {
+        setSiteContent((prev) => {
+          const map = new Map<string, SiteContentSection>();
+          prev.forEach((s) => map.set(s.sectionKey, s));
+          optimisticHeroSections.forEach((s) => map.set(s.sectionKey, s));
+          const next = Array.from(map.values());
+          writeLocalCache('onelove_cache_siteContent', next);
+          return next;
+        });
+      }
 
       await setDoc(doc(db, 'settings', id || 'main'), {
         cafeName: (data.cafeName || 'OneLove Café').slice(0, 80),
@@ -1880,16 +1952,16 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         maxPartySize: Math.min(30, Math.max(2, Math.round(Number(data.maxPartySize) || 12))),
         sameDayCutoffHour: Math.min(23, Math.max(0, Math.round(Number(data.sameDayCutoffHour) || 21))),
         bookingPolicy: (data.bookingPolicy || '').slice(0, 600),
-        heroImages: cleanedHeroImages,
+        heroImages: firestoreHeroRefs,
         heroSlideshowSpeedSeconds: speedSec,
-        floorPlanImageUrl: (data.floorPlanImageUrl || '').slice(0, 900000),
+        floorPlanImageUrl: (data.floorPlanImageUrl || '').slice(0, 850000),
         googleMapsEmbedUrl: (data.googleMapsEmbedUrl || '').slice(0, 2000),
         mapTitle: (data.mapTitle || 'Our Sanctuary Location').slice(0, 120),
         mapSubtitle: (data.mapSubtitle || '').slice(0, 250),
         menuCurrencyDisplay: validMenuCurrency,
         updatedAt: serverTimestamp(),
       });
-      await logAdminAction('SAVE_SETTINGS', 'settings', id || 'main', 'Updated global café settings & media');
+      await logAdminAction('SAVE_SETTINGS', 'settings', id || 'main', 'Updated global café settings & 4K hero media');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `settings/${newSettings.id}`);
     }
@@ -1928,15 +2000,23 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  // Convert uploaded device image directly into compressed Base64 data URL for Firestore storage
+  // Convert uploaded device image (including 4K/8K photos) into compressed Base64 data URL for Firestore storage
   const uploadMediaFile = useCallback(async (file: File, folder = 'menu'): Promise<string> => {
     const isHeroSlideshow = folder === 'hero';
-    const isFloorPlan = folder === 'floorplan';
-    const maxWidth = isHeroSlideshow ? 2048 : isFloorPlan ? 1600 : 1200;
-    const maxHeight = isHeroSlideshow ? 1365 : isFloorPlan ? 1100 : 900;
-    const quality = isHeroSlideshow ? 0.88 : 0.84;
+    const isLargeBackdrop = folder === 'floorplan' || folder === 'menu_gallery_bg';
+    const maxWidth = isHeroSlideshow ? 3840 : isLargeBackdrop ? 2560 : 1920;
+    const maxHeight = isHeroSlideshow ? 2160 : isLargeBackdrop ? 1440 : 1280;
+    const quality = isHeroSlideshow ? 0.90 : isLargeBackdrop ? 0.88 : 0.86;
+    // Hero slides support up to 1.68MB Base64 (split across two 850KB Firestore documents); single-doc images cap at 820KB
+    const maxBase64Length = isHeroSlideshow ? 1_680_000 : 820_000;
 
-    const base64DataUrl = await fileToCompressedBase64(file, maxWidth, maxHeight, quality);
+    const base64DataUrl = await fileToCompressedBase64(
+      file,
+      maxWidth,
+      maxHeight,
+      quality,
+      maxBase64Length
+    );
     await logAdminAction(
       'ENCODE_BASE64_IMAGE',
       folder,
@@ -2143,6 +2223,31 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [saveSeoGlobal, saveSeoPage]);
 
+  // Resolve any offloaded 4K Hero Slides stored in siteContent documents (`siteContent:hero_slide_X`)
+  const resolvedSettings = useMemo<CafeSettings>(() => {
+    const rawList = Array.isArray(settings.heroImages) ? settings.heroImages : [];
+    const resolvedHeroImages = rawList
+      .map((entry) => {
+        if (typeof entry !== 'string') return '';
+        if (entry.startsWith('siteContent:hero_slide_')) {
+          const slideKey = entry.replace('siteContent:', '');
+          const p1 = siteContent.find((s) => s.sectionKey === slideKey)?.imageUrl || '';
+          const p2 = siteContent.find((s) => s.sectionKey === `${slideKey}_p2`)?.imageUrl || '';
+          return p1 ? p1 + p2 : '';
+        }
+        return entry;
+      })
+      .filter((img) => img.length > 0);
+
+    return {
+      ...settings,
+      heroImages:
+        resolvedHeroImages.length > 0
+          ? resolvedHeroImages
+          : DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
+    };
+  }, [settings, siteContent]);
+
   return (
     <CafeContext.Provider
       value={{
@@ -2150,7 +2255,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         authReady,
         sessionId,
-        settings,
+        settings: resolvedSettings,
         zones,
         tables,
         openingHours,
