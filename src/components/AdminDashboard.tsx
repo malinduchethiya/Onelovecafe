@@ -153,6 +153,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Hero Slideshow upload state
   const [uploadingHeroSlides, setUploadingHeroSlides] = useState(false);
+  const [uploadingMenuGalleryBg, setUploadingMenuGalleryBg] = useState(false);
 
   // Content section drafts & Master Image Audit state
   const [contentDrafts, setContentDrafts] = useState<Record<string, SiteContentSection>>({});
@@ -394,6 +395,130 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+
+  const menuGalleryBgSection = siteContent.find((s) => s.sectionKey === 'menu_gallery_bg');
+  const currentMenuGalleryBgUrl = menuGalleryBgSection?.imageUrl?.trim() || '';
+
+  const handleUploadMenuGalleryBg = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingMenuGalleryBg(true);
+    try {
+      const b64 = await uploadMediaFile(file, 'hero');
+      const payload: SiteContentSection = {
+        id: menuGalleryBgSection?.id || 'sec_menu_gallery_bg',
+        sectionKey: 'menu_gallery_bg',
+        kicker: 'Menu Gallery Background',
+        heading: 'Signature Plates & Highland Pour-Overs Background',
+        subheading: '20% Blurred Atmospheric Background Image',
+        body: 'Custom background image for the Menu Gallery section.',
+        ctaLabel: 'View Menu',
+        ctaLink: '/menu',
+        imageUrl: b64,
+      };
+      await saveSiteContent(payload);
+      showToast('Uploaded Menu Gallery background image (20% blurred) to Firestore!');
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Failed to upload Menu Gallery background image.'
+      );
+    } finally {
+      setUploadingMenuGalleryBg(false);
+    }
+  };
+
+  const handleRemoveMenuGalleryBg = async () => {
+    const payload: SiteContentSection = {
+      id: menuGalleryBgSection?.id || 'sec_menu_gallery_bg',
+      sectionKey: 'menu_gallery_bg',
+      kicker: 'Menu Gallery Background',
+      heading: 'Signature Plates & Highland Pour-Overs Background',
+      subheading: '20% Blurred Atmospheric Background Image',
+      body: 'Custom background image for the Menu Gallery section.',
+      ctaLabel: 'View Menu',
+      ctaLink: '/menu',
+      imageUrl: '',
+    };
+    await saveSiteContent(payload);
+    showToast('Removed custom Menu Gallery background image; reverted to default roast backdrop.');
+  };
+
+  const renderMenuGalleryBgManager = () => (
+    <div className="bg-white border border-[#E7DED3] p-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          {currentMenuGalleryBgUrl ? (
+            <div className="relative w-28 h-18 border border-[#E7DED3] overflow-hidden shrink-0 bg-[#171513]">
+              <div
+                className="w-full h-full"
+                style={{ filter: 'blur(4px)', transform: 'scale(1.06)' }}
+              >
+                <EditorialVisual
+                  src={currentMenuGalleryBgUrl}
+                  alt="Menu Gallery 20% blurred background preview"
+                />
+              </div>
+              <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
+                <span className="text-[9px] font-mono-tabular uppercase tracking-wider text-white bg-black/60 px-1.5 py-0.5">
+                  20% Blur
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="w-28 h-18 bg-[#2E1A10] border border-[#E7DED3] flex items-center justify-center text-[10px] font-mono-tabular text-[#FCF9F4]/80 shrink-0 text-center px-2">
+              Default Roast Backdrop
+            </div>
+          )}
+
+          <div className="space-y-1 max-w-xl">
+            <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
+              Menu Gallery Section Background · 20% Blurred Image
+            </div>
+            <h2 className="text-xl font-editorial font-semibold text-[#171513]">
+              {currentMenuGalleryBgUrl
+                ? 'Custom 20% Blurred Menu Gallery Background Active'
+                : 'Add Background Image to Menu Gallery (20% Blurred)'}
+            </h2>
+            <p className="text-xs text-[#171513]/65">
+              Upload a photograph from your device for the “Signature Plates &amp; Highland Pour-Overs”
+              Menu Gallery background. It renders automatically with a soft 20% blur behind your menu cards.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <label className="px-4 py-2.5 bg-[#C65B2B] text-white text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-[#B04E22] inline-flex items-center gap-2">
+            <Upload className="w-3.5 h-3.5" />
+            <span>
+              {uploadingMenuGalleryBg
+                ? 'Encoding & Saving...'
+                : currentMenuGalleryBgUrl
+                ? 'Replace Background Image'
+                : 'Upload Background Image'}
+            </span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                handleUploadMenuGalleryBg(e.target.files?.[0]);
+                e.target.value = '';
+              }}
+            />
+          </label>
+
+          {currentMenuGalleryBgUrl && (
+            <button
+              type="button"
+              onClick={handleRemoveMenuGalleryBg}
+              className="px-3.5 py-2.5 border border-[#E7DED3] bg-[#F8F4EE] text-[#9E3F16] text-xs font-medium hover:bg-[#FDF3EF] inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Remove Background
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1428,6 +1553,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 5: MENU & CATEGORY MANAGER */}
           {activeTab === 'menu' && (
             <div className="space-y-8">
+              {/* Menu Gallery Section Background Image (20% Blurred) Manager */}
+              {renderMenuGalleryBgManager()}
+
               {/* Menu Price Currency Display Control (Global + Per-Item Sync) */}
               <div className="bg-white border border-[#E7DED3] p-6 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -2716,6 +2844,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="space-y-8">
               {/* Hero Background Slideshow Manager */}
               {renderHeroSlideshowManager()}
+
+              {/* Menu Gallery Section Background Image (20% Blurred) Manager */}
+              {renderMenuGalleryBgManager()}
 
               {/* Laterite Earth, Teak & Monsoon Light — 5-Photo Collage Manager */}
               <div className="bg-white border border-[#E7DED3] p-6 space-y-5">

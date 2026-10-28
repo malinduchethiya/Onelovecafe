@@ -231,6 +231,14 @@ const OneLoveRouter: React.FC = () => {
     () => siteContent.find((s) => s.sectionKey === 'footer'),
     [siteContent]
   );
+  const menuGalleryBgContent = useMemo(
+    () => siteContent.find((s) => s.sectionKey === 'menu_gallery_bg'),
+    [siteContent]
+  );
+  const menuGalleryBgUrl = useMemo(() => {
+    const raw = menuGalleryBgContent?.imageUrl?.trim() || '';
+    return raw.length > 0 ? raw : '';
+  }, [menuGalleryBgContent]);
 
   // Hero Background Slideshow list & timer (strictly mirrors Admin Panel settings.heroImages)
   const heroSlides = useMemo(() => {
@@ -1103,23 +1111,47 @@ const OneLoveRouter: React.FC = () => {
             {/* 2. Crafted from Laterite Earth, Teak & Monsoon Light — 5-Photo Hover-Animated Collage */}
             <LateriteStorySection onReadMonograph={() => navigate('/story')} />
 
-            {/* 3. Featured Culinary & Roastery Selections (Selected Section: Scroll-Driven Roasted Coffee Background) */}
+            {/* 3. Featured Culinary & Roastery Selections (Menu Gallery Section: Custom 20% Blurred Image or Scroll-Driven Roasted Coffee Background) */}
             <section
               ref={homeMenuGalleryRef}
               style={{
-                backgroundColor: dynamicCoffeeBg,
+                backgroundColor: menuGalleryBgUrl ? '#1E1611' : dynamicCoffeeBg,
                 borderColor:
-                  coffeeProgress > 0.35
+                  menuGalleryBgUrl || coffeeProgress > 0.35
                     ? `rgba(231, 222, 211, ${Math.max(0.18, 1 - coffeeProgress * 0.75)})`
                     : '#E7DED3',
               }}
               className="relative overflow-hidden w-full py-14 sm:py-24 lg:py-28 border-b"
             >
+              {/* Admin-Uploaded Menu Gallery Background Image with 20% Blur */}
+              {menuGalleryBgUrl && (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+                >
+                  <div
+                    className="w-full h-full"
+                    style={{
+                      filter: 'blur(4px)',
+                      transform: 'scale(1.04)',
+                    }}
+                  >
+                    <EditorialVisual
+                      src={menuGalleryBgUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  {/* Subtle Atmospheric Scrim for Crisp Typography & Card Contrast */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-[#140E0A]/50 via-[#140E0A]/35 to-[#140E0A]/55" />
+                </div>
+              )}
+
               {/* Section-Scoped Stimulating Roasted Coffee Aura Overlay */}
               <div
                 aria-hidden="true"
-                style={{ opacity: coffeeProgress }}
-                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_25%,rgba(217,114,54,0.24),transparent_55%),radial-gradient(circle_at_80%_75%,rgba(138,76,38,0.32),transparent_60%)]"
+                style={{ opacity: menuGalleryBgUrl ? 0.35 : coffeeProgress }}
+                className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_25%,rgba(217,114,54,0.24),transparent_55%),radial-gradient(circle_at_80%_75%,rgba(138,76,38,0.32),transparent_60%)]"
               />
 
               <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 space-y-8 sm:space-y-12">
@@ -1127,7 +1159,8 @@ const OneLoveRouter: React.FC = () => {
                   <div data-gsap-menu-header className="space-y-2 max-w-2xl">
                     <div
                       style={{
-                        color: coffeeProgress > 0.35 ? '#F3A871' : '#C65B2B',
+                        color:
+                          menuGalleryBgUrl || coffeeProgress > 0.35 ? '#F3A871' : '#C65B2B',
                       }}
                       className="text-[11px] uppercase tracking-[0.2em] font-semibold transition-colors duration-300 ease-out"
                     >
@@ -1135,7 +1168,8 @@ const OneLoveRouter: React.FC = () => {
                     </div>
                     <h2
                       style={{
-                        color: coffeeProgress > 0.35 ? '#FCF6EE' : '#171513',
+                        color:
+                          menuGalleryBgUrl || coffeeProgress > 0.35 ? '#FCF6EE' : '#171513',
                       }}
                       className="text-3xl sm:text-5xl font-editorial font-semibold transition-colors duration-300 ease-out"
                     >
@@ -1150,7 +1184,7 @@ const OneLoveRouter: React.FC = () => {
                       navigate('/menu');
                     }}
                     className={`w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all duration-500 whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center ${
-                      coffeeProgress > 0.35
+                      menuGalleryBgUrl || coffeeProgress > 0.35
                         ? 'bg-[#D9622B] text-[#FFFDF9] hover:bg-[#BF5220] shadow-[0_8px_24px_rgba(0,0,0,0.35)]'
                         : 'bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B]'
                     }`}
