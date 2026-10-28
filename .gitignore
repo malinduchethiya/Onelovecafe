@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+.seo-runtime-cache.json
+.aistudio/
+
