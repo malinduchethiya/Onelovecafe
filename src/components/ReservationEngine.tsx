@@ -122,6 +122,7 @@ export const ReservationEngine: React.FC<{
 
   const [step, setStep] = useState<number>(1);
   const [selectedDate, setSelectedDate] = useState<string>(() => getNextDateIso(1));
+  const [selectedQuickLabel, setSelectedQuickLabel] = useState<string | null>('Tomorrow');
   const [selectedTime, setSelectedTime] = useState<string>('18:30');
   const [selectedPeriodTitle, setSelectedPeriodTitle] = useState<string>('Golden Hour & Live Hearth');
   const [partySize, setPartySize] = useState<number>(2);
@@ -533,20 +534,26 @@ export const ReservationEngine: React.FC<{
                   { label: 'This Friday', date: getUpcomingDayOfWeekIso(5) },
                   { label: 'This Saturday', date: getUpcomingDayOfWeekIso(6) },
                   { label: 'This Sunday', date: getUpcomingDayOfWeekIso(0) },
-                ].map((q) => (
-                  <button
-                    key={q.label}
-                    type="button"
-                    onClick={() => setSelectedDate(q.date)}
-                    className={`px-3.5 py-2 text-xs font-medium border transition-colors whitespace-nowrap shrink-0 min-h-[40px] ${
-                      selectedDate === q.date
-                        ? 'bg-[#171513] text-[#F8F4EE] border-[#171513]'
-                        : 'bg-[#F8F4EE] text-[#171513] border-[#E7DED3] hover:border-[#171513]'
-                    }`}
-                  >
-                    {q.label} ({q.date.slice(5)})
-                  </button>
-                ))}
+                ].map((q) => {
+                  const isSelected = selectedQuickLabel === q.label && selectedDate === q.date;
+                  return (
+                    <button
+                      key={q.label}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDate(q.date);
+                        setSelectedQuickLabel(q.label);
+                      }}
+                      className={`px-3.5 py-2 text-xs font-medium border transition-colors whitespace-nowrap shrink-0 min-h-[40px] cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#171513] text-[#F8F4EE] border-[#171513]'
+                          : 'bg-[#F8F4EE] text-[#171513] border-[#E7DED3] hover:border-[#171513]'
+                      }`}
+                    >
+                      {q.label} ({q.date.slice(5)})
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -563,7 +570,19 @@ export const ReservationEngine: React.FC<{
                 type="date"
                 min={getNextDateIso(0)}
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(e) => {
+                  const nextDate = e.target.value;
+                  setSelectedDate(nextDate);
+                  const quickPresets = [
+                    { label: 'Tomorrow', date: getNextDateIso(1) },
+                    { label: 'In 2 Days', date: getNextDateIso(2) },
+                    { label: 'This Friday', date: getUpcomingDayOfWeekIso(5) },
+                    { label: 'This Saturday', date: getUpcomingDayOfWeekIso(6) },
+                    { label: 'This Sunday', date: getUpcomingDayOfWeekIso(0) },
+                  ];
+                  const matched = quickPresets.find((p) => p.date === nextDate);
+                  setSelectedQuickLabel(matched ? matched.label : null);
+                }}
                 className="w-full sm:w-72 px-4 py-3 bg-[#F8F4EE] border border-[#E7DED3] text-sm font-mono-tabular text-[#171513] font-medium [color-scheme:light] focus:outline-none focus:border-[#C65B2B]"
               />
             </div>

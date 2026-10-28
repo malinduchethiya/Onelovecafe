@@ -5,14 +5,6 @@ import {
   OFFICIAL_ONELOVE_MAPS_DIRECTIONS_URL,
 } from '../lib/mapUtils';
 
-const STAR_LABELS: Record<number, string> = {
-  1: '1 Star · Tell us how we can improve your next visit',
-  2: '2 Stars · Share your constructive feedback with us',
-  3: '3 Stars · Good visit — share your thoughts on Google Maps',
-  4: '4 Stars · Great experience at OneLove Café Sigiriya',
-  5: '5 Stars · Exceptional sanctuary dining & coffee experience!',
-};
-
 export const GoogleMapsRatingCard: React.FC = () => {
   const [selectedStars, setSelectedStars] = useState<number>(5);
   const [hoveredStars, setHoveredStars] = useState<number | null>(null);
@@ -149,10 +141,6 @@ export const GoogleMapsRatingCard: React.FC = () => {
                 );
               })}
             </div>
-
-            <p className="text-xs font-medium text-[#3C4043] pt-1">
-              {STAR_LABELS[activeStars]}
-            </p>
           </div>
 
           {/* Optional Quick Review Note & Direct Google Maps Review CTA */}
@@ -177,13 +165,9 @@ export const GoogleMapsRatingCard: React.FC = () => {
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
 
-              {copiedNotice ? (
+              {copiedNotice && (
                 <span className="inline-flex items-center gap-1.5 text-xs text-[#1E8E3E] font-medium">
                   <Check className="w-4 h-4" /> Review note copied to clipboard — paste directly in Google Maps!
-                </span>
-              ) : (
-                <span className="text-[11px] text-[#5F6368]">
-                  Opens official Google Maps listing for One Love cafe sigiriya
                 </span>
               )}
             </div>

@@ -40,6 +40,26 @@
   }
 }
 
+@keyframes ratings-slider-scroll {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.animate-ratings-slider {
+  display: flex;
+  width: max-content;
+  animation: ratings-slider-scroll 24s linear infinite;
+  will-change: transform;
+}
+
+.animate-ratings-slider:hover {
+  animation-play-state: paused;
+}
+
 @media print {
   body * {
     visibility: hidden;
