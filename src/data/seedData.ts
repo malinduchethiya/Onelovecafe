@@ -742,6 +742,18 @@ export const DEFAULT_SITE_CONTENT: SiteContentSection[] = [
     ctaLink: '/story',
     imageUrl: 'editorial:collage-laterite-stone',
   },
+  {
+    id: 'sec_menu_gallery_bg',
+    sectionKey: 'menu_gallery_bg',
+    kicker: 'Menu Gallery Background',
+    heading: 'Signature Plates & Highland Pour-Overs Background',
+    subheading: '20% Blurred Atmospheric Background Image',
+    body: 'Custom background image for the Menu Gallery section.',
+    ctaLabel: 'View Menu',
+    ctaLink: '/menu',
+    imageUrl: '',
+  },
 ];
+
 
 

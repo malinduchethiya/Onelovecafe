@@ -240,16 +240,12 @@ const OneLoveRouter: React.FC = () => {
     return raw.length > 0 ? raw : '';
   }, [menuGalleryBgContent]);
 
-  // Hero Background Slideshow list & timer (strictly mirrors Admin Panel settings.heroImages)
+  // Hero Background Slideshow list & timer (strictly mirrors Admin Panel settings.heroImages from Cloudflare R2)
   const heroSlides = useMemo(() => {
     const rawSlides = Array.isArray(settings.heroImages)
       ? settings.heroImages.filter((img) => typeof img === 'string' && img.trim().length > 0)
       : [];
-    const realUploadedSlides = rawSlides.filter((img) => !img.startsWith('editorial:'));
-    if (realUploadedSlides.length > 0) {
-      return realUploadedSlides;
-    }
-    return rawSlides;
+    return rawSlides.length > 0 ? rawSlides : ['editorial:hero-sanctuary'];
   }, [settings.heroImages]);
 
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
@@ -2121,7 +2117,10 @@ const OneLoveRouter: React.FC = () => {
               <p className="leading-relaxed">{settings.tagline}</p>
               <div className="pt-2">
                 <img
-                  src="/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png"
+                  src={
+                    seoGlobal?.brandLogoUrl ||
+                    '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png'
+                  }
                   alt="OneLove Café Sigiriya Sri Lanka Emblem"
                   loading="lazy"
                   decoding="async"

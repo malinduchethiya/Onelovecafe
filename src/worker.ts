@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import {
   DEFAULT_BRAND_FAVICON_PATH,
   DEFAULT_GLOBAL_SEO,
@@ -7,12 +12,17 @@ import {
   buildStructuredDataGraph,
 } from './data/seoDefaults';
 import { GlobalSeoConfig, PageSeoConfig, SeoPageKey } from './types/seo';
+import { R2MediaManifest } from './types/cafe';
+import { DEFAULT_GALLERY, DEFAULT_SETTINGS } from './data/seedData';
+
+const R2_MANIFEST_OBJECT_KEY = 'manifest/site-media.json';
 
 export interface WorkerEnv {
   ASSETS?: {
     fetch: (request: Request | string | URL) => Promise<Response>;
   };
   R2_BUCKET?: {
+    get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
     put: (
       key: string,
       value: ArrayBuffer | ArrayBufferView | ReadableStream | string | Blob,
@@ -23,6 +33,7 @@ export interface WorkerEnv {
         };
       }
     ) => Promise<unknown>;
+    delete: (key: string | string[]) => Promise<void>;
   };
   R2_PUBLIC_URL?: string;
   APP_URL?: string;
@@ -48,6 +59,194 @@ let workerSeoState: SeoRuntimeState = {
   global: { ...DEFAULT_GLOBAL_SEO },
   pages: { ...DEFAULT_PAGE_SEO },
 };
+
+function createDefaultWorkerR2Manifest(): R2MediaManifest {
+  return {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    heroImages: DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
+    heroSlideshowSpeedSeconds: DEFAULT_SETTINGS.heroSlideshowSpeedSeconds || 5,
+    floorPlanImageUrl: DEFAULT_SETTINGS.floorPlanImageUrl || '',
+    menuImages: {},
+    galleryItems: DEFAULT_GALLERY.map((g) => ({ ...g })),
+    eventImages: {},
+    sectionImages: {},
+    seoImages: {},
+  };
+}
+
+let workerR2Manifest: R2MediaManifest = createDefaultWorkerR2Manifest();
+let workerManifestLoaded = false;
+
+function normalizeWorkerR2Manifest(raw: Partial<R2MediaManifest> | null | undefined): R2MediaManifest {
+  const base = createDefaultWorkerR2Manifest();
+  if (!raw || typeof raw !== 'object') return base;
+  return {
+    version: typeof raw.version === 'number' ? raw.version : base.version,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : base.updatedAt,
+    heroImages:
+      Array.isArray(raw.heroImages) && raw.heroImages.length > 0
+        ? raw.heroImages.filter((u) => typeof u === 'string' && u.trim().length > 0)
+        : base.heroImages,
+    heroSlideshowSpeedSeconds:
+      typeof raw.heroSlideshowSpeedSeconds === 'number'
+        ? raw.heroSlideshowSpeedSeconds
+        : base.heroSlideshowSpeedSeconds,
+    floorPlanImageUrl:
+      typeof raw.floorPlanImageUrl === 'string' ? raw.floorPlanImageUrl : base.floorPlanImageUrl,
+    menuImages:
+      raw.menuImages && typeof raw.menuImages === 'object' ? { ...raw.menuImages } : {},
+    galleryItems:
+      Array.isArray(raw.galleryItems) && raw.galleryItems.length > 0
+        ? raw.galleryItems
+        : base.galleryItems,
+    eventImages:
+      raw.eventImages && typeof raw.eventImages === 'object' ? { ...raw.eventImages } : {},
+    sectionImages:
+      raw.sectionImages && typeof raw.sectionImages === 'object' ? { ...raw.sectionImages } : {},
+    seoImages:
+      raw.seoImages && typeof raw.seoImages === 'object' ? { ...raw.seoImages } : {},
+  };
+}
+
+function extractWorkerR2Key(url: string | undefined, publicUrl: string): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('editorial:')) return null;
+  const cleanPublic = (publicUrl || 'https://cdn.onelovecafesigiriya.com').replace(/\/+$/, '');
+  if (trimmed.startsWith(cleanPublic + '/')) {
+    return trimmed.slice(cleanPublic.length + 1).split('?')[0];
+  }
+  if (trimmed.startsWith('https://cdn.onelovecafesigiriya.com/')) {
+    return trimmed.slice('https://cdn.onelovecafesigiriya.com/'.length).split('?')[0];
+  }
+  return null;
+}
+
+function getWorkerS3Client(env: WorkerEnv): { s3: S3Client; bucket: string; publicUrl: string } | null {
+  const accountId = env.R2_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID;
+  const accessKeyId = env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID;
+  const secretAccessKey = env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY;
+  if (!accessKeyId || !secretAccessKey) return null;
+  const bucket = env.R2_BUCKET_NAME || env.S3_BUCKET_NAME || 'onelove-assets';
+  const publicUrl = (
+    env.R2_PUBLIC_URL ||
+    env.S3_PUBLIC_URL ||
+    'https://cdn.onelovecafesigiriya.com'
+  ).replace(/\/$/, '');
+  let endpoint = env.S3_ENDPOINT;
+  if (!endpoint && accountId) {
+    endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+  }
+  const s3 = new S3Client({
+    region: env.S3_REGION || 'auto',
+    ...(endpoint ? { endpoint } : {}),
+    credentials: { accessKeyId, secretAccessKey },
+  });
+  return { s3, bucket, publicUrl };
+}
+
+async function readWorkerManifest(env: WorkerEnv, force = false): Promise<R2MediaManifest> {
+  if (workerManifestLoaded && !force) return workerR2Manifest;
+  try {
+    if (env.R2_BUCKET) {
+      const obj = await env.R2_BUCKET.get(R2_MANIFEST_OBJECT_KEY);
+      if (obj) {
+        const text = await obj.text();
+        workerR2Manifest = normalizeWorkerR2Manifest(JSON.parse(text) as Partial<R2MediaManifest>);
+        workerManifestLoaded = true;
+        return workerR2Manifest;
+      }
+    } else {
+      const s3Info = getWorkerS3Client(env);
+      if (s3Info) {
+        const resp = await s3Info.s3.send(
+          new GetObjectCommand({
+            Bucket: s3Info.bucket,
+            Key: R2_MANIFEST_OBJECT_KEY,
+          })
+        );
+        if (resp.Body) {
+          const text = await resp.Body.transformToString('utf-8');
+          workerR2Manifest = normalizeWorkerR2Manifest(JSON.parse(text) as Partial<R2MediaManifest>);
+          workerManifestLoaded = true;
+          return workerR2Manifest;
+        }
+      }
+    }
+  } catch {
+    // Fallback to in-memory state
+  }
+  return workerR2Manifest;
+}
+
+async function writeWorkerManifest(env: WorkerEnv, manifest: R2MediaManifest): Promise<string | null> {
+  const normalized = normalizeWorkerR2Manifest(manifest);
+  workerR2Manifest = normalized;
+  workerManifestLoaded = true;
+  const jsonStr = JSON.stringify(normalized, null, 2);
+  const publicBase = (
+    env.R2_PUBLIC_URL ||
+    env.S3_PUBLIC_URL ||
+    'https://cdn.onelovecafesigiriya.com'
+  ).replace(/\/$/, '');
+
+  if (env.R2_BUCKET) {
+    await env.R2_BUCKET.put(R2_MANIFEST_OBJECT_KEY, jsonStr, {
+      httpMetadata: {
+        contentType: 'application/json; charset=utf-8',
+        cacheControl: 'public, max-age=5, must-revalidate',
+      },
+    });
+    return `${publicBase}/${R2_MANIFEST_OBJECT_KEY}`;
+  }
+
+  const s3Info = getWorkerS3Client(env);
+  if (s3Info) {
+    await s3Info.s3.send(
+      new PutObjectCommand({
+        Bucket: s3Info.bucket,
+        Key: R2_MANIFEST_OBJECT_KEY,
+        Body: new TextEncoder().encode(jsonStr),
+        ContentType: 'application/json; charset=utf-8',
+        CacheControl: 'public, max-age=5, must-revalidate',
+      })
+    );
+    return `${s3Info.publicUrl}/${R2_MANIFEST_OBJECT_KEY}`;
+  }
+  return null;
+}
+
+async function deleteWorkerR2Object(env: WorkerEnv, keyOrUrl: string): Promise<string | null> {
+  if (!keyOrUrl) return null;
+  const publicBase = (
+    env.R2_PUBLIC_URL ||
+    env.S3_PUBLIC_URL ||
+    'https://cdn.onelovecafesigiriya.com'
+  ).replace(/\/$/, '');
+  const extractedKey =
+    keyOrUrl.startsWith('http://') || keyOrUrl.startsWith('https://')
+      ? extractWorkerR2Key(keyOrUrl, publicBase)
+      : keyOrUrl.replace(/^\/+/, '');
+  if (!extractedKey || extractedKey === R2_MANIFEST_OBJECT_KEY) return null;
+
+  if (env.R2_BUCKET) {
+    await env.R2_BUCKET.delete(extractedKey);
+    return extractedKey;
+  }
+
+  const s3Info = getWorkerS3Client(env);
+  if (s3Info) {
+    await s3Info.s3.send(
+      new DeleteObjectCommand({
+        Bucket: s3Info.bucket,
+        Key: extractedKey,
+      })
+    );
+    return extractedKey;
+  }
+  return null;
+}
 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
@@ -289,10 +488,11 @@ export default {
           (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)
       );
       const isConfigured = hasR2Binding || hasS3Creds;
-      const publicUrl =
+      const publicUrl = (
         env.R2_PUBLIC_URL ||
         env.S3_PUBLIC_URL ||
-        (isConfigured ? 'https://cdn.onelovecafesigiriya.com' : null);
+        (isConfigured ? 'https://cdn.onelovecafesigiriya.com' : '')
+      ).replace(/\/$/, '') || null;
       const bucketName =
         env.R2_BUCKET_NAME ||
         env.S3_BUCKET_NAME ||
@@ -309,7 +509,161 @@ export default {
           : 'inline',
         bucket: bucketName,
         publicUrl,
+        manifestUrl: publicUrl ? `${publicUrl}/${R2_MANIFEST_OBJECT_KEY}` : null,
       });
+    }
+
+    if (pathname === '/api/storage/manifest' && request.method === 'GET') {
+      const force = url.searchParams.get('refresh') === '1';
+      const manifest = await readWorkerManifest(env, force);
+      const hasR2Binding = Boolean(env.R2_BUCKET);
+      const hasS3Creds = Boolean(
+        (env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID) &&
+          (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)
+      );
+      const isConfigured = hasR2Binding || hasS3Creds;
+      const publicUrl = (
+        env.R2_PUBLIC_URL ||
+        env.S3_PUBLIC_URL ||
+        'https://cdn.onelovecafesigiriya.com'
+      ).replace(/\/$/, '');
+      return jsonResponse({
+        ok: true,
+        success: true,
+        configured: isConfigured,
+        source: isConfigured ? 'cloudflare-r2' : 'memory',
+        manifestUrl: isConfigured ? `${publicUrl}/${R2_MANIFEST_OBJECT_KEY}` : null,
+        manifest,
+      });
+    }
+
+    if (pathname === '/api/storage/manifest' && request.method === 'POST') {
+      try {
+        const current = await readWorkerManifest(env, false);
+        const rawBody = ((await request.json()) || {}) as Record<string, unknown>;
+        const hasNestedManifest =
+          Boolean(rawBody.manifest) &&
+          typeof rawBody.manifest === 'object' &&
+          !Array.isArray(rawBody.manifest);
+        const patch = (hasNestedManifest ? rawBody.manifest : rawBody) as Partial<R2MediaManifest> & {
+          deleteUrls?: string[];
+        };
+        const deleteUrls = Array.isArray(rawBody.deleteUrls)
+          ? (rawBody.deleteUrls as string[])
+          : Array.isArray(patch.deleteUrls)
+          ? patch.deleteUrls
+          : [];
+
+        if (deleteUrls.length > 0) {
+          for (const u of deleteUrls) {
+            if (typeof u === 'string' && u.trim()) {
+              await deleteWorkerR2Object(env, u).catch(() => {});
+            }
+          }
+        }
+
+        const mergedMenuImages = hasNestedManifest
+          ? { ...(patch.menuImages || {}) }
+          : { ...current.menuImages, ...(patch.menuImages || {}) };
+        Object.keys(mergedMenuImages).forEach((k) => {
+          if (!mergedMenuImages[k]) delete mergedMenuImages[k];
+        });
+
+        const mergedEventImages = hasNestedManifest
+          ? { ...(patch.eventImages || {}) }
+          : { ...current.eventImages, ...(patch.eventImages || {}) };
+        Object.keys(mergedEventImages).forEach((k) => {
+          if (!mergedEventImages[k]) delete mergedEventImages[k];
+        });
+
+        const mergedSectionImages = hasNestedManifest
+          ? { ...(patch.sectionImages || {}) }
+          : { ...current.sectionImages, ...(patch.sectionImages || {}) };
+        Object.keys(mergedSectionImages).forEach((k) => {
+          if (!mergedSectionImages[k]) delete mergedSectionImages[k];
+        });
+
+        const mergedSeoImages = {
+          ...current.seoImages,
+          ...(patch.seoImages || {}),
+          pageOgImages: hasNestedManifest
+            ? { ...(patch.seoImages?.pageOgImages || {}) }
+            : {
+                ...(current.seoImages?.pageOgImages || {}),
+                ...(patch.seoImages?.pageOgImages || {}),
+              },
+        };
+
+        const nextManifest: R2MediaManifest = normalizeWorkerR2Manifest({
+          version: (current.version || 1) + 1,
+          updatedAt: new Date().toISOString(),
+          heroImages: patch.heroImages !== undefined ? patch.heroImages : current.heroImages,
+          heroSlideshowSpeedSeconds:
+            patch.heroSlideshowSpeedSeconds !== undefined
+              ? patch.heroSlideshowSpeedSeconds
+              : current.heroSlideshowSpeedSeconds,
+          floorPlanImageUrl:
+            patch.floorPlanImageUrl !== undefined
+              ? patch.floorPlanImageUrl
+              : current.floorPlanImageUrl,
+          menuImages: mergedMenuImages,
+          galleryItems: patch.galleryItems !== undefined ? patch.galleryItems : current.galleryItems,
+          eventImages: mergedEventImages,
+          sectionImages: mergedSectionImages,
+          seoImages: mergedSeoImages,
+        });
+
+        const manifestUrl = await writeWorkerManifest(env, nextManifest);
+        return jsonResponse({
+          ok: true,
+          success: true,
+          storage: manifestUrl ? 'r2' : 'local',
+          manifestUrl,
+          manifest: nextManifest,
+        });
+      } catch (err) {
+        return jsonResponse(
+          {
+            ok: false,
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to update R2 manifest',
+          },
+          500
+        );
+      }
+    }
+
+    if (pathname === '/api/storage/delete' && request.method === 'POST') {
+      try {
+        const body = (await request.json()) as { url?: string; urls?: string[]; key?: string };
+        const targets: string[] = [];
+        if (typeof body?.key === 'string' && body.key.trim()) targets.push(body.key.trim());
+        if (typeof body?.url === 'string' && body.url.trim()) targets.push(body.url.trim());
+        if (Array.isArray(body?.urls)) {
+          body.urls.forEach((u) => {
+            if (typeof u === 'string' && u.trim()) targets.push(u.trim());
+          });
+        }
+        const deletedKeys: string[] = [];
+        for (const target of targets) {
+          const deleted = await deleteWorkerR2Object(env, target).catch(() => null);
+          if (deleted) deletedKeys.push(deleted);
+        }
+        return jsonResponse({
+          ok: true,
+          success: true,
+          deletedKeys,
+        });
+      } catch (err) {
+        return jsonResponse(
+          {
+            ok: false,
+            success: false,
+            error: err instanceof Error ? err.message : 'Failed to delete object from R2',
+          },
+          500
+        );
+      }
     }
 
     if (pathname === '/api/upload' && request.method === 'POST') {
@@ -325,8 +679,13 @@ export default {
       }
 
       try {
-        const body = (await request.json()) as { dataUrl?: string; filename?: string; folder?: string };
-        const { dataUrl, filename, folder } = body || {};
+        const body = (await request.json()) as {
+          dataUrl?: string;
+          filename?: string;
+          folder?: string;
+          previousUrl?: string;
+        };
+        const { dataUrl, filename, folder, previousUrl } = body || {};
 
         if (!dataUrl || typeof dataUrl !== 'string') {
           return jsonResponse({ ok: false, success: false, error: 'dataUrl is required.' }, 400);
@@ -385,28 +744,23 @@ export default {
             },
           });
         } else if (hasS3Creds) {
-          const accountId = env.R2_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID;
-          const accessKeyId = (env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID)!;
-          const secretAccessKey = (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)!;
-          const bucket = env.R2_BUCKET_NAME || env.S3_BUCKET_NAME || 'onelove-assets';
-          let endpoint = env.S3_ENDPOINT;
-          if (!endpoint && accountId) {
-            endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+          const s3Info = getWorkerS3Client(env);
+          if (s3Info) {
+            await s3Info.s3.send(
+              new PutObjectCommand({
+                Bucket: s3Info.bucket,
+                Key: key,
+                Body: bytes,
+                ContentType: mimeType,
+                CacheControl: 'public, max-age=31536000, immutable',
+              })
+            );
           }
-          const s3 = new S3Client({
-            region: env.S3_REGION || 'auto',
-            ...(endpoint ? { endpoint } : {}),
-            credentials: { accessKeyId, secretAccessKey },
-          });
-          await s3.send(
-            new PutObjectCommand({
-              Bucket: bucket,
-              Key: key,
-              Body: bytes,
-              ContentType: mimeType,
-              CacheControl: 'public, max-age=31536000, immutable',
-            })
-          );
+        }
+
+        let deletedPreviousKey: string | null = null;
+        if (typeof previousUrl === 'string' && previousUrl.trim()) {
+          deletedPreviousKey = await deleteWorkerR2Object(env, previousUrl).catch(() => null);
         }
 
         return jsonResponse({
@@ -414,6 +768,7 @@ export default {
           success: true,
           url: publicUrl,
           key,
+          deletedPreviousKey,
           storage: 'r2',
           size: bytes.byteLength,
         });

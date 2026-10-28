@@ -1170,10 +1170,20 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
                             if (!file) return;
                             setUploadingPageOg(true);
                             try {
-                              const b64 = await uploadMediaFile(file, 'seo');
-                              setPageForm({ ...pageForm, ogImageUrl: b64 });
+                              const r2Url = await uploadMediaFile(
+                                file,
+                                'seo',
+                                pageForm.ogImageUrl
+                              );
+                              const nextPage = { ...pageForm, ogImageUrl: r2Url };
+                              setPageForm(nextPage);
+                              await saveSeoPage(nextPage);
+                              onShowToast(
+                                `Uploaded & saved Open Graph image for ${pageForm.pageLabel} to Cloudflare R2.`
+                              );
                             } finally {
                               setUploadingPageOg(false);
+                              e.target.value = '';
                             }
                           }}
                         />
@@ -1697,29 +1707,50 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
                     Official Brand Logo (`Organization.logo`)
                   </h3>
                 </div>
-                <label className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] cursor-pointer inline-flex items-center gap-1.5">
-                  <Upload className="w-3 h-3" />
-                  <span>{uploadingLogo ? 'Uploading...' : 'Upload Logo'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      setUploadingLogo(true);
-                      try {
-                        const b64 = await uploadMediaFile(file, 'seo');
-                        const next = { ...globalForm, brandLogoUrl: b64 };
+                <div className="flex items-center gap-2">
+                  <label className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] cursor-pointer inline-flex items-center gap-1.5">
+                    <Upload className="w-3 h-3" />
+                    <span>{uploadingLogo ? 'Uploading...' : 'Upload Logo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingLogo(true);
+                        try {
+                          const r2Url = await uploadMediaFile(
+                            file,
+                            'seo',
+                            globalForm.brandLogoUrl
+                          );
+                          const next = { ...globalForm, brandLogoUrl: r2Url };
+                          setGlobalForm(next);
+                          await saveSeoGlobal(next);
+                          onShowToast('Uploaded Schema.org Brand Logo to Cloudflare R2.');
+                        } finally {
+                          setUploadingLogo(false);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </label>
+                  {globalForm.brandLogoUrl && globalForm.brandLogoUrl.startsWith('http') && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const next = { ...globalForm, brandLogoUrl: '' };
                         setGlobalForm(next);
                         await saveSeoGlobal(next);
-                        onShowToast('Updated Schema.org Brand Logo.');
-                      } finally {
-                        setUploadingLogo(false);
-                      }
-                    }}
-                  />
-                </label>
+                        onShowToast('Reset Brand Logo in Cloudflare R2.');
+                      }}
+                      className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF]"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="h-36 bg-[#171513] border border-[#E7DED3] flex items-center justify-center p-4">
                 <img
@@ -1740,29 +1771,50 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
                     Default Social Sharing Image (`og:image`)
                   </h3>
                 </div>
-                <label className="px-3 py-1.5 bg-[#C65B2B] text-white cursor-pointer inline-flex items-center gap-1.5">
-                  <Upload className="w-3 h-3" />
-                  <span>{uploadingDefaultOg ? 'Uploading...' : 'Upload Social Card'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      setUploadingDefaultOg(true);
-                      try {
-                        const b64 = await uploadMediaFile(file, 'seo');
-                        const next = { ...globalForm, defaultOgImageUrl: b64 };
+                <div className="flex items-center gap-2">
+                  <label className="px-3 py-1.5 bg-[#C65B2B] text-white cursor-pointer inline-flex items-center gap-1.5">
+                    <Upload className="w-3 h-3" />
+                    <span>{uploadingDefaultOg ? 'Uploading...' : 'Upload Social Card'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingDefaultOg(true);
+                        try {
+                          const r2Url = await uploadMediaFile(
+                            file,
+                            'seo',
+                            globalForm.defaultOgImageUrl
+                          );
+                          const next = { ...globalForm, defaultOgImageUrl: r2Url };
+                          setGlobalForm(next);
+                          await saveSeoGlobal(next);
+                          onShowToast('Uploaded Default Open Graph Social Image to Cloudflare R2.');
+                        } finally {
+                          setUploadingDefaultOg(false);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </label>
+                  {globalForm.defaultOgImageUrl && globalForm.defaultOgImageUrl.startsWith('http') && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const next = { ...globalForm, defaultOgImageUrl: '' };
                         setGlobalForm(next);
                         await saveSeoGlobal(next);
-                        onShowToast('Updated Default Open Graph Social Image.');
-                      } finally {
-                        setUploadingDefaultOg(false);
-                      }
-                    }}
-                  />
-                </label>
+                        onShowToast('Reset Default Open Graph Image in Cloudflare R2.');
+                      }}
+                      className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF]"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="h-36 bg-[#F8F4EE] border border-[#E7DED3] flex items-center justify-center overflow-hidden">
                 <img

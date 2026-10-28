@@ -4,7 +4,12 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { z } from 'zod';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import {
   DEFAULT_BRAND_FAVICON_PATH,
   DEFAULT_GLOBAL_SEO,
@@ -12,11 +17,15 @@ import {
   buildStructuredDataGraph,
 } from './src/data/seoDefaults';
 import { GlobalSeoConfig, PageSeoConfig, SeoPageKey } from './src/types/seo';
+import { R2MediaManifest } from './src/types/cafe';
+import { DEFAULT_GALLERY, DEFAULT_SETTINGS } from './src/data/seedData';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const SEO_CACHE_FILE = path.join(__dirname, '.seo-runtime-cache.json');
+const R2_MANIFEST_CACHE_FILE = path.join(__dirname, '.r2-manifest-cache.json');
+const R2_MANIFEST_OBJECT_KEY = 'manifest/site-media.json';
 
 interface SeoRuntimeState {
   global: GlobalSeoConfig;
@@ -378,7 +387,7 @@ function getR2Client(): { s3: S3Client; bucket: string; publicUrl: string } | nu
     process.env.R2_PUBLIC_URL ||
     process.env.S3_PUBLIC_URL ||
     process.env.AWS_S3_PUBLIC_URL ||
-    '';
+    'https://cdn.onelovecafesigiriya.com';
   const region = process.env.S3_REGION || process.env.AWS_REGION || 'auto';
 
   // Endpoint can be directly passed (e.g., https://<account_id>.r2.cloudflarestorage.com) or inferred
@@ -403,9 +412,169 @@ function getR2Client(): { s3: S3Client; bucket: string; publicUrl: string } | nu
   return { s3, bucket, publicUrl };
 }
 
+function createDefaultR2Manifest(): R2MediaManifest {
+  return {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    heroImages: DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
+    heroSlideshowSpeedSeconds: DEFAULT_SETTINGS.heroSlideshowSpeedSeconds || 5,
+    floorPlanImageUrl: DEFAULT_SETTINGS.floorPlanImageUrl || '',
+    menuImages: {},
+    galleryItems: DEFAULT_GALLERY.map((g) => ({ ...g })),
+    eventImages: {},
+    sectionImages: {},
+    seoImages: {},
+  };
+}
+
+function normalizeR2Manifest(raw: Partial<R2MediaManifest> | null | undefined): R2MediaManifest {
+  const base = createDefaultR2Manifest();
+  if (!raw || typeof raw !== 'object') return base;
+  return {
+    version: typeof raw.version === 'number' ? raw.version : base.version,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : base.updatedAt,
+    heroImages:
+      Array.isArray(raw.heroImages) && raw.heroImages.length > 0
+        ? raw.heroImages.filter((u) => typeof u === 'string' && u.trim().length > 0)
+        : base.heroImages,
+    heroSlideshowSpeedSeconds:
+      typeof raw.heroSlideshowSpeedSeconds === 'number'
+        ? raw.heroSlideshowSpeedSeconds
+        : base.heroSlideshowSpeedSeconds,
+    floorPlanImageUrl:
+      typeof raw.floorPlanImageUrl === 'string' ? raw.floorPlanImageUrl : base.floorPlanImageUrl,
+    menuImages:
+      raw.menuImages && typeof raw.menuImages === 'object' ? { ...raw.menuImages } : {},
+    galleryItems:
+      Array.isArray(raw.galleryItems) && raw.galleryItems.length > 0
+        ? raw.galleryItems
+        : base.galleryItems,
+    eventImages:
+      raw.eventImages && typeof raw.eventImages === 'object' ? { ...raw.eventImages } : {},
+    sectionImages:
+      raw.sectionImages && typeof raw.sectionImages === 'object' ? { ...raw.sectionImages } : {},
+    seoImages:
+      raw.seoImages && typeof raw.seoImages === 'object' ? { ...raw.seoImages } : {},
+  };
+}
+
+function loadLocalManifestCache(): R2MediaManifest {
+  try {
+    if (fs.existsSync(R2_MANIFEST_CACHE_FILE)) {
+      const raw = fs.readFileSync(R2_MANIFEST_CACHE_FILE, 'utf-8');
+      return normalizeR2Manifest(JSON.parse(raw) as Partial<R2MediaManifest>);
+    }
+  } catch {
+    // Fallback to default
+  }
+  return createDefaultR2Manifest();
+}
+
+let r2ManifestState: R2MediaManifest = loadLocalManifestCache();
+let r2ManifestLoadedFromBucket = false;
+
+function saveLocalManifestCache(manifest: R2MediaManifest) {
+  r2ManifestState = manifest;
+  try {
+    fs.writeFileSync(R2_MANIFEST_CACHE_FILE, JSON.stringify(manifest, null, 2), 'utf-8');
+  } catch {
+    // Ignore read-only filesystem errors
+  }
+}
+
+function extractR2KeyFromUrl(url: string | undefined, publicUrl: string): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('editorial:')) return null;
+  const cleanPublic = (publicUrl || 'https://cdn.onelovecafesigiriya.com').replace(/\/+$/, '');
+  if (trimmed.startsWith(cleanPublic + '/')) {
+    return trimmed.slice(cleanPublic.length + 1).split('?')[0];
+  }
+  if (trimmed.startsWith('https://cdn.onelovecafesigiriya.com/')) {
+    return trimmed.slice('https://cdn.onelovecafesigiriya.com/'.length).split('?')[0];
+  }
+  return null;
+}
+
+async function fetchManifestFromR2Bucket(forceRefresh = false): Promise<R2MediaManifest> {
+  const r2 = getR2Client();
+  if (!r2) return r2ManifestState;
+  if (r2ManifestLoadedFromBucket && !forceRefresh) return r2ManifestState;
+
+  try {
+    const resp = await r2.s3.send(
+      new GetObjectCommand({
+        Bucket: r2.bucket,
+        Key: R2_MANIFEST_OBJECT_KEY,
+      })
+    );
+    if (resp.Body) {
+      const text = await resp.Body.transformToString('utf-8');
+      const parsed = normalizeR2Manifest(JSON.parse(text) as Partial<R2MediaManifest>);
+      saveLocalManifestCache(parsed);
+      r2ManifestLoadedFromBucket = true;
+      return parsed;
+    }
+  } catch (err: unknown) {
+    const errName = err && typeof err === 'object' && 'name' in err ? String((err as { name?: string }).name) : '';
+    if (errName === 'NoSuchKey' || errName === 'NotFound') {
+      // Initialize manifest/site-media.json in the R2 bucket for the first time
+      try {
+        await writeManifestToR2Bucket(r2ManifestState);
+        r2ManifestLoadedFromBucket = true;
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
+  return r2ManifestState;
+}
+
+async function writeManifestToR2Bucket(manifest: R2MediaManifest): Promise<string | null> {
+  const normalized = normalizeR2Manifest(manifest);
+  saveLocalManifestCache(normalized);
+  const r2 = getR2Client();
+  if (!r2) return null;
+
+  const bodyStr = JSON.stringify(normalized, null, 2);
+  await r2.s3.send(
+    new PutObjectCommand({
+      Bucket: r2.bucket,
+      Key: R2_MANIFEST_OBJECT_KEY,
+      Body: Buffer.from(bodyStr, 'utf-8'),
+      ContentType: 'application/json; charset=utf-8',
+      CacheControl: 'public, max-age=5, must-revalidate',
+    })
+  );
+  r2ManifestLoadedFromBucket = true;
+  const publicBase = r2.publicUrl.replace(/\/$/, '');
+  return `${publicBase}/${R2_MANIFEST_OBJECT_KEY}`;
+}
+
+async function deleteObjectFromR2Bucket(keyOrUrl: string): Promise<string | null> {
+  const r2 = getR2Client();
+  if (!r2 || !keyOrUrl) return null;
+  const extractedKey =
+    keyOrUrl.startsWith('http://') || keyOrUrl.startsWith('https://')
+      ? extractR2KeyFromUrl(keyOrUrl, r2.publicUrl)
+      : keyOrUrl.replace(/^\/+/, '');
+  if (!extractedKey || extractedKey === R2_MANIFEST_OBJECT_KEY) return null;
+
+  await r2.s3.send(
+    new DeleteObjectCommand({
+      Bucket: r2.bucket,
+      Key: extractedKey,
+    })
+  );
+  return extractedKey;
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+
+  // Warm up R2 media manifest on boot
+  fetchManifestFromR2Bucket().catch(() => {});
 
   app.use(express.json({ limit: '20mb' }));
 
@@ -494,17 +663,177 @@ async function startServer() {
   // Cloudflare R2 Storage Status Endpoint
   app.get('/api/storage/status', (_req, res) => {
     const r2 = getR2Client();
+    const publicBase = r2?.publicUrl ? r2.publicUrl.replace(/\/$/, '') : null;
     res.status(200).json({
       ok: true,
       success: true,
       configured: Boolean(r2),
       provider: r2 ? 'cloudflare-r2' : 'inline',
       bucket: r2?.bucket || null,
-      publicUrl: r2?.publicUrl || null,
+      publicUrl: publicBase,
+      manifestUrl: publicBase ? `${publicBase}/${R2_MANIFEST_OBJECT_KEY}` : null,
     });
   });
 
-  // Cloudflare R2 Secure Upload Endpoint
+  // Cloudflare R2 Media Manifest GET Endpoint (100% R2-backed image catalog, zero Firestore reads)
+  app.get('/api/storage/manifest', async (req, res) => {
+    try {
+      const force = req.query.refresh === '1';
+      const manifest = await fetchManifestFromR2Bucket(force);
+      const r2 = getR2Client();
+      const publicBase = r2?.publicUrl ? r2.publicUrl.replace(/\/$/, '') : null;
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(200).json({
+        ok: true,
+        success: true,
+        configured: Boolean(r2),
+        source: r2 ? 'cloudflare-r2' : 'local-cache',
+        manifestUrl: publicBase ? `${publicBase}/${R2_MANIFEST_OBJECT_KEY}` : null,
+        manifest,
+      });
+    } catch (err) {
+      res.status(200).json({
+        ok: true,
+        success: true,
+        configured: false,
+        source: 'fallback',
+        manifest: r2ManifestState,
+        error: err instanceof Error ? err.message : undefined,
+      });
+    }
+  });
+
+  // Cloudflare R2 Media Manifest POST Endpoint (Updates manifest/site-media.json directly inside R2)
+  app.post('/api/storage/manifest', async (req, res) => {
+    try {
+      const current = await fetchManifestFromR2Bucket(false);
+      const rawBody = (req.body || {}) as Record<string, unknown>;
+      const hasNestedManifest =
+        Boolean(rawBody.manifest) &&
+        typeof rawBody.manifest === 'object' &&
+        !Array.isArray(rawBody.manifest);
+      const patch = (hasNestedManifest ? rawBody.manifest : rawBody) as Partial<R2MediaManifest> & {
+        deleteUrls?: string[];
+      };
+      const deleteUrls = Array.isArray(rawBody.deleteUrls)
+        ? (rawBody.deleteUrls as string[])
+        : Array.isArray(patch.deleteUrls)
+        ? patch.deleteUrls
+        : [];
+
+      // If caller requested deleting specific old R2 image URLs simultaneously
+      if (deleteUrls.length > 0) {
+        for (const u of deleteUrls) {
+          if (typeof u === 'string' && u.trim()) {
+            await deleteObjectFromR2Bucket(u).catch(() => {});
+          }
+        }
+      }
+
+      const mergedMenuImages = hasNestedManifest
+        ? { ...(patch.menuImages || {}) }
+        : { ...current.menuImages, ...(patch.menuImages || {}) };
+      Object.keys(mergedMenuImages).forEach((k) => {
+        if (!mergedMenuImages[k]) delete mergedMenuImages[k];
+      });
+
+      const mergedEventImages = hasNestedManifest
+        ? { ...(patch.eventImages || {}) }
+        : { ...current.eventImages, ...(patch.eventImages || {}) };
+      Object.keys(mergedEventImages).forEach((k) => {
+        if (!mergedEventImages[k]) delete mergedEventImages[k];
+      });
+
+      const mergedSectionImages = hasNestedManifest
+        ? { ...(patch.sectionImages || {}) }
+        : { ...current.sectionImages, ...(patch.sectionImages || {}) };
+      Object.keys(mergedSectionImages).forEach((k) => {
+        if (!mergedSectionImages[k]) delete mergedSectionImages[k];
+      });
+
+      const mergedSeoImages = {
+        ...current.seoImages,
+        ...(patch.seoImages || {}),
+        pageOgImages: hasNestedManifest
+          ? { ...(patch.seoImages?.pageOgImages || {}) }
+          : {
+              ...(current.seoImages?.pageOgImages || {}),
+              ...(patch.seoImages?.pageOgImages || {}),
+            },
+      };
+
+      const nextManifest: R2MediaManifest = normalizeR2Manifest({
+        version: (current.version || 1) + 1,
+        updatedAt: new Date().toISOString(),
+        heroImages: patch.heroImages !== undefined ? patch.heroImages : current.heroImages,
+        heroSlideshowSpeedSeconds:
+          patch.heroSlideshowSpeedSeconds !== undefined
+            ? patch.heroSlideshowSpeedSeconds
+            : current.heroSlideshowSpeedSeconds,
+        floorPlanImageUrl:
+          patch.floorPlanImageUrl !== undefined
+            ? patch.floorPlanImageUrl
+            : current.floorPlanImageUrl,
+        menuImages: mergedMenuImages,
+        galleryItems: patch.galleryItems !== undefined ? patch.galleryItems : current.galleryItems,
+        eventImages: mergedEventImages,
+        sectionImages: mergedSectionImages,
+        seoImages: mergedSeoImages,
+      });
+
+      const manifestUrl = await writeManifestToR2Bucket(nextManifest);
+
+      res.status(200).json({
+        ok: true,
+        success: true,
+        storage: manifestUrl ? 'r2' : 'local',
+        manifestUrl,
+        manifest: nextManifest,
+      });
+    } catch (err) {
+      console.error('Failed to update R2 manifest:', err);
+      res.status(500).json({
+        ok: false,
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to update R2 manifest',
+      });
+    }
+  });
+
+  // Cloudflare R2 Object Delete Endpoint (Physically deletes image object from R2 bucket)
+  app.post('/api/storage/delete', async (req, res) => {
+    try {
+      const { url, urls, key } = req.body || {};
+      const targets: string[] = [];
+      if (typeof key === 'string' && key.trim()) targets.push(key.trim());
+      if (typeof url === 'string' && url.trim()) targets.push(url.trim());
+      if (Array.isArray(urls)) {
+        urls.forEach((u) => {
+          if (typeof u === 'string' && u.trim()) targets.push(u.trim());
+        });
+      }
+
+      const deletedKeys: string[] = [];
+      for (const target of targets) {
+        const deleted = await deleteObjectFromR2Bucket(target).catch(() => null);
+        if (deleted) deletedKeys.push(deleted);
+      }
+
+      res.status(200).json({
+        ok: true,
+        success: true,
+        deletedKeys,
+      });
+    } catch (err) {
+      res.status(500).json({
+        ok: false,
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to delete object from R2',
+      });
+    }
+  });
+
+  // Cloudflare R2 Secure Upload Endpoint (Uploads new image & automatically cleans up replaced R2 object)
   app.post('/api/upload', async (req, res) => {
     const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
     if (!checkRateLimit(`upload_${clientIp}`, 30, 60_000)) {
@@ -517,7 +846,7 @@ async function startServer() {
     }
 
     try {
-      const { dataUrl, filename, folder } = req.body || {};
+      const { dataUrl, filename, folder, previousUrl } = req.body || {};
       if (!dataUrl || typeof dataUrl !== 'string') {
         res.status(400).json({
           ok: false,
@@ -574,6 +903,12 @@ async function startServer() {
         })
       );
 
+      // If replacing a previous R2 image, delete the old object from the bucket
+      let deletedPreviousKey: string | null = null;
+      if (typeof previousUrl === 'string' && previousUrl.trim()) {
+        deletedPreviousKey = await deleteObjectFromR2Bucket(previousUrl).catch(() => null);
+      }
+
       const publicBase = r2.publicUrl.replace(/\/$/, '');
       const publicUrl = publicBase ? `${publicBase}/${key}` : `/${key}`;
 
@@ -582,6 +917,7 @@ async function startServer() {
         success: true,
         url: publicUrl,
         key,
+        deletedPreviousKey,
         storage: 'r2',
         size: buffer.length,
       });

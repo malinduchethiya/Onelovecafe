@@ -150,11 +150,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Gallery Item editor state (supports both creating & editing existing items)
   const [editingGalleryItem, setEditingGalleryItem] = useState<GalleryItem | null>(null);
   const [uploadingGalleryImg, setUploadingGalleryImg] = useState(false);
+  const [uploadingGalleryRowId, setUploadingGalleryRowId] = useState<string | null>(null);
+  const [uploadingBatchGallery, setUploadingBatchGallery] = useState(false);
   const galleryEditorRef = useRef<HTMLDivElement | null>(null);
 
   // Event editor state
   const [editingEvent, setEditingEvent] = useState<CafeEvent | null>(null);
   const [uploadingEventImg, setUploadingEventImg] = useState(false);
+  const [uploadingEventRowId, setUploadingEventRowId] = useState<string | null>(null);
   const eventEditorRef = useRef<HTMLDivElement | null>(null);
 
   // Hero Slideshow upload state
@@ -363,38 +366,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const rawAdminHeroImages = Array.isArray(settings.heroImages)
     ? settings.heroImages.filter((img) => typeof img === 'string' && img.trim().length > 0)
     : [];
-  const uploadedAdminHeroImages = rawAdminHeroImages.filter((img) => !img.startsWith('editorial:'));
   const currentHeroImages =
-    uploadedAdminHeroImages.length > 0
-      ? uploadedAdminHeroImages
-      : rawAdminHeroImages.length > 0
-      ? rawAdminHeroImages
-      : ['editorial:hero-sanctuary'];
+    rawAdminHeroImages.length > 0 ? rawAdminHeroImages : ['editorial:hero-sanctuary'];
   const currentSlideshowSpeed = settings.heroSlideshowSpeedSeconds || 5;
 
   const handleUploadMultipleHeroImages = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setUploadingHeroSlides(true);
     try {
-      const uploadedBase64List: string[] = [];
+      const uploadedR2Urls: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        const b64 = await uploadMediaFile(files[i], 'hero');
-        uploadedBase64List.push(b64);
+        const r2Url = await uploadMediaFile(files[i], 'hero');
+        uploadedR2Urls.push(r2Url);
       }
-      // Strip any default 'editorial:*' SVG placeholders so only real uploaded images remain
-      const baseList = currentHeroImages.filter((img) => !img.startsWith('editorial:'));
-      const nextHeroImages = [...baseList, ...uploadedBase64List].slice(0, 12);
+      const allDefaults = currentHeroImages.every((img) => img.startsWith('editorial:'));
+      const baseList = allDefaults ? [] : currentHeroImages;
+      const nextHeroImages = [...baseList, ...uploadedR2Urls].slice(0, 12);
       const updatedSettings = {
         ...settings,
         heroImages: nextHeroImages,
       };
       await saveSettings(updatedSettings);
       showToast(
-        `Uploaded ${uploadedBase64List.length} hero background image(s) as Base64 to Firestore.`
+        `Uploaded ${uploadedR2Urls.length} hero background image(s) directly to Cloudflare R2 (cdn.onelovecafesigiriya.com).`
       );
     } catch (err) {
       showToast(
-        err instanceof Error ? err.message : 'Failed to upload hero slideshow image.'
+        err instanceof Error ? err.message : 'Failed to upload hero slideshow image to Cloudflare R2.'
       );
     } finally {
       setUploadingHeroSlides(false);
@@ -405,17 +403,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!file) return;
     setUploadingHeroSlides(true);
     try {
-      const b64 = await uploadMediaFile(file, 'hero');
+      const prevUrl = currentHeroImages[index];
+      const r2Url = await uploadMediaFile(file, 'hero', prevUrl);
       const nextHeroImages = [...currentHeroImages];
-      nextHeroImages[index] = b64;
+      nextHeroImages[index] = r2Url;
       await saveSettings({
         ...settings,
         heroImages: nextHeroImages,
       });
-      showToast(`Replaced Slide #${index + 1} with 4K UHD image in Firestore.`);
+      showToast(`Replaced Slide #${index + 1} in Cloudflare R2 (and deleted old object).`);
     } catch (err) {
       showToast(
-        err instanceof Error ? err.message : 'Failed to replace hero slideshow image.'
+        err instanceof Error ? err.message : 'Failed to replace hero slideshow image in R2.'
       );
     } finally {
       setUploadingHeroSlides(false);
@@ -424,13 +423,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleRemoveHeroSlide = async (index: number) => {
     const nextHeroImages = currentHeroImages.filter((_, idx) => idx !== index);
-    const safeList =
-      nextHeroImages.length > 0 ? nextHeroImages : ['editorial:hero-sanctuary'];
     await saveSettings({
       ...settings,
-      heroImages: safeList,
+      heroImages: nextHeroImages,
     });
-    showToast(`Removed Slide #${index + 1} from Hero Slideshow.`);
+    showToast(`Removed Slide #${index + 1} from Hero Slideshow & deleted object from Cloudflare R2.`);
   };
 
   const handleUpdateSlideshowSpeed = async (newSpeedSec: number) => {
@@ -439,7 +436,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ...settings,
       heroSlideshowSpeedSeconds: clamped,
     });
-    showToast(`Hero slideshow transition speed set to ${clamped}s per slide.`);
+    showToast(`Hero slideshow transition speed set to ${clamped}s per slide in Cloudflare R2.`);
   };
 
   const renderHeroSlideshowManager = () => (
@@ -447,15 +444,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#E7DED3] pb-4">
         <div>
           <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-            Homepage Hero Background Slideshow · 4K UHD Multi-Chunk Firestore Storage
+            Homepage Hero Background Slideshow · 100% Cloudflare R2 Object Storage (cdn.onelovecafesigiriya.com)
           </div>
           <h2 className="text-xl font-editorial font-semibold mt-0.5">
-            Hero Background Slideshow &amp; Transition Speed (Supports 4K / High-Res Photos)
+            Hero Background Slideshow &amp; Transition Speed (Direct R2 Bucket Storage)
           </h2>
           <p className="text-xs text-[#171513]/65 mt-0.5">
-            Upload high-resolution 4K (3840×2160) photographs of any file size from your device to
-            cycle in the homepage hero background, replace or remove individual slides, and adjust
-            the transition speed.
+            Upload high-resolution 4K (3840×2160) photographs directly to your Cloudflare R2 bucket,
+            replace or delete individual slides in R2, and adjust the transition speed. Zero Firestore image reads or writes.
           </p>
         </div>
 
@@ -463,8 +459,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <Upload className="w-3.5 h-3.5" />
           <span>
             {uploadingHeroSlides
-              ? 'Processing 4K Image & Saving to Firestore...'
-              : '+ Upload 4K Slideshow Images from Device'}
+              ? 'Uploading to Cloudflare R2 Bucket...'
+              : '+ Upload 4K Slideshow Images to R2'}
           </span>
           <input
             type="file"
@@ -525,7 +521,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="relative aspect-[16/9] bg-[#171513] overflow-hidden border-b border-[#E7DED3]">
               <EditorialVisual src={imgSrc} alt={`Hero slide ${idx + 1}`} />
               <div className="absolute top-2 left-2 px-2.5 py-1 bg-[#171513]/85 text-[#F8F4EE] text-[10px] font-mono-tabular uppercase tracking-wider">
-                Slide 0{idx + 1} {imgSrc.startsWith('data:image') ? '· Base64' : '· Preset'}
+                Slide 0{idx + 1} {imgSrc.startsWith('http') ? '· Cloudflare R2' : '· Default'}
               </div>
             </div>
 
@@ -565,7 +561,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!file) return;
     setUploadingMenuGalleryBg(true);
     try {
-      const b64 = await uploadMediaFile(file, 'menu_gallery_bg');
+      const r2Url = await uploadMediaFile(file, 'menu_gallery_bg', currentMenuGalleryBgUrl);
       const payload: SiteContentSection = {
         id: menuGalleryBgSection?.id || 'sec_menu_gallery_bg',
         sectionKey: 'menu_gallery_bg',
@@ -575,13 +571,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         body: 'Custom background image for the Menu Gallery section.',
         ctaLabel: 'View Menu',
         ctaLink: '/menu',
-        imageUrl: b64,
+        imageUrl: r2Url,
       };
       await saveSiteContent(payload);
-      showToast('Uploaded Menu Gallery background image (20% blurred) to Firestore!');
+      showToast('Uploaded Menu Gallery background image (20% blurred) to Cloudflare R2!');
     } catch (err) {
       showToast(
-        err instanceof Error ? err.message : 'Failed to upload Menu Gallery background image.'
+        err instanceof Error ? err.message : 'Failed to upload Menu Gallery background image to R2.'
       );
     } finally {
       setUploadingMenuGalleryBg(false);
@@ -601,7 +597,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       imageUrl: '',
     };
     await saveSiteContent(payload);
-    showToast('Removed custom Menu Gallery background image; reverted to default roast backdrop.');
+    showToast('Removed custom Menu Gallery background image from Cloudflare R2.');
   };
 
   const renderMenuGalleryBgManager = () => (
@@ -1219,7 +1215,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   )}
                   <div>
                     <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-                      Aerial Drone Shot Floor Plan Background · Base64 in Firestore
+                      Aerial Drone Shot Floor Plan Background · 100% Cloudflare R2 Object Storage
                     </div>
                     <h3 className="text-lg font-editorial font-semibold">
                       {settings.floorPlanImageUrl
@@ -1238,7 +1234,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <Upload className="w-3.5 h-3.5" />
                     <span>
                       {uploadingDroneShot
-                        ? 'Encoding Drone Shot...'
+                        ? 'Uploading to Cloudflare R2...'
                         : settings.floorPlanImageUrl
                         ? 'Replace Drone Shot Image'
                         : 'Upload Drone Shot from Device'}
@@ -1252,13 +1248,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         if (!file) return;
                         setUploadingDroneShot(true);
                         try {
-                          const b64 = await uploadMediaFile(file, 'floorplan');
+                          const r2Url = await uploadMediaFile(
+                            file,
+                            'floorplan',
+                            settings.floorPlanImageUrl
+                          );
                           await saveSettings({
                             ...settings,
-                            floorPlanImageUrl: b64,
+                            floorPlanImageUrl: r2Url,
                           });
                           showToast(
-                            'Drone shot floor plan saved as Base64 in Firestore! Drag tables to adjust positions.'
+                            'Drone shot floor plan saved directly to Cloudflare R2! Drag tables to adjust positions.'
                           );
                         } finally {
                           setUploadingDroneShot(false);
@@ -2119,14 +2119,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   if (!file) return;
                                   setUploadingRowItemId(item.id);
                                   try {
-                                    const b64 = await uploadMediaFile(file, 'menu');
-                                    const updated = { ...item, imageUrl: b64 };
+                                    const r2Url = await uploadMediaFile(
+                                      file,
+                                      'menu',
+                                      item.imageUrl
+                                    );
+                                    const updated = { ...item, imageUrl: r2Url };
                                     await saveMenuItem(updated);
                                     if (editingMenuItem?.id === item.id) {
                                       setEditingMenuItem(updated);
                                     }
                                     showToast(
-                                      `Uploaded & saved new Base64 photo for "${item.name}".`
+                                      `Uploaded & saved photo for "${item.name}" to Cloudflare R2.`
                                     );
                                   } finally {
                                     setUploadingRowItemId(null);
@@ -2135,6 +2139,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 }}
                               />
                             </label>
+
+                            {item.imageUrl && item.imageUrl.startsWith('http') && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const updated = { ...item, imageUrl: '' };
+                                  await saveMenuItem(updated);
+                                  if (editingMenuItem?.id === item.id) {
+                                    setEditingMenuItem(updated);
+                                  }
+                                  showToast(`Reset photo for "${item.name}" in Cloudflare R2.`);
+                                }}
+                                className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 font-medium"
+                              >
+                                <RefreshCw className="w-3 h-3" /> Reset Photo
+                              </button>
+                            )}
 
                             <button
                               type="button"
@@ -2399,10 +2420,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       />
                     </div>
 
-                    {/* Dish Image Preview + Device Upload (Base64) + Remove */}
+                    {/* Dish Image Preview + Device Upload (Cloudflare R2) + Remove */}
                     <div className="space-y-2 border border-[#E7DED3] p-3 bg-[#F8F4EE]/60">
                       <label className="block font-semibold text-[#171513]">
-                        Dish / Drink Image (Saved as Base64 in Firestore)
+                        Dish / Drink Image (Saved directly in Cloudflare R2)
                       </label>
                       <div className="aspect-[4/3] w-full border border-[#E7DED3] overflow-hidden bg-white">
                         <EditorialVisual
@@ -2416,10 +2437,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <Upload className="w-3.5 h-3.5" />
                           <span>
                             {uploadingImage
-                              ? 'Encoding Base64...'
-                              : editingMenuItem.imageUrl.startsWith('data:image')
-                              ? 'Replace Device Photo'
-                              : 'Upload Photo from Device'}
+                              ? 'Uploading to R2...'
+                              : editingMenuItem.imageUrl.startsWith('http')
+                              ? 'Replace R2 Photo'
+                              : 'Upload Photo to R2'}
                           </span>
                           <input
                             type="file"
@@ -2430,11 +2451,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               if (!file) return;
                               setUploadingImage(true);
                               try {
-                                const b64Url = await uploadMediaFile(file, 'menu');
-                                setEditingMenuItem({ ...editingMenuItem, imageUrl: b64Url });
-                                showToast(
-                                  'Photo converted to Base64. Click Save Dish to persist in Firestore.'
+                                const r2Url = await uploadMediaFile(
+                                  file,
+                                  'menu',
+                                  editingMenuItem.imageUrl
                                 );
+                                const updatedItem = { ...editingMenuItem, imageUrl: r2Url };
+                                setEditingMenuItem(updatedItem);
+                                if (
+                                  menuItems.some((m) => m.id === updatedItem.id) ||
+                                  updatedItem.name.trim().length > 0
+                                ) {
+                                  await saveMenuItem(updatedItem);
+                                  showToast(
+                                    `Uploaded & saved photo for "${
+                                      updatedItem.name || 'Dish'
+                                    }" directly to Cloudflare R2.`
+                                  );
+                                } else {
+                                  showToast(
+                                    'Photo uploaded to Cloudflare R2. Enter dish name and click Save Dish.'
+                                  );
+                                }
                               } finally {
                                 setUploadingImage(false);
                                 e.target.value = '';
@@ -2445,9 +2483,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingMenuItem({ ...editingMenuItem, imageUrl: '' });
-                            showToast('Cleared custom photo.');
+                          onClick={async () => {
+                            const updatedItem = { ...editingMenuItem, imageUrl: '' };
+                            setEditingMenuItem(updatedItem);
+                            if (menuItems.some((m) => m.id === updatedItem.id)) {
+                              await saveMenuItem(updatedItem);
+                              showToast('Removed custom photo from Cloudflare R2.');
+                            } else {
+                              showToast('Cleared custom photo.');
+                            }
                           }}
                           className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1"
                         >
@@ -2510,32 +2554,81 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Gallery Curations ({gallery.length})
                     </h2>
                     <p className="text-xs text-[#171513]/60">
-                      Edit, replace, or remove any gallery photograph, or upload new images from
-                      your device (stored as Base64 in Firestore).
+                      Edit, replace, or delete any gallery photograph directly in your Cloudflare R2
+                      bucket (cdn.onelovecafesigiriya.com). Zero Firestore gallery reads or writes.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingGalleryItem({
-                        id: `gal_${Date.now()}`,
-                        title: '',
-                        category: 'Architecture',
-                        caption: '',
-                        imageUrl: 'editorial:hero-sanctuary',
-                        aspectRatio: '4:3',
-                        isFeatured: true,
-                        sortOrder: gallery.length + 1,
-                      });
-                      galleryEditorRef.current?.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'nearest',
-                      });
-                    }}
-                    className="px-3.5 py-2 bg-[#C65B2B] text-white text-xs font-medium inline-flex items-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Gallery Photo
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="px-3.5 py-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>
+                        {uploadingBatchGallery
+                          ? 'Uploading Photos to R2...'
+                          : '+ Upload Photos to R2'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={async (e) => {
+                          const files = e.target.files;
+                          if (!files || files.length === 0) return;
+                          setUploadingBatchGallery(true);
+                          try {
+                            let addedCount = 0;
+                            for (let i = 0; i < files.length; i++) {
+                              const f = files[i];
+                              const r2Url = await uploadMediaFile(f, 'gallery');
+                              const cleanTitle = f.name
+                                .replace(/\.[^.]+$/, '')
+                                .replace(/[-_]+/g, ' ')
+                                .trim();
+                              await saveGalleryItem({
+                                id: `gal_${Date.now()}_${i}`,
+                                title: cleanTitle || `Sanctuary Moment ${gallery.length + i + 1}`,
+                                category: 'Architecture',
+                                caption: 'OneLove Café Sigiriya sanctuary archive.',
+                                imageUrl: r2Url,
+                                aspectRatio: '4:3',
+                                isFeatured: true,
+                                sortOrder: gallery.length + i + 1,
+                              });
+                              addedCount++;
+                            }
+                            showToast(
+                              `Uploaded & added ${addedCount} gallery photo(s) directly to Cloudflare R2.`
+                            );
+                          } finally {
+                            setUploadingBatchGallery(false);
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingGalleryItem({
+                          id: `gal_${Date.now()}`,
+                          title: '',
+                          category: 'Architecture',
+                          caption: '',
+                          imageUrl: 'editorial:hero-sanctuary',
+                          aspectRatio: '4:3',
+                          isFeatured: true,
+                          sortOrder: gallery.length + 1,
+                        });
+                        galleryEditorRef.current?.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'nearest',
+                        });
+                      }}
+                      className="px-3.5 py-2 bg-[#C65B2B] text-white text-xs font-medium inline-flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> New Gallery Form
+                    </button>
+                  </div>
                 </div>
 
                 <div className="divide-y divide-[#E7DED3] text-xs">
@@ -2559,7 +2652,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <label className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] hover:border-[#171513] cursor-pointer inline-flex items-center gap-1 font-medium">
+                          <Upload className="w-3 h-3 text-[#C65B2B]" />
+                          <span>
+                            {uploadingGalleryRowId === g.id ? 'Uploading...' : 'Replace Photo'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setUploadingGalleryRowId(g.id);
+                              try {
+                                const r2Url = await uploadMediaFile(file, 'gallery', g.imageUrl);
+                                const updated = { ...g, imageUrl: r2Url };
+                                await saveGalleryItem(updated);
+                                if (editingGalleryItem?.id === g.id) {
+                                  setEditingGalleryItem(updated);
+                                }
+                                showToast(
+                                  `Uploaded & replaced photo for "${g.title}" in Cloudflare R2.`
+                                );
+                              } finally {
+                                setUploadingGalleryRowId(null);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </label>
                         <button
                           type="button"
                           onClick={() => {
@@ -2571,7 +2694,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           }}
                           className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] inline-flex items-center gap-1 font-medium"
                         >
-                          <Edit3 className="w-3 h-3" /> Edit / Replace Photo
+                          <Edit3 className="w-3 h-3" /> Edit Details
                         </button>
                         <button
                           type="button"
@@ -2580,7 +2703,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               setEditingGalleryItem(null);
                             }
                             await deleteGalleryItem(g.id);
-                            showToast(`Removed "${g.title}" from gallery.`);
+                            showToast(`Removed "${g.title}" from gallery & Cloudflare R2.`);
                           }}
                           className="px-3 py-1.5 border border-[#E7DED3] text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 font-medium"
                         >
@@ -2701,7 +2824,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {/* Image Upload / Replace / Remove */}
                     <div className="space-y-2 border border-[#E7DED3] p-3 bg-[#F8F4EE]/60">
                       <label className="block font-semibold text-[#171513]">
-                        Photograph Image (Base64 in Firestore)
+                        Photograph Image (Stored in Cloudflare R2)
                       </label>
                       <div className="aspect-[4/3] w-full border border-[#E7DED3] overflow-hidden bg-white">
                         <EditorialVisual
@@ -2714,8 +2837,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <Upload className="w-3.5 h-3.5" />
                           <span>
                             {uploadingGalleryImg
-                              ? 'Encoding Base64...'
-                              : 'Upload / Replace from Device'}
+                              ? 'Uploading to R2...'
+                              : 'Upload / Replace in R2'}
                           </span>
                           <input
                             type="file"
@@ -2726,9 +2849,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               if (!file) return;
                               setUploadingGalleryImg(true);
                               try {
-                                const b64 = await uploadMediaFile(file, 'gallery');
-                                setEditingGalleryItem({ ...editingGalleryItem, imageUrl: b64 });
-                                showToast('Gallery image encoded as Base64. Click Save to publish.');
+                                const r2Url = await uploadMediaFile(
+                                  file,
+                                  'gallery',
+                                  editingGalleryItem.imageUrl
+                                );
+                                const updatedGallery = {
+                                  ...editingGalleryItem,
+                                  imageUrl: r2Url,
+                                };
+                                setEditingGalleryItem(updatedGallery);
+                                if (
+                                  gallery.some((g) => g.id === updatedGallery.id) ||
+                                  updatedGallery.title.trim().length > 0
+                                ) {
+                                  await saveGalleryItem(updatedGallery);
+                                  showToast(
+                                    `Uploaded & saved gallery photo "${
+                                      updatedGallery.title || 'Sanctuary Moment'
+                                    }" directly to Cloudflare R2.`
+                                  );
+                                } else {
+                                  showToast(
+                                    'Gallery image uploaded to Cloudflare R2. Enter title and click Save.'
+                                  );
+                                }
                               } finally {
                                 setUploadingGalleryImg(false);
                                 e.target.value = '';
@@ -2738,9 +2883,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </label>
                         <button
                           type="button"
-                          onClick={() =>
-                            setEditingGalleryItem({ ...editingGalleryItem, imageUrl: '' })
-                          }
+                          onClick={async () => {
+                            const updatedGallery = { ...editingGalleryItem, imageUrl: '' };
+                            setEditingGalleryItem(updatedGallery);
+                            if (gallery.some((g) => g.id === updatedGallery.id)) {
+                              await saveGalleryItem(updatedGallery);
+                              showToast('Removed gallery photo from Cloudflare R2.');
+                            }
+                          }}
                           className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1"
                         >
                           <Trash2 className="w-3.5 h-3.5" /> Remove
@@ -2752,7 +2902,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="submit"
                       className="w-full py-2.5 bg-[#C65B2B] text-white uppercase tracking-wider font-medium"
                     >
-                      Save Gallery Photo to Firestore
+                      Save Gallery Photo to Cloudflare R2
                     </button>
                   </form>
                 )}
@@ -2815,7 +2965,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <label className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] hover:border-[#171513] cursor-pointer inline-flex items-center gap-1 font-medium">
+                          <Upload className="w-3 h-3 text-[#C65B2B]" />
+                          <span>
+                            {uploadingEventRowId === evt.id ? 'Uploading...' : 'Replace Photo'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setUploadingEventRowId(evt.id);
+                              try {
+                                const r2Url = await uploadMediaFile(file, 'events', evt.imageUrl);
+                                const updated = { ...evt, imageUrl: r2Url };
+                                await saveEvent(updated);
+                                if (editingEvent?.id === evt.id) {
+                                  setEditingEvent(updated);
+                                }
+                                showToast(
+                                  `Uploaded & saved photo for "${evt.title}" in Cloudflare R2.`
+                                );
+                              } finally {
+                                setUploadingEventRowId(null);
+                                e.target.value = '';
+                              }
+                            }}
+                          />
+                        </label>
+                        {evt.imageUrl && evt.imageUrl.startsWith('http') && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const updated = { ...evt, imageUrl: '' };
+                              await saveEvent(updated);
+                              if (editingEvent?.id === evt.id) {
+                                setEditingEvent(updated);
+                              }
+                              showToast(`Reset photo for "${evt.title}" in Cloudflare R2.`);
+                            }}
+                            className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 font-medium"
+                          >
+                            <RefreshCw className="w-3 h-3" /> Reset Photo
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -2941,7 +3137,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {/* Event Image Upload / Replace / Remove */}
                     <div className="space-y-2 border border-[#E7DED3] p-3 bg-[#F8F4EE]/60">
                       <label className="block font-semibold text-[#171513]">
-                        Event Image (Base64 in Firestore)
+                        Event Image (Stored in Cloudflare R2)
                       </label>
                       <div className="aspect-[16/9] w-full border border-[#E7DED3] overflow-hidden bg-white">
                         <EditorialVisual
@@ -2954,8 +3150,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <Upload className="w-3.5 h-3.5" />
                           <span>
                             {uploadingEventImg
-                              ? 'Encoding Base64...'
-                              : 'Upload / Replace from Device'}
+                              ? 'Uploading to R2...'
+                              : 'Upload / Replace in R2'}
                           </span>
                           <input
                             type="file"
@@ -2966,9 +3162,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               if (!file) return;
                               setUploadingEventImg(true);
                               try {
-                                const b64 = await uploadMediaFile(file, 'events');
-                                setEditingEvent({ ...editingEvent, imageUrl: b64 });
-                                showToast('Event image encoded as Base64.');
+                                const r2Url = await uploadMediaFile(
+                                  file,
+                                  'events',
+                                  editingEvent.imageUrl
+                                );
+                                const updatedEvent = { ...editingEvent, imageUrl: r2Url };
+                                setEditingEvent(updatedEvent);
+                                if (
+                                  events.some((ev) => ev.id === updatedEvent.id) ||
+                                  updatedEvent.title.trim().length > 0
+                                ) {
+                                  await saveEvent(updatedEvent);
+                                  showToast(
+                                    `Uploaded & saved event photo for "${
+                                      updatedEvent.title || 'Sanctuary Gathering'
+                                    }" directly to Cloudflare R2.`
+                                  );
+                                } else {
+                                  showToast(
+                                    'Event image uploaded to Cloudflare R2. Enter title and click Save.'
+                                  );
+                                }
                               } finally {
                                 setUploadingEventImg(false);
                                 e.target.value = '';
@@ -2978,7 +3193,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </label>
                         <button
                           type="button"
-                          onClick={() => setEditingEvent({ ...editingEvent, imageUrl: '' })}
+                          onClick={async () => {
+                            const updatedEvent = { ...editingEvent, imageUrl: '' };
+                            setEditingEvent(updatedEvent);
+                            if (events.some((ev) => ev.id === updatedEvent.id)) {
+                              await saveEvent(updatedEvent);
+                              showToast('Removed event photo from Cloudflare R2.');
+                            }
+                          }}
                           className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1"
                         >
                           <Trash2 className="w-3.5 h-3.5" /> Remove
@@ -2990,7 +3212,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       type="submit"
                       className="w-full py-2.5 bg-[#C65B2B] text-white uppercase tracking-wider font-medium"
                     >
-                      Save Event to Firestore
+                      Save Event &amp; Sync R2 Media
                     </button>
                   </form>
                 )}
@@ -3138,6 +3360,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   .filter(
                     (sec) =>
                       !sec.sectionKey.startsWith('hero_slide_') &&
+                      !sec.sectionKey.startsWith('story_collage_') &&
                       sec.sectionKey !== 'menu_gallery_bg'
                   )
                   .map((sec) => {
@@ -3297,7 +3520,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="bg-[#F8F4EE] border border-[#E7DED3] p-4 space-y-3 flex flex-col justify-between">
                             <div className="space-y-2">
                               <div className="font-semibold text-[#171513]">
-                                Section Image (Base64 in Firestore)
+                                Section Image (Stored in Cloudflare R2)
                               </div>
                               <div className="aspect-[16/10] w-full bg-white border border-[#E7DED3] overflow-hidden">
                                 <EditorialVisual
@@ -3312,7 +3535,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <Upload className="w-3.5 h-3.5" />
                                 <span>
                                   {uploadingSectionId === sec.id
-                                    ? 'Encoding...'
+                                    ? 'Uploading to R2...'
                                     : 'Upload / Replace Photo'}
                                 </span>
                                 <input
@@ -3324,15 +3547,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     if (!file) return;
                                     setUploadingSectionId(sec.id);
                                     try {
-                                      const b64 = await uploadMediaFile(file, 'content');
-                                      const updatedSection = { ...draft, imageUrl: b64 };
+                                      const r2Url = await uploadMediaFile(
+                                        file,
+                                        'content',
+                                        draft.imageUrl
+                                      );
+                                      const updatedSection = { ...draft, imageUrl: r2Url };
                                       setContentDrafts({
                                         ...contentDrafts,
                                         [sec.id]: updatedSection,
                                       });
                                       await saveSiteContent(updatedSection);
                                       showToast(
-                                        `Uploaded & saved new Base64 image for "${sec.sectionKey}" in Firestore.`
+                                        `Uploaded & saved new image for "${sec.sectionKey}" directly to Cloudflare R2.`
                                       );
                                     } finally {
                                       setUploadingSectionId(null);
@@ -3350,7 +3577,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     [sec.id]: cleared,
                                   });
                                   await saveSiteContent(cleared);
-                                  showToast(`Removed custom image from "${sec.sectionKey}".`);
+                                  showToast(`Removed custom image from "${sec.sectionKey}" in Cloudflare R2.`);
                                 }}
                                 className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1"
                               >
@@ -3369,15 +3596,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="bg-white border border-[#E7DED3] p-6 space-y-6">
                 <div className="border-b border-[#E7DED3] pb-4">
                   <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-                    Complete Site-Wide Visual Audit · 100% Editable Base64 Storage
+                    Complete Site-Wide Visual Audit · 100% Cloudflare R2 Object Storage (cdn.onelovecafesigiriya.com)
                   </div>
                   <h2 className="text-xl font-editorial font-semibold mt-0.5">
-                    All Website Images — Instant 1-Click Replace &amp; Remove
+                    All Website Images — Instant 1-Click Replace &amp; Remove in R2
                   </h2>
                   <p className="text-xs text-[#171513]/65 mt-0.5">
                     Every single visual rendered across Home, Our Menu, Our Story, Gallery,
-                    Experiences, and Interactive Floor Plan is audited below and can be replaced
-                    directly from your device.
+                    Experiences, and Interactive Floor Plan is stored in and served from your Cloudflare R2 bucket.
                   </p>
                 </div>
 
@@ -3418,9 +3644,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               if (!file) return;
                               setUploadingAuditKey('floorplan');
                               try {
-                                const b64 = await uploadMediaFile(file, 'floorplan');
-                                await saveSettings({ ...settings, floorPlanImageUrl: b64 });
-                                showToast('Updated Floor Plan Drone Shot in Firestore.');
+                                const r2Url = await uploadMediaFile(
+                                  file,
+                                  'floorplan',
+                                  settings.floorPlanImageUrl
+                                );
+                                await saveSettings({ ...settings, floorPlanImageUrl: r2Url });
+                                showToast('Updated Floor Plan Drone Shot in Cloudflare R2.');
                               } finally {
                                 setUploadingAuditKey(null);
                                 e.target.value = '';
@@ -3433,7 +3663,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             type="button"
                             onClick={async () => {
                               await saveSettings({ ...settings, floorPlanImageUrl: '' });
-                              showToast('Reset Floor Plan to default architectural blueprint.');
+                              showToast('Deleted Floor Plan Drone Shot from Cloudflare R2.');
                             }}
                             className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16]"
                           >
@@ -3481,9 +3711,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   if (!file) return;
                                   setUploadingAuditKey(`sec_${sec.id}`);
                                   try {
-                                    const b64 = await uploadMediaFile(file, 'content');
-                                    await saveSiteContent({ ...sec, imageUrl: b64 });
-                                    showToast(`Updated "${sec.sectionKey}" image in Firestore.`);
+                                    const r2Url = await uploadMediaFile(
+                                      file,
+                                      'content',
+                                      sec.imageUrl
+                                    );
+                                    await saveSiteContent({ ...sec, imageUrl: r2Url });
+                                    showToast(`Updated "${sec.sectionKey}" image in Cloudflare R2.`);
                                   } finally {
                                     setUploadingAuditKey(null);
                                     e.target.value = '';
@@ -3491,6 +3725,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 }}
                               />
                             </label>
+                            {sec.imageUrl && sec.imageUrl.startsWith('http') && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await saveSiteContent({ ...sec, imageUrl: '' });
+                                  showToast(`Reset "${sec.sectionKey}" image in Cloudflare R2.`);
+                                }}
+                                className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16]"
+                              >
+                                Reset
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -3518,32 +3764,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {dish.categoryName}
                           </div>
                         </div>
-                        <label className="w-full py-1.5 px-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
-                          <Upload className="w-3 h-3" />
-                          <span>
-                            {uploadingAuditKey === `dish_${dish.id}`
-                              ? 'Uploading...'
-                              : 'Replace Photo'}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              setUploadingAuditKey(`dish_${dish.id}`);
-                              try {
-                                const b64 = await uploadMediaFile(file, 'menu');
-                                await saveMenuItem({ ...dish, imageUrl: b64 });
-                                showToast(`Updated photo for "${dish.name}".`);
-                              } finally {
-                                setUploadingAuditKey(null);
-                                e.target.value = '';
-                              }
-                            }}
-                          />
-                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <label className="flex-1 py-1.5 px-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
+                            <Upload className="w-3 h-3" />
+                            <span>
+                              {uploadingAuditKey === `dish_${dish.id}`
+                                ? 'Uploading...'
+                                : 'Replace Photo'}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setUploadingAuditKey(`dish_${dish.id}`);
+                                try {
+                                  const r2Url = await uploadMediaFile(
+                                    file,
+                                    'menu',
+                                    dish.imageUrl
+                                  );
+                                  await saveMenuItem({ ...dish, imageUrl: r2Url });
+                                  showToast(`Updated photo for "${dish.name}" in Cloudflare R2.`);
+                                } finally {
+                                  setUploadingAuditKey(null);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                          {dish.imageUrl && dish.imageUrl.startsWith('http') && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await saveMenuItem({ ...dish, imageUrl: '' });
+                                showToast(`Reset photo for "${dish.name}" in Cloudflare R2.`);
+                              }}
+                              className="px-2 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16]"
+                            >
+                              Reset
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -3568,30 +3832,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             [Gallery] {g.title}
                           </div>
                         </div>
-                        <label className="w-full py-1.5 px-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
-                          <Upload className="w-3 h-3" />
-                          <span>
-                            {uploadingAuditKey === `gal_${g.id}` ? 'Uploading...' : 'Replace Photo'}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              setUploadingAuditKey(`gal_${g.id}`);
-                              try {
-                                const b64 = await uploadMediaFile(file, 'gallery');
-                                await saveGalleryItem({ ...g, imageUrl: b64 });
-                                showToast(`Updated gallery photo "${g.title}".`);
-                              } finally {
-                                setUploadingAuditKey(null);
-                                e.target.value = '';
-                              }
+                        <div className="flex items-center gap-1.5">
+                          <label className="flex-1 py-1.5 px-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
+                            <Upload className="w-3 h-3" />
+                            <span>
+                              {uploadingAuditKey === `gal_${g.id}` ? 'Uploading...' : 'Replace Photo'}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setUploadingAuditKey(`gal_${g.id}`);
+                                try {
+                                  const r2Url = await uploadMediaFile(file, 'gallery', g.imageUrl);
+                                  await saveGalleryItem({ ...g, imageUrl: r2Url });
+                                  showToast(`Updated gallery photo "${g.title}" in Cloudflare R2.`);
+                                } finally {
+                                  setUploadingAuditKey(null);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await deleteGalleryItem(g.id);
+                              showToast(`Deleted gallery photo "${g.title}" from Cloudflare R2.`);
                             }}
-                          />
-                        </label>
+                            className="px-2 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16]"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
 
@@ -3608,30 +3884,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             [Event] {ev.title}
                           </div>
                         </div>
-                        <label className="w-full py-1.5 px-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
-                          <Upload className="w-3 h-3" />
-                          <span>
-                            {uploadingAuditKey === `evt_${ev.id}` ? 'Uploading...' : 'Replace Photo'}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              setUploadingAuditKey(`evt_${ev.id}`);
-                              try {
-                                const b64 = await uploadMediaFile(file, 'events');
-                                await saveEvent({ ...ev, imageUrl: b64 });
-                                showToast(`Updated event photo "${ev.title}".`);
-                              } finally {
-                                setUploadingAuditKey(null);
-                                e.target.value = '';
-                              }
-                            }}
-                          />
-                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <label className="flex-1 py-1.5 px-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
+                            <Upload className="w-3 h-3" />
+                            <span>
+                              {uploadingAuditKey === `evt_${ev.id}` ? 'Uploading...' : 'Replace Photo'}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setUploadingAuditKey(`evt_${ev.id}`);
+                                try {
+                                  const r2Url = await uploadMediaFile(file, 'events', ev.imageUrl);
+                                  await saveEvent({ ...ev, imageUrl: r2Url });
+                                  showToast(`Updated event photo "${ev.title}" in Cloudflare R2.`);
+                                } finally {
+                                  setUploadingAuditKey(null);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                          {ev.imageUrl && ev.imageUrl.startsWith('http') && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await saveEvent({ ...ev, imageUrl: '' });
+                                showToast(`Reset event photo "${ev.title}" in Cloudflare R2.`);
+                              }}
+                              className="px-2 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16]"
+                            >
+                              Reset
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

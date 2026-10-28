@@ -1,0 +1,81 @@
+{
+  "version": 22,
+  "updatedAt": "2026-10-28T09:32:30.705Z",
+  "heroImages": [
+    "https://cdn.onelovecafesigiriya.com/hero/1793179932916-coffee-latter-with-cookies-croissant-sid.webp",
+    "https://cdn.onelovecafesigiriya.com/hero/1793179940265-42957eec-2f66-492e-b754-eaeb2e0420af.webp",
+    "https://cdn.onelovecafesigiriya.com/hero/1793179950068-caption.webp"
+  ],
+  "heroSlideshowSpeedSeconds": 5,
+  "floorPlanImageUrl": "",
+  "menuImages": {},
+  "galleryItems": [
+    {
+      "id": "gal_1",
+      "title": "Golden Hour Over the Canopy Verandah",
+      "category": "Architecture",
+      "caption": "Handcrafted teak tables overlooking wild heliconia gardens with Sigiriya Lion Rock in the warm distance.",
+      "imageUrl": "editorial:hero-sanctuary",
+      "aspectRatio": "16:9",
+      "isFeatured": true,
+      "sortOrder": 1
+    },
+    {
+      "id": "gal_2",
+      "title": "Morning Hopper Ritual",
+      "category": "Culinary",
+      "caption": "Crisp fermented red-rice hoppers served on stoneware made by Kandy ceramicists.",
+      "imageUrl": "editorial:hopper-bowl",
+      "aspectRatio": "4:3",
+      "isFeatured": true,
+      "sortOrder": 2
+    },
+    {
+      "id": "gal_3",
+      "title": "Slow-Bar Siphon & Highland Pour-Over",
+      "category": "Coffee & Botanicals",
+      "caption": "Small-lot Arabica harvested in Kotmale and roasted in-house every Tuesday and Friday.",
+      "imageUrl": "editorial:pourover",
+      "aspectRatio": "4:3",
+      "isFeatured": true,
+      "sortOrder": 3
+    },
+    {
+      "id": "gal_4",
+      "title": "Laterite Stone Courtyard & Lotus Pool",
+      "category": "Architecture",
+      "caption": "Natural laterite masonry and lime plaster walls that breathe with the tropical monsoon.",
+      "imageUrl": "editorial:courtyard",
+      "aspectRatio": "4:3",
+      "isFeatured": true,
+      "sortOrder": 4
+    },
+    {
+      "id": "gal_5",
+      "title": "Candlelit Hearth Sessions",
+      "category": "Evening Sanctuary",
+      "caption": "When dusk settles over Kimbissa forest, brass lanterns and wood-fired embers illuminate the garden.",
+      "imageUrl": "editorial:evening-hearth",
+      "aspectRatio": "16:9",
+      "isFeatured": true,
+      "sortOrder": 5
+    },
+    {
+      "id": "gal_6",
+      "title": "Mist Over Pidurangala & Lion Rock",
+      "category": "Sigiriya Surroundings",
+      "caption": "Just six minutes from the ancient rock fortress trails, designed for post-climb restoration.",
+      "imageUrl": "editorial:sigiriya-mist",
+      "aspectRatio": "16:9",
+      "isFeatured": false,
+      "sortOrder": 6
+    }
+  ],
+  "eventImages": {},
+  "sectionImages": {},
+  "seoImages": {
+    "pageOgImages": {},
+    "defaultOgImageUrl": "",
+    "brandLogoUrl": ""
+  }
+}

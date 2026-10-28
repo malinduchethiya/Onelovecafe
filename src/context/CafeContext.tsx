@@ -45,6 +45,7 @@ import {
   InquiryRecord,
   AdminRecord,
   AuditLogRecord,
+  R2MediaManifest,
 } from '../types/cafe';
 import {
   DEFAULT_SETTINGS,
@@ -101,6 +102,7 @@ interface CafeContextValue {
   availability: AvailabilitySlotRecord[];
   seoGlobal: GlobalSeoConfig;
   seoPages: Record<SeoPageKey, PageSeoConfig>;
+  r2Manifest: R2MediaManifest;
   // Admin-only collections
   reservations: ReservationRecord[];
   inquiries: InquiryRecord[];
@@ -146,7 +148,8 @@ interface CafeContextValue {
   saveSeoPage: (page: PageSeoConfig) => Promise<void>;
   resetSeoToDefaults: () => Promise<void>;
   updateInquiryStatus: (inquiry: InquiryRecord, status: InquiryRecord['status']) => Promise<void>;
-  uploadMediaFile: (file: File, folder?: string) => Promise<string>;
+  uploadMediaFile: (file: File, folder?: string, previousUrl?: string) => Promise<string>;
+  deleteMediaFromR2: (urlOrUrls: string | string[]) => Promise<void>;
   updateCollageImageFromDevice: (slotIndex: number, file: File) => Promise<void>;
   resetCollageImage: (slotIndex: number) => Promise<void>;
   storageStatus: {
@@ -154,6 +157,7 @@ interface CafeContextValue {
     provider: string;
     bucket?: string | null;
     publicUrl?: string | null;
+    manifestUrl?: string | null;
   } | null;
   checkStorageStatus: () => Promise<void>;
 }
@@ -202,6 +206,19 @@ function writeLocalCache<T>(key: string, value: T): void {
 const INITIAL_SETTINGS: CafeSettings = {
   ...DEFAULT_SETTINGS,
   heroImages: [],
+};
+
+const INITIAL_R2_MANIFEST: R2MediaManifest = {
+  version: 1,
+  updatedAt: new Date(0).toISOString(),
+  heroImages: DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
+  heroSlideshowSpeedSeconds: DEFAULT_SETTINGS.heroSlideshowSpeedSeconds || 5,
+  floorPlanImageUrl: '',
+  menuImages: {},
+  galleryItems: DEFAULT_GALLERY.map((g) => ({ ...g })),
+  eventImages: {},
+  sectionImages: {},
+  seoImages: {},
 };
 
 const INITIAL_MENU_ITEMS: MenuItem[] = DEFAULT_MENU_ITEMS.map((item) => ({
@@ -258,6 +275,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAdmin, setIsAdmin] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [sessionId] = useState<string>(getOrCreateSessionId);
+
+  const [r2Manifest, setR2Manifest] = useState<R2MediaManifest>(() =>
+    readLocalCache('onelove_cache_r2Manifest', INITIAL_R2_MANIFEST)
+  );
 
   const [settings, setSettings] = useState<CafeSettings>(() => {
     const cached = readLocalCache('onelove_cache_settings', INITIAL_SETTINGS);
@@ -355,6 +376,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
 
   const autoSeededRef = useRef(false);
+  const autoMigratedLegacyRef = useRef(false);
 
   // 1. Auth & Admin Role Listener
   useEffect(() => {
@@ -416,7 +438,134 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // 2. Public Real-Time Listeners
+  // 2. Cloudflare R2 Media Manifest Sync (100% R2 Image Reading & Writing — Zero Firestore Image Access)
+  const r2ManifestRef = useRef<R2MediaManifest>(r2Manifest);
+  useEffect(() => {
+    r2ManifestRef.current = r2Manifest;
+  }, [r2Manifest]);
+
+  const fetchR2Manifest = useCallback(async () => {
+    try {
+      const res = await fetch('/api/storage/manifest?refresh=1');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.manifest) {
+          const m = data.manifest as R2MediaManifest;
+          const normalized: R2MediaManifest = {
+            version: typeof m.version === 'number' ? m.version : 1,
+            updatedAt: m.updatedAt || new Date().toISOString(),
+            heroImages: Array.isArray(m.heroImages) ? m.heroImages : [],
+            heroSlideshowSpeedSeconds:
+              typeof m.heroSlideshowSpeedSeconds === 'number' ? m.heroSlideshowSpeedSeconds : 5,
+            floorPlanImageUrl: typeof m.floorPlanImageUrl === 'string' ? m.floorPlanImageUrl : '',
+            menuImages: m.menuImages && typeof m.menuImages === 'object' ? m.menuImages : {},
+            galleryItems: Array.isArray(m.galleryItems) ? m.galleryItems : [],
+            eventImages: m.eventImages && typeof m.eventImages === 'object' ? m.eventImages : {},
+            sectionImages: m.sectionImages && typeof m.sectionImages === 'object' ? m.sectionImages : {},
+            seoImages:
+              m.seoImages && typeof m.seoImages === 'object'
+                ? {
+                    defaultOgImageUrl: m.seoImages.defaultOgImageUrl || '',
+                    brandLogoUrl: m.seoImages.brandLogoUrl || '',
+                    pageOgImages: m.seoImages.pageOgImages || {},
+                  }
+                : { defaultOgImageUrl: '', brandLogoUrl: '', pageOgImages: {} },
+          };
+          r2ManifestRef.current = normalized;
+          setR2Manifest(normalized);
+          writeLocalCache('onelove_cache_r2Manifest', normalized);
+          if (normalized.galleryItems.length > 0) {
+            setGallery(normalized.galleryItems);
+            writeLocalCache('onelove_cache_gallery', normalized.galleryItems);
+          }
+          return;
+        }
+      }
+      // Direct R2 CDN fallback if /api/storage/manifest is unavailable on static host
+      const cdnRes = await fetch(
+        `https://cdn.onelovecafesigiriya.com/manifest/site-media.json?t=${Date.now()}`
+      );
+      if (cdnRes.ok) {
+        const m = (await cdnRes.json()) as R2MediaManifest;
+        if (m && typeof m === 'object') {
+          r2ManifestRef.current = m;
+          setR2Manifest(m);
+          writeLocalCache('onelove_cache_r2Manifest', m);
+          if (Array.isArray(m.galleryItems) && m.galleryItems.length > 0) {
+            setGallery(m.galleryItems);
+            writeLocalCache('onelove_cache_gallery', m.galleryItems);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('R2 manifest fetch warning:', err);
+    }
+  }, []);
+
+  const updateR2Manifest = useCallback(
+    async (
+      updater: (prev: R2MediaManifest) => R2MediaManifest,
+      deleteUrls: string[] = []
+    ): Promise<R2MediaManifest> => {
+      const next = updater(r2ManifestRef.current);
+      next.updatedAt = new Date().toISOString();
+      r2ManifestRef.current = next;
+      setR2Manifest(next);
+      writeLocalCache('onelove_cache_r2Manifest', next);
+      if (Array.isArray(next.galleryItems)) {
+        setGallery(next.galleryItems);
+        writeLocalCache('onelove_cache_gallery', next.galleryItems);
+      }
+
+      try {
+        const res = await fetch('/api/storage/manifest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            manifest: next,
+            deleteUrls: deleteUrls.filter(
+              (u) => typeof u === 'string' && u.startsWith('http') && !u.startsWith('editorial:')
+            ),
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok && data.manifest) {
+            r2ManifestRef.current = data.manifest;
+            setR2Manifest(data.manifest);
+            writeLocalCache('onelove_cache_r2Manifest', data.manifest);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to persist R2 manifest to Cloudflare R2:', err);
+      }
+      return next;
+    },
+    []
+  );
+
+  const deleteMediaFromR2 = useCallback(async (urlOrUrls: string | string[]) => {
+    const rawList = Array.isArray(urlOrUrls) ? urlOrUrls : [urlOrUrls];
+    const validUrls = rawList.filter(
+      (u) => typeof u === 'string' && u.startsWith('http') && !u.startsWith('editorial:')
+    );
+    if (validUrls.length === 0) return;
+    try {
+      await fetch('/api/storage/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls: validUrls }),
+      });
+    } catch (err) {
+      console.warn('Failed to delete media object from R2:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchR2Manifest();
+  }, [fetchR2Manifest]);
+
+  // 2b. Non-Image Real-Time Listeners (Text, Pricing, Tables, Hours & Reservations only — ZERO Image Reads from Firestore)
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
@@ -427,24 +576,17 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const mainDoc = snap.docs.find((d) => d.id === 'main');
           if (mainDoc) {
             const data = mainDoc.data() as Omit<CafeSettings, 'id'>;
-            const rawHero =
-              Array.isArray(data.heroImages) && data.heroImages.length > 0
-                ? data.heroImages
-                : DEFAULT_SETTINGS.heroImages || [];
-            const uploadedHero = rawHero.filter(
-              (img) => typeof img === 'string' && img.length > 0 && !img.startsWith('editorial:')
-            );
             const nextSettings: CafeSettings = {
               ...DEFAULT_SETTINGS,
               id: mainDoc.id,
               ...data,
-              heroImages: uploadedHero.length > 0 ? uploadedHero : rawHero,
+              // Images are NEVER read from Firestore; they come exclusively from Cloudflare R2 (r2Manifest)
+              heroImages: [],
               heroSlideshowSpeedSeconds:
                 typeof data.heroSlideshowSpeedSeconds === 'number'
                   ? data.heroSlideshowSpeedSeconds
                   : DEFAULT_SETTINGS.heroSlideshowSpeedSeconds,
-              floorPlanImageUrl:
-                typeof data.floorPlanImageUrl === 'string' ? data.floorPlanImageUrl : '',
+              floorPlanImageUrl: '',
               googleMapsEmbedUrl:
                 !data.googleMapsEmbedUrl || data.googleMapsEmbedUrl.includes('7.9541,80.7547')
                   ? DEFAULT_SETTINGS.googleMapsEmbedUrl
@@ -453,7 +595,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSettings(nextSettings);
             writeLocalCache('onelove_cache_settings', nextSettings);
           } else if (!snap.metadata.fromCache) {
-            setSettings(DEFAULT_SETTINGS);
+            setSettings(INITIAL_SETTINGS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'settings')
@@ -543,14 +685,29 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         collection(db, 'menuItems'),
         (snap) => {
           if (!snap.empty) {
-            const list = snap.docs.map((d) => ({
-              id: d.id,
-              ...(d.data() as Omit<MenuItem, 'id'>),
-            }));
-            setMenuItems(list);
-            writeLocalCache('onelove_cache_menuItems', list);
+            const deletedIds = new Set<string>(
+              readLocalCache<string[]>('onelove_deleted_menu_ids', [])
+            );
+            // Strip imageUrl when reading from Firestore — menu item images load 100% from Cloudflare R2
+            const list = snap.docs
+              .filter((d) => !deletedIds.has(d.id))
+              .map((d) => {
+                const raw = d.data() as Omit<MenuItem, 'id'>;
+                return {
+                  id: d.id,
+                  ...raw,
+                  imageUrl: '',
+                };
+              });
+            const existingIds = new Set(list.map((m) => m.id));
+            const missingDefaults = INITIAL_MENU_ITEMS.filter(
+              (def) => !existingIds.has(def.id) && !deletedIds.has(def.id)
+            );
+            const merged = [...list, ...missingDefaults];
+            setMenuItems(merged);
+            writeLocalCache('onelove_cache_menuItems', merged);
           } else if (!snap.metadata.fromCache) {
-            setMenuItems(DEFAULT_MENU_ITEMS);
+            setMenuItems(INITIAL_MENU_ITEMS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'menuItems')
@@ -559,35 +716,32 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     unsubs.push(
       onSnapshot(
-        collection(db, 'gallery'),
-        (snap) => {
-          if (!snap.empty) {
-            const list = snap.docs
-              .map((d) => ({ id: d.id, ...(d.data() as Omit<GalleryItem, 'id'>) }))
-              .sort((a, b) => a.sortOrder - b.sortOrder);
-            setGallery(list);
-            writeLocalCache('onelove_cache_gallery', list);
-          } else if (!snap.metadata.fromCache) {
-            setGallery(DEFAULT_GALLERY);
-          }
-        },
-        (err) => handleFirestoreError(err, OperationType.LIST, 'gallery')
-      )
-    );
-
-    unsubs.push(
-      onSnapshot(
         collection(db, 'events'),
         (snap) => {
           if (!snap.empty) {
-            const list = snap.docs.map((d) => ({
-              id: d.id,
-              ...(d.data() as Omit<CafeEvent, 'id'>),
-            }));
-            setEvents(list);
-            writeLocalCache('onelove_cache_events', list);
+            const deletedIds = new Set<string>(
+              readLocalCache<string[]>('onelove_deleted_event_ids', [])
+            );
+            // Strip imageUrl when reading from Firestore — event images load 100% from Cloudflare R2
+            const list = snap.docs
+              .filter((d) => !deletedIds.has(d.id))
+              .map((d) => {
+                const raw = d.data() as Omit<CafeEvent, 'id'>;
+                return {
+                  id: d.id,
+                  ...raw,
+                  imageUrl: '',
+                };
+              });
+            const existingIds = new Set(list.map((e) => e.id));
+            const missingDefaults = INITIAL_EVENTS.filter(
+              (def) => !existingIds.has(def.id) && !deletedIds.has(def.id)
+            );
+            const merged = [...list, ...missingDefaults];
+            setEvents(merged);
+            writeLocalCache('onelove_cache_events', merged);
           } else if (!snap.metadata.fromCache) {
-            setEvents(DEFAULT_EVENTS);
+            setEvents(INITIAL_EVENTS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'events')
@@ -598,38 +752,30 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'siteContent'),
         (snap) => {
-          const localCustomCollage = readLocalCache<Record<string, string>>(
-            'onelove_collage_custom_images',
-            {}
-          );
           if (!snap.empty) {
-            const list = snap.docs.map((d) => ({
-              id: d.id,
-              ...(d.data() as Omit<SiteContentSection, 'id'>),
-            }));
-            const existingKeys = new Set(list.map((s) => s.sectionKey));
-            const missingSections = DEFAULT_SITE_CONTENT.filter(
-              (def) => !existingKeys.has(def.sectionKey)
-            );
-            const merged = [...list, ...missingSections].map((sec) => {
-              if (
-                sec.sectionKey.startsWith('story_collage_') &&
-                localCustomCollage[sec.sectionKey] &&
-                (!sec.imageUrl || sec.imageUrl.startsWith('editorial:'))
-              ) {
-                return { ...sec, imageUrl: localCustomCollage[sec.sectionKey] };
-              }
-              return sec;
+            // Ignore legacy hero_slide_* chunks, deduplicate by sectionKey, and strip imageUrl from Firestore siteContent
+            const byKey = new Map<string, SiteContentSection>();
+            INITIAL_SITE_CONTENT.forEach((def) => {
+              byKey.set(def.sectionKey, { ...def, imageUrl: '' });
             });
+            snap.docs
+              .filter((d) => !d.id.startsWith('sec_hero_slide_'))
+              .forEach((d) => {
+                const raw = d.data() as Omit<SiteContentSection, 'id'>;
+                const key = raw.sectionKey || d.id;
+                if (key.startsWith('hero_slide_')) return;
+                byKey.set(key, {
+                  id: d.id,
+                  ...raw,
+                  sectionKey: key,
+                  imageUrl: '',
+                });
+              });
+            const merged = Array.from(byKey.values());
             setSiteContent(merged);
             writeLocalCache('onelove_cache_siteContent', merged);
           } else if (!snap.metadata.fromCache) {
-            const mergedDefaults = DEFAULT_SITE_CONTENT.map((sec) =>
-              sec.sectionKey.startsWith('story_collage_') && localCustomCollage[sec.sectionKey]
-                ? { ...sec, imageUrl: localCustomCollage[sec.sectionKey] }
-                : sec
-            );
-            setSiteContent(mergedDefaults);
+            setSiteContent(INITIAL_SITE_CONTENT);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'siteContent')
@@ -661,7 +807,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .sort((a, b) => `${b.date}_${b.time}`.localeCompare(`${a.date}_${a.time}`));
           setReservations(list);
 
-          // Identify newly cancelled or rejected reservations and ensure the table availability is released once
           snap.docChanges().forEach((change) => {
             if (change.type === 'removed') return;
             const res = {
@@ -676,7 +821,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const normTime = res.time.replace(/[^a-zA-Z0-9]/g, '-');
               const slotId = `${res.date}_${normTime}_${res.tableId}`;
 
-              // Only free if no OTHER reservation for the exact same date/time/table is confirmed or seated
               const hasOtherActiveReservation = list.some(
                 (other) =>
                   other.id !== res.id &&
@@ -688,7 +832,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               );
 
               if (!hasOtherActiveReservation && change.type === 'modified') {
-                // Release availability in Firestore when a reservation transitions to cancelled/rejected
                 setDoc(
                   doc(db, 'availability', slotId),
                   {
@@ -711,7 +854,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
-    // 11. Global SEO Configuration Real-Time Listener
+    // 11. Global SEO Configuration Real-Time Listener (Text only — SEO images come from Cloudflare R2)
     unsubs.push(
       onSnapshot(
         collection(db, 'seoConfig'),
@@ -723,6 +866,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...DEFAULT_GLOBAL_SEO,
               ...data,
               id: 'main',
+              defaultOgImageUrl: DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
+              brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
               defaultTitle:
                 !data.defaultTitle || data.defaultTitle.includes('Breakfast, Brunch & Coffee')
                   ? DEFAULT_GLOBAL_SEO.defaultTitle
@@ -753,7 +898,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
-    // 12. Per-Page SEO Configuration Real-Time Listener
+    // 12. Per-Page SEO Configuration Real-Time Listener (Text only — Page OG images come from Cloudflare R2)
     unsubs.push(
       onSnapshot(
         collection(db, 'seoPages'),
@@ -768,6 +913,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   ...DEFAULT_PAGE_SEO[key],
                   ...rawPage,
                   id: key,
+                  ogImageUrl: DEFAULT_PAGE_SEO[key].ogImageUrl,
                 };
                 if (key === 'home') {
                   if (
@@ -818,23 +964,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Sync live Firestore SEO configuration to the Express server so SSR HTML metadata,
-  // /sitemap.xml, /robots.txt, and /favicon* endpoints always reflect the latest settings
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const timer = window.setTimeout(() => {
-      fetch('/api/seo/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          global: seoGlobal,
-          pages: seoPages,
-        }),
-      }).catch(() => {});
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [seoGlobal, seoPages]);
-
   // Cloudflare R2 Storage Status
   const [storageStatus, setStorageStatus] = useState<{
     configured: boolean;
@@ -864,16 +993,16 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkStorageStatus();
   }, [checkStorageStatus]);
 
-  // Seed initial sanctuary data into Firestore when an admin clicks Seed or first initializes
+  // Seed initial sanctuary data (non-image records in Firestore, gallery in Cloudflare R2)
   const seedDatabaseIfNeeded = useCallback(async () => {
     if (!isAdmin) return;
     try {
       const { id: settingId, ...settingData } = DEFAULT_SETTINGS;
       await setDoc(doc(db, 'settings', settingId), {
         ...settingData,
-        heroImages: settingData.heroImages || ['editorial:hero-sanctuary'],
+        heroImages: [],
         heroSlideshowSpeedSeconds: settingData.heroSlideshowSpeedSeconds || 5,
-        floorPlanImageUrl: settingData.floorPlanImageUrl || '',
+        floorPlanImageUrl: '',
         updatedAt: serverTimestamp(),
       });
 
@@ -899,29 +1028,36 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       for (const item of DEFAULT_MENU_ITEMS) {
         const { id, ...data } = item;
-        await setDoc(doc(db, 'menuItems', id), { ...data, updatedAt: serverTimestamp() });
-      }
-
-      for (const g of DEFAULT_GALLERY) {
-        const { id, ...data } = g;
-        await setDoc(doc(db, 'gallery', id), { ...data, createdAt: serverTimestamp() });
+        await setDoc(doc(db, 'menuItems', id), {
+          ...data,
+          imageUrl: '',
+          updatedAt: serverTimestamp(),
+        });
       }
 
       for (const evt of DEFAULT_EVENTS) {
         const { id, ...data } = evt;
-        await setDoc(doc(db, 'events', id), { ...data, updatedAt: serverTimestamp() });
+        await setDoc(doc(db, 'events', id), {
+          ...data,
+          imageUrl: '',
+          updatedAt: serverTimestamp(),
+        });
       }
 
       for (const sc of DEFAULT_SITE_CONTENT) {
         const { id, ...data } = sc;
-        await setDoc(doc(db, 'siteContent', id), { ...data, updatedAt: serverTimestamp() });
+        await setDoc(doc(db, 'siteContent', id), {
+          ...data,
+          imageUrl: '',
+          updatedAt: serverTimestamp(),
+        });
       }
 
       await logAdminAction(
         'SEED_SANCTUARY_DATA',
         'settings',
         'main',
-        'Initialized default OneLove Café Sigiriya tables, menu, zones, and content in Firestore'
+        'Initialized default OneLove Café Sigiriya text, tables, menu, and zones (zero images in Firestore)'
       );
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'seedDatabase');
@@ -963,6 +1099,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   const { id: did, ...ddata } = defItem;
                   await setDoc(doc(db, 'menuItems', did), {
                     ...ddata,
+                    imageUrl: '',
                     updatedAt: serverTimestamp(),
                   }).catch(() => {});
                 }
@@ -1584,317 +1721,455 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const saveMenuItem = useCallback(async (item: MenuItem) => {
-    try {
-      setMenuItems((prev) => {
-        const exists = prev.some((m) => m.id === item.id);
-        const next = exists ? prev.map((m) => (m.id === item.id ? item : m)) : [item, ...prev];
-        writeLocalCache('onelove_cache_menuItems', next);
-        return next;
-      });
+  const saveMenuItem = useCallback(
+    async (item: MenuItem) => {
+      try {
+        const { id, ...data } = item;
+        const rawImageUrl = (data.imageUrl || '').trim();
+        const cleanImageUrl = rawImageUrl.startsWith('editorial:') ? '' : rawImageUrl;
+        const prevImageUrl = r2ManifestRef.current.menuImages?.[id] || '';
+        const urlsToDelete =
+          prevImageUrl && prevImageUrl !== cleanImageUrl ? [prevImageUrl] : [];
 
-      const { id, ...data } = item;
-      const validItemCurrency =
-        data.priceCurrency && ['default', 'both', 'lkr', 'usd'].includes(data.priceCurrency)
-          ? data.priceCurrency
-          : 'default';
-      await setDoc(doc(db, 'menuItems', id), {
-        name: (data.name || 'Untitled Dish').slice(0, 100),
-        categoryId: (data.categoryId || 'cat_coffee').slice(0, 60),
-        categoryName: (data.categoryName || 'Specialty Coffee & Botanicals').slice(0, 60),
-        description: (data.description || 'Crafted fresh in Sigiriya.').slice(0, 400),
-        priceLkr: Math.max(0, Number(data.priceLkr) || 0),
-        priceUsd: Math.max(0, Number(data.priceUsd) || 0),
-        priceCurrency: validItemCurrency,
-        imageUrl: (data.imageUrl || '').slice(0, 900000),
-        dietaryTags: (data.dietaryTags || []).slice(0, 10),
-        isFeatured: Boolean(data.isFeatured),
-        isAvailable: Boolean(data.isAvailable),
-        updatedAt: serverTimestamp(),
-      });
-      await logAdminAction('SAVE_MENU_ITEM', 'menuItems', id, `Saved menu item ${data.name}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `menuItems/${item.id}`);
-    }
-  }, []);
-
-  const deleteMenuItem = useCallback(async (id: string) => {
-    try {
-      setMenuItems((prev) => {
-        const next = prev.filter((m) => m.id !== id);
-        writeLocalCache('onelove_cache_menuItems', next);
-        return next;
-      });
-      await deleteDoc(doc(db, 'menuItems', id));
-      await logAdminAction('DELETE_MENU_ITEM', 'menuItems', id, `Deleted menu item ${id}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `menuItems/${id}`);
-    }
-  }, []);
-
-  const saveGalleryItem = useCallback(async (item: GalleryItem) => {
-    try {
-      setGallery((prev) => {
-        const exists = prev.some((g) => g.id === item.id);
-        const next = (exists ? prev.map((g) => (g.id === item.id ? item : g)) : [...prev, item]).sort(
-          (a, b) => a.sortOrder - b.sortOrder
-        );
-        writeLocalCache('onelove_cache_gallery', next);
-        return next;
-      });
-
-      const { id, ...data } = item;
-      const existingSnap = await getDoc(doc(db, 'gallery', id)).catch(() => null);
-      const createdAtVal =
-        existingSnap && existingSnap.exists()
-          ? existingSnap.data().createdAt
-          : serverTimestamp();
-      await setDoc(doc(db, 'gallery', id), {
-        title: (data.title || 'Sanctuary Moment').slice(0, 100),
-        category: data.category,
-        caption: (data.caption || '').slice(0, 300),
-        imageUrl: (data.imageUrl || '').slice(0, 900000),
-        aspectRatio: data.aspectRatio || '4:3',
-        isFeatured: Boolean(data.isFeatured),
-        sortOrder: Number(data.sortOrder) || 1,
-        createdAt: createdAtVal,
-      });
-      await logAdminAction('SAVE_GALLERY_ITEM', 'gallery', id, `Saved gallery photo ${data.title}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `gallery/${item.id}`);
-    }
-  }, []);
-
-  const deleteGalleryItem = useCallback(async (id: string) => {
-    try {
-      setGallery((prev) => {
-        const next = prev.filter((g) => g.id !== id);
-        writeLocalCache('onelove_cache_gallery', next);
-        return next;
-      });
-      await deleteDoc(doc(db, 'gallery', id));
-      await logAdminAction('DELETE_GALLERY_ITEM', 'gallery', id, `Deleted gallery item ${id}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `gallery/${id}`);
-    }
-  }, []);
-
-  const saveEvent = useCallback(async (evt: CafeEvent) => {
-    try {
-      setEvents((prev) => {
-        const exists = prev.some((e) => e.id === evt.id);
-        const next = exists ? prev.map((e) => (e.id === evt.id ? evt : e)) : [...prev, evt];
-        writeLocalCache('onelove_cache_events', next);
-        return next;
-      });
-
-      const { id, ...data } = evt;
-      await setDoc(doc(db, 'events', id), {
-        title: (data.title || 'Sanctuary Gathering').slice(0, 120),
-        subtitle: (data.subtitle || '').slice(0, 140),
-        date: (data.date || 'Weekly').slice(0, 40),
-        time: (data.time || '18:00').slice(0, 40),
-        category: (data.category || 'Evening Ritual').slice(0, 60),
-        description: (data.description || 'Curated experience at OneLove Café.').slice(0, 600),
-        imageUrl: (data.imageUrl || '').slice(0, 900000),
-        priceInfo: (data.priceInfo || '').slice(0, 80),
-        isFeatured: Boolean(data.isFeatured),
-        isActive: Boolean(data.isActive),
-        updatedAt: serverTimestamp(),
-      });
-      await logAdminAction('SAVE_EVENT', 'events', id, `Saved event ${data.title}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `events/${evt.id}`);
-    }
-  }, []);
-
-  const deleteEvent = useCallback(async (id: string) => {
-    try {
-      setEvents((prev) => {
-        const next = prev.filter((e) => e.id !== id);
-        writeLocalCache('onelove_cache_events', next);
-        return next;
-      });
-      await deleteDoc(doc(db, 'events', id));
-      await logAdminAction('DELETE_EVENT', 'events', id, `Deleted event ${id}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `events/${id}`);
-    }
-  }, []);
-
-  const saveSiteContent = useCallback(async (section: SiteContentSection) => {
-    try {
-      setSiteContent((prev) => {
-        const exists = prev.some((s) => s.id === section.id);
-        const next = exists ? prev.map((s) => (s.id === section.id ? section : s)) : [...prev, section];
-        writeLocalCache('onelove_cache_siteContent', next);
-        return next;
-      });
-
-      const { id, ...data } = section;
-      await setDoc(doc(db, 'siteContent', id), {
-        sectionKey: (data.sectionKey || 'section').slice(0, 60),
-        kicker: (data.kicker || '').slice(0, 100),
-        heading: (data.heading || 'OneLove Café Sigiriya').slice(0, 160),
-        subheading: (data.subheading || '').slice(0, 400),
-        body: (data.body || '').slice(0, 1200),
-        ctaLabel: (data.ctaLabel || '').slice(0, 60),
-        ctaLink: (data.ctaLink || '').slice(0, 120),
-        imageUrl: (data.imageUrl || '').slice(0, 900000),
-        updatedAt: serverTimestamp(),
-      });
-      await logAdminAction(
-        'SAVE_SITE_CONTENT',
-        'siteContent',
-        id,
-        `Updated website section ${data.sectionKey}`
-      );
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `siteContent/${section.id}`);
-    }
-  }, []);
-
-  const saveSettings = useCallback(async (newSettings: CafeSettings) => {
-    try {
-      setSettings(newSettings);
-      writeLocalCache('onelove_cache_settings', newSettings);
-      const { id, ...data } = newSettings;
-      const rawHeroImages = Array.isArray(data.heroImages)
-        ? data.heroImages.filter((img) => typeof img === 'string' && img.length > 0).slice(0, 12)
-        : DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'];
-      const speedSec = Math.min(
-        60,
-        Math.max(1, Number(data.heroSlideshowSpeedSeconds) || 5)
-      );
-
-      const validMenuCurrency =
-        data.menuCurrencyDisplay && ['both', 'lkr', 'usd'].includes(data.menuCurrencyDisplay)
-          ? data.menuCurrencyDisplay
-          : 'both';
-
-      // Keep Base64 Hero Slides directly inline in `settings/main` (`heroImages`) up to 820KB total
-      // so existing Cloudflare Pages deployments immediately display the new images without needing a redeploy,
-      // and only offload extra slides to `siteContent` if total size exceeds 820KB.
-      const INLINE_SETTINGS_BUDGET = 820_000;
-      const CHUNK_LIMIT = 850_000;
-      const floorPlanLen = (data.floorPlanImageUrl || '').slice(0, 850000).length;
-      let runningInlineBytes = floorPlanLen;
-
-      const firestoreHeroRefs: string[] = [];
-      const optimisticHeroSections: SiteContentSection[] = [];
-      const firestoreSlideWrites: Array<{
-        docId: string;
-        payload: Omit<SiteContentSection, 'id'>;
-        cleanupPart2DocId?: string;
-      }> = [];
-
-      for (let i = 0; i < rawHeroImages.length; i++) {
-        const img = rawHeroImages[i];
-        if (img.startsWith('data:image')) {
-          if (runningInlineBytes + img.length <= INLINE_SETTINGS_BUDGET) {
-            // Fits directly inside `settings/main.heroImages` — 100% compatible with all Cloudflare Pages builds
-            runningInlineBytes += img.length;
-            firestoreHeroRefs.push(img);
+        // 1. Save image URL in Cloudflare R2 manifest (and delete replaced image from R2 bucket)
+        await updateR2Manifest((prev) => {
+          const nextMenuImages = { ...(prev.menuImages || {}) };
+          if (cleanImageUrl) {
+            nextMenuImages[id] = cleanImageUrl;
           } else {
-            // Overflow slide offloaded to dedicated `siteContent` document
-            const slideKey = `hero_slide_${i}`;
-            const slideDocId = `sec_${slideKey}`;
-            const part1 = img.slice(0, CHUNK_LIMIT);
-            const part2 = img.length > CHUNK_LIMIT ? img.slice(CHUNK_LIMIT, CHUNK_LIMIT * 2) : '';
-
-            const sec1Payload: Omit<SiteContentSection, 'id'> = {
-              sectionKey: slideKey,
-              kicker: `Hero Slide 0${i + 1}`,
-              heading: `Homepage 4K Hero Slide 0${i + 1}`,
-              subheading: '4K UHD Hero Background Image',
-              body: `Dedicated Firestore storage for 4K Hero slide #${i + 1}.`,
-              ctaLabel: 'Explore',
-              ctaLink: '/',
-              imageUrl: part1,
-            };
-            optimisticHeroSections.push({ id: slideDocId, ...sec1Payload });
-
-            const slidePart2Key = `${slideKey}_p2`;
-            const slidePart2DocId = `sec_${slidePart2Key}`;
-
-            if (part2.length > 0) {
-              const sec2Payload: Omit<SiteContentSection, 'id'> = {
-                sectionKey: slidePart2Key,
-                kicker: `Hero Slide 0${i + 1} Part 2`,
-                heading: `Homepage 4K Hero Slide 0${i + 1} (Part 2)`,
-                subheading: '4K UHD Hero Background Continuation',
-                body: `Continuation chunk for 4K Hero slide #${i + 1}.`,
-                ctaLabel: 'Explore',
-                ctaLink: '/',
-                imageUrl: part2,
-              };
-              optimisticHeroSections.push({ id: slidePart2DocId, ...sec2Payload });
-              firestoreSlideWrites.push({ docId: slideDocId, payload: sec1Payload });
-              firestoreSlideWrites.push({ docId: slidePart2DocId, payload: sec2Payload });
-            } else {
-              firestoreSlideWrites.push({
-                docId: slideDocId,
-                payload: sec1Payload,
-                cleanupPart2DocId: slidePart2DocId,
-              });
-            }
-
-            firestoreHeroRefs.push(`siteContent:${slideKey}`);
+            delete nextMenuImages[id];
           }
-        } else {
-          firestoreHeroRefs.push(img);
-        }
-      }
+          return {
+            ...prev,
+            menuImages: nextMenuImages,
+          };
+        }, urlsToDelete);
 
-      if (optimisticHeroSections.length > 0) {
+        // 2. Save text/price metadata only in local state & Firestore (imageUrl is ALWAYS empty in Firestore)
+        const firestoreItem: MenuItem = { ...item, imageUrl: '' };
+        setMenuItems((prev) => {
+          const exists = prev.some((m) => m.id === item.id);
+          const next = exists
+            ? prev.map((m) => (m.id === item.id ? firestoreItem : m))
+            : [firestoreItem, ...prev];
+          writeLocalCache('onelove_cache_menuItems', next);
+          return next;
+        });
+
+        const validItemCurrency =
+          data.priceCurrency && ['default', 'both', 'lkr', 'usd'].includes(data.priceCurrency)
+            ? data.priceCurrency
+            : 'default';
+        await setDoc(doc(db, 'menuItems', id), {
+          name: (data.name || 'Untitled Dish').slice(0, 100),
+          categoryId: (data.categoryId || 'cat_coffee').slice(0, 60),
+          categoryName: (data.categoryName || 'Specialty Coffee & Botanicals').slice(0, 60),
+          description: (data.description || 'Crafted fresh in Sigiriya.').slice(0, 400),
+          priceLkr: Math.max(0, Number(data.priceLkr) || 0),
+          priceUsd: Math.max(0, Number(data.priceUsd) || 0),
+          priceCurrency: validItemCurrency,
+          imageUrl: '',
+          dietaryTags: (data.dietaryTags || []).slice(0, 10),
+          isFeatured: Boolean(data.isFeatured),
+          isAvailable: Boolean(data.isAvailable),
+          updatedAt: serverTimestamp(),
+        });
+        await logAdminAction(
+          'SAVE_MENU_ITEM',
+          'menuItems',
+          id,
+          `Saved menu item ${data.name} (image synced to Cloudflare R2)`
+        );
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `menuItems/${item.id}`);
+      }
+    },
+    [updateR2Manifest]
+  );
+
+  const deleteMenuItem = useCallback(
+    async (id: string) => {
+      try {
+        const prevImageUrl = r2ManifestRef.current.menuImages?.[id] || '';
+        await updateR2Manifest(
+          (prev) => {
+            const nextMenuImages = { ...(prev.menuImages || {}) };
+            delete nextMenuImages[id];
+            return {
+              ...prev,
+              menuImages: nextMenuImages,
+            };
+          },
+          prevImageUrl ? [prevImageUrl] : []
+        );
+
+        const prevDeleted = readLocalCache<string[]>('onelove_deleted_menu_ids', []);
+        if (!prevDeleted.includes(id)) {
+          writeLocalCache('onelove_deleted_menu_ids', [...prevDeleted, id]);
+        }
+
+        setMenuItems((prev) => {
+          const next = prev.filter((m) => m.id !== id);
+          writeLocalCache('onelove_cache_menuItems', next);
+          return next;
+        });
+        await deleteDoc(doc(db, 'menuItems', id));
+        await logAdminAction(
+          'DELETE_MENU_ITEM',
+          'menuItems',
+          id,
+          `Deleted menu item ${id} and removed image from Cloudflare R2`
+        );
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `menuItems/${id}`);
+      }
+    },
+    [updateR2Manifest]
+  );
+
+  // Gallery items & images live 100% in Cloudflare R2 (Zero Firestore reads or writes)
+  const saveGalleryItem = useCallback(
+    async (item: GalleryItem) => {
+      try {
+        const existing = r2ManifestRef.current.galleryItems.find((g) => g.id === item.id);
+        const prevUrl = existing?.imageUrl || '';
+        const nextUrl = (item.imageUrl || '').trim();
+        const urlsToDelete = prevUrl && prevUrl !== nextUrl ? [prevUrl] : [];
+
+        const normalizedItem: GalleryItem = {
+          id: item.id,
+          title: (item.title || 'Sanctuary Moment').slice(0, 100),
+          category: item.category || 'Garden',
+          caption: (item.caption || '').slice(0, 300),
+          imageUrl: nextUrl,
+          aspectRatio: item.aspectRatio || '4:3',
+          isFeatured: Boolean(item.isFeatured),
+          sortOrder: Number(item.sortOrder) || 1,
+        };
+
+        await updateR2Manifest((prev) => {
+          const list = Array.isArray(prev.galleryItems) ? prev.galleryItems : [];
+          const exists = list.some((g) => g.id === normalizedItem.id);
+          const nextList = (
+            exists
+              ? list.map((g) => (g.id === normalizedItem.id ? normalizedItem : g))
+              : [...list, normalizedItem]
+          ).sort((a, b) => a.sortOrder - b.sortOrder);
+          return {
+            ...prev,
+            galleryItems: nextList,
+          };
+        }, urlsToDelete);
+
+        // Clean up any legacy Firestore document if one existed previously
+        await deleteDoc(doc(db, 'gallery', item.id)).catch(() => {});
+
+        await logAdminAction(
+          'SAVE_GALLERY_ITEM_R2',
+          'r2_gallery',
+          item.id,
+          `Saved gallery photo "${normalizedItem.title}" directly to Cloudflare R2`
+        );
+      } catch (error) {
+        console.error('Failed to save gallery item to R2:', error);
+      }
+    },
+    [updateR2Manifest]
+  );
+
+  const deleteGalleryItem = useCallback(
+    async (id: string) => {
+      try {
+        const existing = r2ManifestRef.current.galleryItems.find((g) => g.id === id);
+        const prevUrl = existing?.imageUrl || '';
+
+        await updateR2Manifest(
+          (prev) => ({
+            ...prev,
+            galleryItems: (prev.galleryItems || []).filter((g) => g.id !== id),
+          }),
+          prevUrl ? [prevUrl] : []
+        );
+
+        // Clean up any legacy Firestore document if one existed previously
+        await deleteDoc(doc(db, 'gallery', id)).catch(() => {});
+
+        await logAdminAction(
+          'DELETE_GALLERY_ITEM_R2',
+          'r2_gallery',
+          id,
+          `Deleted gallery item ${id} and removed object from Cloudflare R2`
+        );
+      } catch (error) {
+        console.error('Failed to delete gallery item from R2:', error);
+      }
+    },
+    [updateR2Manifest]
+  );
+
+  const saveEvent = useCallback(
+    async (evt: CafeEvent) => {
+      try {
+        const { id, ...data } = evt;
+        const rawImageUrl = (data.imageUrl || '').trim();
+        const cleanImageUrl = rawImageUrl.startsWith('editorial:') ? '' : rawImageUrl;
+        const prevImageUrl = r2ManifestRef.current.eventImages?.[id] || '';
+        const urlsToDelete =
+          prevImageUrl && prevImageUrl !== cleanImageUrl ? [prevImageUrl] : [];
+
+        // 1. Save event image URL in Cloudflare R2 manifest (and delete replaced image from R2)
+        await updateR2Manifest((prev) => {
+          const nextEventImages = { ...(prev.eventImages || {}) };
+          if (cleanImageUrl) {
+            nextEventImages[id] = cleanImageUrl;
+          } else {
+            delete nextEventImages[id];
+          }
+          return {
+            ...prev,
+            eventImages: nextEventImages,
+          };
+        }, urlsToDelete);
+
+        // 2. Save text metadata only in local state & Firestore (imageUrl is ALWAYS empty in Firestore)
+        const firestoreEvt: CafeEvent = { ...evt, imageUrl: '' };
+        setEvents((prev) => {
+          const exists = prev.some((e) => e.id === evt.id);
+          const next = exists
+            ? prev.map((e) => (e.id === evt.id ? firestoreEvt : e))
+            : [...prev, firestoreEvt];
+          writeLocalCache('onelove_cache_events', next);
+          return next;
+        });
+
+        await setDoc(doc(db, 'events', id), {
+          title: (data.title || 'Sanctuary Gathering').slice(0, 120),
+          subtitle: (data.subtitle || '').slice(0, 140),
+          date: (data.date || 'Weekly').slice(0, 40),
+          time: (data.time || '18:00').slice(0, 40),
+          category: (data.category || 'Evening Ritual').slice(0, 60),
+          description: (data.description || 'Curated experience at OneLove Café.').slice(0, 600),
+          imageUrl: '',
+          priceInfo: (data.priceInfo || '').slice(0, 80),
+          isFeatured: Boolean(data.isFeatured),
+          isActive: Boolean(data.isActive),
+          updatedAt: serverTimestamp(),
+        });
+        await logAdminAction(
+          'SAVE_EVENT',
+          'events',
+          id,
+          `Saved event ${data.title} (image synced to Cloudflare R2)`
+        );
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `events/${evt.id}`);
+      }
+    },
+    [updateR2Manifest]
+  );
+
+  const deleteEvent = useCallback(
+    async (id: string) => {
+      try {
+        const prevImageUrl = r2ManifestRef.current.eventImages?.[id] || '';
+        await updateR2Manifest(
+          (prev) => {
+            const nextEventImages = { ...(prev.eventImages || {}) };
+            delete nextEventImages[id];
+            return {
+              ...prev,
+              eventImages: nextEventImages,
+            };
+          },
+          prevImageUrl ? [prevImageUrl] : []
+        );
+
+        const prevDeleted = readLocalCache<string[]>('onelove_deleted_event_ids', []);
+        if (!prevDeleted.includes(id)) {
+          writeLocalCache('onelove_deleted_event_ids', [...prevDeleted, id]);
+        }
+
+        setEvents((prev) => {
+          const next = prev.filter((e) => e.id !== id);
+          writeLocalCache('onelove_cache_events', next);
+          return next;
+        });
+        await deleteDoc(doc(db, 'events', id));
+        await logAdminAction(
+          'DELETE_EVENT',
+          'events',
+          id,
+          `Deleted event ${id} and removed image from Cloudflare R2`
+        );
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `events/${id}`);
+      }
+    },
+    [updateR2Manifest]
+  );
+
+  const saveSiteContent = useCallback(
+    async (section: SiteContentSection) => {
+      try {
+        const { id, ...data } = section;
+        const sectionKey = (data.sectionKey || 'section').slice(0, 60);
+        const rawImageUrl = (data.imageUrl || '').trim();
+        const cleanImageUrl = rawImageUrl.startsWith('editorial:') ? '' : rawImageUrl;
+        const prevImageUrl = r2ManifestRef.current.sectionImages?.[sectionKey] || '';
+        const urlsToDelete =
+          prevImageUrl && prevImageUrl !== cleanImageUrl ? [prevImageUrl] : [];
+
+        // 1. Save section image URL in Cloudflare R2 manifest (and delete replaced image from R2)
+        await updateR2Manifest((prev) => {
+          const nextSectionImages = { ...(prev.sectionImages || {}) };
+          if (cleanImageUrl) {
+            nextSectionImages[sectionKey] = cleanImageUrl;
+          } else {
+            delete nextSectionImages[sectionKey];
+          }
+          return {
+            ...prev,
+            sectionImages: nextSectionImages,
+          };
+        }, urlsToDelete);
+
+        // 2. Save text metadata only in local state & Firestore (imageUrl is ALWAYS empty in Firestore)
+        const firestoreSection: SiteContentSection = { ...section, sectionKey, imageUrl: '' };
         setSiteContent((prev) => {
-          const map = new Map<string, SiteContentSection>();
-          prev.forEach((s) => map.set(s.sectionKey, s));
-          optimisticHeroSections.forEach((s) => map.set(s.sectionKey, s));
-          const next = Array.from(map.values());
+          const exists = prev.some((s) => s.id === section.id || s.sectionKey === sectionKey);
+          const next = exists
+            ? prev.map((s) =>
+                s.id === section.id || s.sectionKey === sectionKey ? firestoreSection : s
+              )
+            : [...prev, firestoreSection];
           writeLocalCache('onelove_cache_siteContent', next);
           return next;
         });
-      }
 
-      for (const writeOp of firestoreSlideWrites) {
-        await setDoc(doc(db, 'siteContent', writeOp.docId), {
-          ...writeOp.payload,
+        await setDoc(doc(db, 'siteContent', id), {
+          sectionKey,
+          kicker: (data.kicker || '').slice(0, 100),
+          heading: (data.heading || 'OneLove Café Sigiriya').slice(0, 160),
+          subheading: (data.subheading || '').slice(0, 400),
+          body: (data.body || '').slice(0, 1200),
+          ctaLabel: (data.ctaLabel || '').slice(0, 60),
+          ctaLink: (data.ctaLink || '').slice(0, 120),
+          imageUrl: '',
           updatedAt: serverTimestamp(),
         });
-        if (writeOp.cleanupPart2DocId) {
-          await deleteDoc(doc(db, 'siteContent', writeOp.cleanupPart2DocId)).catch(() => {});
-        }
+        await logAdminAction(
+          'SAVE_SITE_CONTENT',
+          'siteContent',
+          id,
+          `Updated website section ${sectionKey} (image synced to Cloudflare R2)`
+        );
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `siteContent/${section.id}`);
       }
+    },
+    [updateR2Manifest]
+  );
 
-      await setDoc(doc(db, 'settings', id || 'main'), {
-        cafeName: (data.cafeName || 'OneLove Café').slice(0, 80),
-        tagline: (data.tagline || '').slice(0, 160),
-        address: (data.address || '').slice(0, 200),
-        phone: (data.phone || '').slice(0, 40),
-        whatsapp: (data.whatsapp || '').slice(0, 40),
-        email: (data.email || '').slice(0, 120),
-        instagram: (data.instagram || '').slice(0, 100),
-        coordinates: (data.coordinates || '').slice(0, 60),
-        gracePeriodMinutes: Math.min(60, Math.max(5, Math.round(Number(data.gracePeriodMinutes) || 15))),
-        holdDurationMinutes: Math.min(30, Math.max(3, Math.round(Number(data.holdDurationMinutes) || 10))),
-        maxPartySize: Math.min(30, Math.max(2, Math.round(Number(data.maxPartySize) || 12))),
-        sameDayCutoffHour: Math.min(23, Math.max(0, Math.round(Number(data.sameDayCutoffHour) || 21))),
-        bookingPolicy: (data.bookingPolicy || '').slice(0, 600),
-        heroImages: firestoreHeroRefs,
-        heroSlideshowSpeedSeconds: speedSec,
-        floorPlanImageUrl: (data.floorPlanImageUrl || '').slice(0, 850000),
-        googleMapsEmbedUrl: (data.googleMapsEmbedUrl || '').slice(0, 2000),
-        mapTitle: (data.mapTitle || 'Our Sanctuary Location').slice(0, 120),
-        mapSubtitle: (data.mapSubtitle || '').slice(0, 250),
-        menuCurrencyDisplay: validMenuCurrency,
-        updatedAt: serverTimestamp(),
-      });
-      await logAdminAction('SAVE_SETTINGS', 'settings', id || 'main', 'Updated global café settings & 4K hero media');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `settings/${newSettings.id}`);
-    }
-  }, []);
+  const saveSettings = useCallback(
+    async (newSettings: CafeSettings) => {
+      try {
+        const { id, ...data } = newSettings;
+        const nextHeroImages = Array.isArray(data.heroImages)
+          ? data.heroImages
+              .filter(
+                (img) =>
+                  typeof img === 'string' &&
+                  img.trim().length > 0 &&
+                  !img.startsWith('siteContent:')
+              )
+              .slice(0, 12)
+          : [];
+        const speedSec = Math.min(
+          60,
+          Math.max(1, Number(data.heroSlideshowSpeedSeconds) || 5)
+        );
+        const nextFloorPlanUrl = (data.floorPlanImageUrl || '').trim();
+
+        // Determine any removed Hero slides or replaced Floor Plan URL so they are physically deleted from R2
+        const prevHeroImages = r2ManifestRef.current.heroImages || [];
+        const prevFloorPlanUrl = r2ManifestRef.current.floorPlanImageUrl || '';
+        const removedHeroUrls = prevHeroImages.filter(
+          (oldUrl) => oldUrl && !nextHeroImages.includes(oldUrl)
+        );
+        const removedFloorPlanUrls =
+          prevFloorPlanUrl && prevFloorPlanUrl !== nextFloorPlanUrl ? [prevFloorPlanUrl] : [];
+        const urlsToDelete = [...removedHeroUrls, ...removedFloorPlanUrls];
+
+        // 1. Persist Hero Slideshow images & Floor Plan image 100% to Cloudflare R2 manifest
+        await updateR2Manifest(
+          (prev) => ({
+            ...prev,
+            heroImages: nextHeroImages,
+            heroSlideshowSpeedSeconds: speedSec,
+            floorPlanImageUrl: nextFloorPlanUrl,
+          }),
+          urlsToDelete
+        );
+
+        const validMenuCurrency =
+          data.menuCurrencyDisplay && ['both', 'lkr', 'usd'].includes(data.menuCurrencyDisplay)
+            ? data.menuCurrencyDisplay
+            : 'both';
+
+        // 2. Save text/operational settings to local state & Firestore (ZERO images in Firestore)
+        const textOnlySettings: CafeSettings = {
+          ...newSettings,
+          heroImages: [],
+          heroSlideshowSpeedSeconds: speedSec,
+          floorPlanImageUrl: '',
+        };
+        setSettings(textOnlySettings);
+        writeLocalCache('onelove_cache_settings', textOnlySettings);
+
+        await setDoc(doc(db, 'settings', id || 'main'), {
+          cafeName: (data.cafeName || 'OneLove Café').slice(0, 80),
+          tagline: (data.tagline || '').slice(0, 160),
+          address: (data.address || '').slice(0, 200),
+          phone: (data.phone || '').slice(0, 40),
+          whatsapp: (data.whatsapp || '').slice(0, 40),
+          email: (data.email || '').slice(0, 120),
+          instagram: (data.instagram || '').slice(0, 100),
+          coordinates: (data.coordinates || '').slice(0, 60),
+          gracePeriodMinutes: Math.min(
+            60,
+            Math.max(5, Math.round(Number(data.gracePeriodMinutes) || 15))
+          ),
+          holdDurationMinutes: Math.min(
+            30,
+            Math.max(3, Math.round(Number(data.holdDurationMinutes) || 10))
+          ),
+          maxPartySize: Math.min(30, Math.max(2, Math.round(Number(data.maxPartySize) || 12))),
+          sameDayCutoffHour: Math.min(
+            23,
+            Math.max(0, Math.round(Number(data.sameDayCutoffHour) || 21))
+          ),
+          bookingPolicy: (data.bookingPolicy || '').slice(0, 600),
+          heroImages: [],
+          heroSlideshowSpeedSeconds: speedSec,
+          floorPlanImageUrl: '',
+          googleMapsEmbedUrl: (data.googleMapsEmbedUrl || '').slice(0, 2000),
+          mapTitle: (data.mapTitle || 'Our Sanctuary Location').slice(0, 120),
+          mapSubtitle: (data.mapSubtitle || '').slice(0, 250),
+          menuCurrencyDisplay: validMenuCurrency,
+          updatedAt: serverTimestamp(),
+        });
+        await logAdminAction(
+          'SAVE_SETTINGS',
+          'settings',
+          id || 'main',
+          `Updated global café settings & synced ${nextHeroImages.length} Hero image(s) to Cloudflare R2`
+        );
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `settings/${newSettings.id}`);
+      }
+    },
+    [updateR2Manifest]
+  );
 
   const updateInquiryStatus = useCallback(
     async (inquiry: InquiryRecord, status: InquiryRecord['status']) => {
@@ -1929,24 +2204,24 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  // Upload image to Cloudflare R2 bucket with automatic fallback to local compressed Base64
-  const uploadMediaFile = useCallback(async (file: File, folder = 'menu'): Promise<string> => {
-    const isHeroSlideshow = folder === 'hero';
-    const isLargeBackdrop = folder === 'floorplan' || folder === 'menu_gallery_bg';
-    const maxWidth = isHeroSlideshow ? 2880 : isLargeBackdrop ? 2560 : 1920;
-    const maxHeight = isHeroSlideshow ? 1620 : isLargeBackdrop ? 1440 : 1280;
-    const quality = isHeroSlideshow ? 0.88 : isLargeBackdrop ? 0.86 : 0.85;
-    const maxBase64Length = isHeroSlideshow ? 400_000 : 780_000;
+  // Upload image directly to Cloudflare R2 bucket (and automatically delete previousUrl if replacing)
+  const uploadMediaFile = useCallback(
+    async (file: File, folder = 'menu', previousUrl?: string): Promise<string> => {
+      const isHeroSlideshow = folder === 'hero';
+      const isLargeBackdrop = folder === 'floorplan' || folder === 'menu_gallery_bg';
+      const maxWidth = isHeroSlideshow ? 2880 : isLargeBackdrop ? 2560 : 1920;
+      const maxHeight = isHeroSlideshow ? 1620 : isLargeBackdrop ? 1440 : 1280;
+      const quality = isHeroSlideshow ? 0.9 : isLargeBackdrop ? 0.88 : 0.86;
+      const maxBase64Length = isHeroSlideshow ? 1_800_000 : 1_200_000;
 
-    const base64DataUrl = await fileToCompressedBase64(
-      file,
-      maxWidth,
-      maxHeight,
-      quality,
-      maxBase64Length
-    );
+      const base64DataUrl = await fileToCompressedBase64(
+        file,
+        maxWidth,
+        maxHeight,
+        quality,
+        maxBase64Length
+      );
 
-    try {
       const res = await fetch('/api/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1954,213 +2229,227 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           dataUrl: base64DataUrl,
           filename: file.name,
           folder,
+          previousUrl:
+            previousUrl && previousUrl.startsWith('http') && !previousUrl.startsWith('editorial:')
+              ? previousUrl
+              : undefined,
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.ok && data.url) {
-          await logAdminAction(
-            data.storage === 'r2' ? 'R2_OBJECT_UPLOAD' : 'ENCODE_BASE64_IMAGE',
-            folder,
-            file.name.slice(0, 60),
-            data.storage === 'r2'
-              ? `Uploaded image to Cloudflare R2 bucket (${data.url})`
-              : `Saved image payload for ${folder}`
-          );
-          return data.url;
-        }
+      if (!res.ok) {
+        throw new Error(`Cloudflare R2 upload failed (${res.status})`);
       }
-    } catch (uploadErr) {
-      console.warn('R2 upload endpoint error, falling back to local compressed dataUrl:', uploadErr);
-    }
 
-    await logAdminAction(
-      'ENCODE_BASE64_IMAGE',
-      folder,
-      file.name.slice(0, 60),
-      `Stored device image (${file.name}) as Base64 payload`
-    );
-    return base64DataUrl;
-  }, []);
+      const data = await res.json();
+      if (!data.ok || !data.url) {
+        throw new Error('Cloudflare R2 upload did not return a valid URL');
+      }
 
-  // Update any of the 5 Laterite Earth, Teak & Monsoon Light collage frames directly from user's device
+      await logAdminAction(
+        'R2_OBJECT_UPLOAD',
+        folder,
+        file.name.slice(0, 60),
+        `Uploaded image to Cloudflare R2 bucket (${data.url})`
+      );
+      return data.url;
+    },
+    []
+  );
+
+  // Update any of the 5 Laterite Earth, Teak & Monsoon Light collage frames directly in Cloudflare R2
   const updateCollageImageFromDevice = useCallback(
     async (slotIndex: number, file: File) => {
       const sectionKey = `story_collage_${slotIndex}`;
-      const base64DataUrl = await fileToCompressedBase64(file, 1200, 900, 0.84);
+      const prevUrl = r2ManifestRef.current.sectionImages?.[sectionKey] || '';
+      const uploadedR2Url = await uploadMediaFile(file, 'collage', prevUrl);
 
-      const customMap = readLocalCache<Record<string, string>>('onelove_collage_custom_images', {});
-      customMap[sectionKey] = base64DataUrl;
-      writeLocalCache('onelove_collage_custom_images', customMap);
-
-      const defaultDef =
-        DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey) || {
-          id: sectionKey,
-          sectionKey,
-          kicker: `Collage Frame 0${slotIndex}`,
-          heading: `Laterite & Monsoon Collage 0${slotIndex}`,
-          subheading: 'Sigiriya Sanctuary Archival Print',
-          body: 'Custom uploaded photograph for the Crafted from Laterite Earth, Teak & Monsoon Light collage.',
-          ctaLabel: 'Explore Story',
-          ctaLink: '/story',
-          imageUrl: base64DataUrl,
-        };
-
-      setSiteContent((prev) => {
-        const exists = prev.some((s) => s.sectionKey === sectionKey);
-        const updatedSec: SiteContentSection = {
-          ...(prev.find((s) => s.sectionKey === sectionKey) || defaultDef),
-          imageUrl: base64DataUrl,
-        };
-        const next = exists
-          ? prev.map((s) => (s.sectionKey === sectionKey ? updatedSec : s))
-          : [...prev, updatedSec];
-        writeLocalCache('onelove_cache_siteContent', next);
-        return next;
-      });
-
-      if (isAdmin) {
-        const existingSec =
-          siteContent.find((s) => s.sectionKey === sectionKey) || defaultDef;
-        await saveSiteContent({
-          ...existingSec,
-          id: existingSec.id || sectionKey,
-          sectionKey,
-          imageUrl: base64DataUrl,
-        });
-      }
+      await updateR2Manifest((prev) => ({
+        ...prev,
+        sectionImages: {
+          ...(prev.sectionImages || {}),
+          [sectionKey]: uploadedR2Url,
+        },
+      }));
     },
-    [isAdmin, siteContent, saveSiteContent]
+    [uploadMediaFile, updateR2Manifest]
   );
 
   const resetCollageImage = useCallback(
     async (slotIndex: number) => {
       const sectionKey = `story_collage_${slotIndex}`;
-      const defaultDef = DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
-      const fallbackUrl = defaultDef?.imageUrl || 'editorial:collage-elephants-sigiriya';
+      const prevUrl = r2ManifestRef.current.sectionImages?.[sectionKey] || '';
 
-      const customMap = readLocalCache<Record<string, string>>('onelove_collage_custom_images', {});
-      delete customMap[sectionKey];
-      writeLocalCache('onelove_collage_custom_images', customMap);
-
-      setSiteContent((prev) => {
-        const next = prev.map((s) =>
-          s.sectionKey === sectionKey ? { ...s, imageUrl: fallbackUrl } : s
-        );
-        writeLocalCache('onelove_cache_siteContent', next);
-        return next;
-      });
-
-      if (isAdmin && defaultDef) {
-        const existingSec = siteContent.find((s) => s.sectionKey === sectionKey) || defaultDef;
-        await saveSiteContent({
-          ...existingSec,
-          id: existingSec.id || sectionKey,
-          sectionKey,
-          imageUrl: fallbackUrl,
-        });
-      }
+      await updateR2Manifest(
+        (prev) => {
+          const nextSectionImages = { ...(prev.sectionImages || {}) };
+          delete nextSectionImages[sectionKey];
+          return {
+            ...prev,
+            sectionImages: nextSectionImages,
+          };
+        },
+        prevUrl ? [prevUrl] : []
+      );
     },
-    [isAdmin, siteContent, saveSiteContent]
+    [updateR2Manifest]
   );
 
-  const saveSeoGlobal = useCallback(async (config: GlobalSeoConfig) => {
-    try {
-      const merged: GlobalSeoConfig = {
-        ...DEFAULT_GLOBAL_SEO,
-        ...config,
-        id: 'main',
-      };
-      setSeoGlobal(merged);
-      writeLocalCache('onelove_cache_seoGlobal', merged);
+  const saveSeoGlobal = useCallback(
+    async (config: GlobalSeoConfig) => {
+      try {
+        const cleanOgUrl = (config.defaultOgImageUrl || '').trim();
+        const cleanLogoUrl = (config.brandLogoUrl || '').trim();
+        const prevOgUrl = r2ManifestRef.current.seoImages?.defaultOgImageUrl || '';
+        const prevLogoUrl = r2ManifestRef.current.seoImages?.brandLogoUrl || '';
 
-      const { id, ...data } = merged;
-      await setDoc(doc(db, 'seoConfig', id || 'main'), {
-        siteName: (data.siteName || 'OneLove Café').slice(0, 100),
-        alternateNames: (data.alternateNames || []).slice(0, 15),
-        defaultTitle: (data.defaultTitle || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
-        titleTemplate: (data.titleTemplate || '%s | OneLove Café Sigiriya').slice(0, 120),
-        defaultDescription: (data.defaultDescription || DEFAULT_GLOBAL_SEO.defaultDescription).slice(0, 500),
-        canonicalDomain: (data.canonicalDomain || 'https://onelovecafesigiriya.com')
-          .replace(/\/+$/, '')
-          .slice(0, 200),
-        language: (data.language || 'en').slice(0, 16),
-        googleVerificationTag: (data.googleVerificationTag || '').slice(0, 200),
-        defaultOgImageUrl: (data.defaultOgImageUrl || '').slice(0, 900000),
-        brandLogoUrl: (data.brandLogoUrl || '').slice(0, 900000),
-        faviconSourceUrl: (data.faviconSourceUrl || '').slice(0, 900000),
-        favicon48Url: (data.favicon48Url || '').slice(0, 300000),
-        favicon96Url: (data.favicon96Url || '').slice(0, 300000),
-        favicon192Url: (data.favicon192Url || '').slice(0, 400000),
-        appleTouchIconUrl: (data.appleTouchIconUrl || '').slice(0, 400000),
-        allowIndexing: Boolean(data.allowIndexing),
-        noindexPreviewDomains: Boolean(data.noindexPreviewDomains),
-        businessType: data.businessType === 'Restaurant' ? 'Restaurant' : 'CafeOrCoffeeShop',
-        streetAddress: (data.streetAddress || '').slice(0, 200),
-        addressLocality: (data.addressLocality || 'Sigiriya').slice(0, 80),
-        addressRegion: (data.addressRegion || 'Central Province').slice(0, 80),
-        postalCode: (data.postalCode || '21120').slice(0, 20),
-        addressCountry: (data.addressCountry || 'LK').slice(0, 10),
-        latitude: Number(data.latitude) || 7.9541,
-        longitude: Number(data.longitude) || 80.7547,
-        telephone: (data.telephone || '').slice(0, 40),
-        whatsapp: (data.whatsapp || '').slice(0, 40),
-        email: (data.email || '').slice(0, 120),
-        priceRange: (data.priceRange || '$$').slice(0, 16),
-        servesCuisine: (data.servesCuisine || []).slice(0, 20),
-        openingHoursSpec: (data.openingHoursSpec || 'Mo-Su 07:30-22:30').slice(0, 120),
-        socialLinks: (data.socialLinks || []).slice(0, 20),
-        customKeywords: (data.customKeywords || []).slice(0, 200),
-        imageAltOverrides: data.imageAltOverrides || {},
-        updatedAt: serverTimestamp(),
-      });
+        const urlsToDelete: string[] = [];
+        if (prevOgUrl && prevOgUrl !== cleanOgUrl && !prevOgUrl.startsWith('/assets/')) {
+          urlsToDelete.push(prevOgUrl);
+        }
+        if (prevLogoUrl && prevLogoUrl !== cleanLogoUrl && !prevLogoUrl.startsWith('/assets/')) {
+          urlsToDelete.push(prevLogoUrl);
+        }
 
-      await logAdminAction(
-        'SAVE_SEO_GLOBAL',
-        'seoConfig',
-        'main',
-        `Updated global SEO configuration (${data.siteName} · ${data.canonicalDomain})`
-      );
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'seoConfig/main');
-    }
-  }, []);
+        // 1. Save SEO images to Cloudflare R2 manifest
+        await updateR2Manifest(
+          (prev) => ({
+            ...prev,
+            seoImages: {
+              defaultOgImageUrl: cleanOgUrl,
+              brandLogoUrl: cleanLogoUrl,
+              pageOgImages: prev.seoImages?.pageOgImages || {},
+            },
+          }),
+          urlsToDelete
+        );
 
-  const saveSeoPage = useCallback(async (page: PageSeoConfig) => {
-    try {
-      setSeoPages((prev) => {
-        const next = { ...prev, [page.id]: page };
-        writeLocalCache('onelove_cache_seoPages', next);
-        return next;
-      });
+        // 2. Save text SEO configuration to Firestore (with empty image fields in Firestore)
+        const merged: GlobalSeoConfig = {
+          ...DEFAULT_GLOBAL_SEO,
+          ...config,
+          id: 'main',
+          defaultOgImageUrl: '',
+          brandLogoUrl: '',
+        };
+        setSeoGlobal(merged);
+        writeLocalCache('onelove_cache_seoGlobal', merged);
 
-      const { id, ...data } = page;
-      await setDoc(doc(db, 'seoPages', id), {
-        routePath: (data.routePath || '/').slice(0, 120),
-        pageLabel: (data.pageLabel || id).slice(0, 120),
-        title: (data.title || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
-        metaDescription: (data.metaDescription || '').slice(0, 500),
-        canonicalPath: (data.canonicalPath || data.routePath || '/').slice(0, 120),
-        primaryKeyword: (data.primaryKeyword || '').slice(0, 120),
-        supportingKeywords: (data.supportingKeywords || []).slice(0, 40),
-        ogTitle: (data.ogTitle || data.title || '').slice(0, 160),
-        ogDescription: (data.ogDescription || data.metaDescription || '').slice(0, 500),
-        ogImageUrl: (data.ogImageUrl || '').slice(0, 900000),
-        indexable: Boolean(data.indexable),
-        updatedAt: serverTimestamp(),
-      });
+        const { id, ...data } = merged;
+        await setDoc(doc(db, 'seoConfig', id || 'main'), {
+          siteName: (data.siteName || 'OneLove Café').slice(0, 100),
+          alternateNames: (data.alternateNames || []).slice(0, 15),
+          defaultTitle: (data.defaultTitle || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
+          titleTemplate: (data.titleTemplate || '%s | OneLove Café Sigiriya').slice(0, 120),
+          defaultDescription: (
+            data.defaultDescription || DEFAULT_GLOBAL_SEO.defaultDescription
+          ).slice(0, 500),
+          canonicalDomain: (data.canonicalDomain || 'https://onelovecafesigiriya.com')
+            .replace(/\/+$/, '')
+            .slice(0, 200),
+          language: (data.language || 'en').slice(0, 16),
+          googleVerificationTag: (data.googleVerificationTag || '').slice(0, 200),
+          defaultOgImageUrl: '',
+          brandLogoUrl: '',
+          faviconSourceUrl: '',
+          favicon48Url: '',
+          favicon96Url: '',
+          favicon192Url: '',
+          appleTouchIconUrl: '',
+          allowIndexing: Boolean(data.allowIndexing),
+          noindexPreviewDomains: Boolean(data.noindexPreviewDomains),
+          businessType: data.businessType === 'Restaurant' ? 'Restaurant' : 'CafeOrCoffeeShop',
+          streetAddress: (data.streetAddress || '').slice(0, 200),
+          addressLocality: (data.addressLocality || 'Sigiriya').slice(0, 80),
+          addressRegion: (data.addressRegion || 'Central Province').slice(0, 80),
+          postalCode: (data.postalCode || '21120').slice(0, 20),
+          addressCountry: (data.addressCountry || 'LK').slice(0, 10),
+          latitude: Number(data.latitude) || 7.9541,
+          longitude: Number(data.longitude) || 80.7547,
+          telephone: (data.telephone || '').slice(0, 40),
+          whatsapp: (data.whatsapp || '').slice(0, 40),
+          email: (data.email || '').slice(0, 120),
+          priceRange: (data.priceRange || '$$').slice(0, 16),
+          servesCuisine: (data.servesCuisine || []).slice(0, 20),
+          openingHoursSpec: (data.openingHoursSpec || 'Mo-Su 07:30-22:30').slice(0, 120),
+          socialLinks: (data.socialLinks || []).slice(0, 20),
+          customKeywords: (data.customKeywords || []).slice(0, 200),
+          imageAltOverrides: data.imageAltOverrides || {},
+          updatedAt: serverTimestamp(),
+        });
 
-      await logAdminAction(
-        'SAVE_SEO_PAGE',
-        'seoPages',
-        id,
-        `Updated page SEO metadata for ${data.routePath} (${data.title})`
-      );
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `seoPages/${page.id}`);
-    }
-  }, []);
+        await logAdminAction(
+          'SAVE_SEO_GLOBAL',
+          'seoConfig',
+          'main',
+          `Updated global SEO configuration (${data.siteName} · SEO images synced to Cloudflare R2)`
+        );
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, 'seoConfig/main');
+      }
+    },
+    [updateR2Manifest]
+  );
+
+  const saveSeoPage = useCallback(
+    async (page: PageSeoConfig) => {
+      try {
+        const cleanOgUrl = (page.ogImageUrl || '').trim();
+        const prevOgUrl = r2ManifestRef.current.seoImages?.pageOgImages?.[page.id] || '';
+        const urlsToDelete =
+          prevOgUrl && prevOgUrl !== cleanOgUrl && !prevOgUrl.startsWith('/assets/')
+            ? [prevOgUrl]
+            : [];
+
+        await updateR2Manifest(
+          (prev) => ({
+            ...prev,
+            seoImages: {
+              defaultOgImageUrl: prev.seoImages?.defaultOgImageUrl || '',
+              brandLogoUrl: prev.seoImages?.brandLogoUrl || '',
+              pageOgImages: {
+                ...(prev.seoImages?.pageOgImages || {}),
+                [page.id]: cleanOgUrl,
+              },
+            },
+          }),
+          urlsToDelete
+        );
+
+        const textOnlyPage: PageSeoConfig = { ...page, ogImageUrl: '' };
+        setSeoPages((prev) => {
+          const next = { ...prev, [page.id]: textOnlyPage };
+          writeLocalCache('onelove_cache_seoPages', next);
+          return next;
+        });
+
+        const { id, ...data } = textOnlyPage;
+        await setDoc(doc(db, 'seoPages', id), {
+          routePath: (data.routePath || '/').slice(0, 120),
+          pageLabel: (data.pageLabel || id).slice(0, 120),
+          title: (data.title || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
+          metaDescription: (data.metaDescription || '').slice(0, 500),
+          canonicalPath: (data.canonicalPath || data.routePath || '/').slice(0, 120),
+          primaryKeyword: (data.primaryKeyword || '').slice(0, 120),
+          supportingKeywords: (data.supportingKeywords || []).slice(0, 40),
+          ogTitle: (data.ogTitle || data.title || '').slice(0, 160),
+          ogDescription: (data.ogDescription || data.metaDescription || '').slice(0, 500),
+          ogImageUrl: '',
+          indexable: Boolean(data.indexable),
+          updatedAt: serverTimestamp(),
+        });
+
+        await logAdminAction(
+          'SAVE_SEO_PAGE',
+          'seoPages',
+          id,
+          `Updated page SEO metadata for ${data.routePath} (OG image synced to Cloudflare R2)`
+        );
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `seoPages/${page.id}`);
+      }
+    },
+    [updateR2Manifest]
+  );
 
   const resetSeoToDefaults = useCallback(async () => {
     await saveSeoGlobal(DEFAULT_GLOBAL_SEO);
@@ -2169,30 +2458,138 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [saveSeoGlobal, saveSeoPage]);
 
-  // Resolve any offloaded 4K Hero Slides stored in siteContent documents (`siteContent:hero_slide_X`)
+  // 100% Cloudflare R2 Resolved State (All images across the entire site come exclusively from r2Manifest)
   const resolvedSettings = useMemo<CafeSettings>(() => {
-    const rawList = Array.isArray(settings.heroImages) ? settings.heroImages : [];
-    const resolvedHeroImages = rawList
-      .map((entry) => {
-        if (typeof entry !== 'string') return '';
-        if (entry.startsWith('siteContent:hero_slide_')) {
-          const slideKey = entry.replace('siteContent:', '');
-          const p1 = siteContent.find((s) => s.sectionKey === slideKey)?.imageUrl || '';
-          const p2 = siteContent.find((s) => s.sectionKey === `${slideKey}_p2`)?.imageUrl || '';
-          return p1 ? p1 + p2 : '';
-        }
-        return entry;
-      })
-      .filter((img) => img.length > 0);
-
+    const r2Hero = Array.isArray(r2Manifest.heroImages)
+      ? r2Manifest.heroImages.filter((u) => typeof u === 'string' && u.trim().length > 0)
+      : [];
     return {
       ...settings,
       heroImages:
-        resolvedHeroImages.length > 0
-          ? resolvedHeroImages
+        r2Hero.length > 0
+          ? r2Hero
           : DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
+      heroSlideshowSpeedSeconds:
+        typeof r2Manifest.heroSlideshowSpeedSeconds === 'number'
+          ? r2Manifest.heroSlideshowSpeedSeconds
+          : settings.heroSlideshowSpeedSeconds || 5,
+      floorPlanImageUrl: r2Manifest.floorPlanImageUrl || '',
     };
-  }, [settings, siteContent]);
+  }, [settings, r2Manifest]);
+
+  const resolvedMenuItems = useMemo<MenuItem[]>(() => {
+    const map = r2Manifest.menuImages || {};
+    return menuItems.map((item) => {
+      const r2Url = map[item.id];
+      const defaultUrl =
+        DEFAULT_MENU_ITEMS.find((d) => d.id === item.id)?.imageUrl || 'editorial:hopper-bowl';
+      return {
+        ...item,
+        imageUrl: r2Url && r2Url.trim().length > 0 ? r2Url : defaultUrl,
+      };
+    });
+  }, [menuItems, r2Manifest.menuImages]);
+
+  const resolvedGallery = useMemo<GalleryItem[]>(() => {
+    return Array.isArray(r2Manifest.galleryItems) ? r2Manifest.galleryItems : [];
+  }, [r2Manifest.galleryItems]);
+
+  const resolvedEvents = useMemo<CafeEvent[]>(() => {
+    const map = r2Manifest.eventImages || {};
+    return events.map((evt) => {
+      const r2Url = map[evt.id];
+      const defaultUrl =
+        DEFAULT_EVENTS.find((d) => d.id === evt.id)?.imageUrl || 'editorial:evening-hearth';
+      return {
+        ...evt,
+        imageUrl: r2Url && r2Url.trim().length > 0 ? r2Url : defaultUrl,
+      };
+    });
+  }, [events, r2Manifest.eventImages]);
+
+  const resolvedSiteContent = useMemo<SiteContentSection[]>(() => {
+    const map = r2Manifest.sectionImages || {};
+    const byKey = new Map<string, SiteContentSection>();
+
+    DEFAULT_SITE_CONTENT.forEach((def) => {
+      byKey.set(def.sectionKey, { ...def });
+    });
+
+    siteContent.forEach((sec) => {
+      if (!sec.sectionKey || sec.sectionKey.startsWith('hero_slide_')) return;
+      byKey.set(sec.sectionKey, { ...sec });
+    });
+
+    Object.keys(map).forEach((sectionKey) => {
+      if (!byKey.has(sectionKey)) {
+        const def = DEFAULT_SITE_CONTENT.find((d) => d.sectionKey === sectionKey);
+        byKey.set(
+          sectionKey,
+          def || {
+            id: `sec_${sectionKey}`,
+            sectionKey,
+            kicker: sectionKey,
+            heading: sectionKey,
+            subheading: '',
+            body: '',
+            ctaLabel: '',
+            ctaLink: '',
+            imageUrl: '',
+          }
+        );
+      }
+    });
+
+    return Array.from(byKey.values()).map((sec) => {
+      const r2Img = map[sec.sectionKey] || '';
+      const defaultSecImg =
+        DEFAULT_SITE_CONTENT.find((d) => d.sectionKey === sec.sectionKey)?.imageUrl || '';
+      return {
+        ...sec,
+        imageUrl: r2Img && r2Img.trim().length > 0 ? r2Img : defaultSecImg,
+      };
+    });
+  }, [siteContent, r2Manifest.sectionImages]);
+
+  const resolvedSeoGlobal = useMemo<GlobalSeoConfig>(() => {
+    return {
+      ...seoGlobal,
+      defaultOgImageUrl:
+        r2Manifest.seoImages?.defaultOgImageUrl || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
+      brandLogoUrl: r2Manifest.seoImages?.brandLogoUrl || DEFAULT_GLOBAL_SEO.brandLogoUrl,
+    };
+  }, [seoGlobal, r2Manifest.seoImages]);
+
+  const resolvedSeoPages = useMemo<Record<SeoPageKey, PageSeoConfig>>(() => {
+    const pageOgMap = r2Manifest.seoImages?.pageOgImages || {};
+    const next = { ...seoPages };
+    (Object.keys(next) as SeoPageKey[]).forEach((key) => {
+      next[key] = {
+        ...next[key],
+        ogImageUrl:
+          pageOgMap[key] ||
+          r2Manifest.seoImages?.defaultOgImageUrl ||
+          DEFAULT_PAGE_SEO[key].ogImageUrl,
+      };
+    });
+    return next;
+  }, [seoPages, r2Manifest.seoImages]);
+
+  // Sync live SEO configuration (with R2-resolved OG/brand images) to the Express server
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const timer = window.setTimeout(() => {
+      fetch('/api/seo/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          global: resolvedSeoGlobal,
+          pages: resolvedSeoPages,
+        }),
+      }).catch(() => {});
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [resolvedSeoGlobal, resolvedSeoPages]);
 
   return (
     <CafeContext.Provider
@@ -2207,13 +2604,14 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         openingHours,
         blockedDates,
         menuCategories,
-        menuItems,
-        gallery,
-        events,
-        siteContent,
+        menuItems: resolvedMenuItems,
+        gallery: resolvedGallery,
+        events: resolvedEvents,
+        siteContent: resolvedSiteContent,
         availability,
-        seoGlobal,
-        seoPages,
+        seoGlobal: resolvedSeoGlobal,
+        seoPages: resolvedSeoPages,
+        r2Manifest,
         reservations,
         inquiries,
         admins,
@@ -2247,6 +2645,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetSeoToDefaults,
         updateInquiryStatus,
         uploadMediaFile,
+        deleteMediaFromR2,
         updateCollageImageFromDevice,
         resetCollageImage,
         storageStatus,
