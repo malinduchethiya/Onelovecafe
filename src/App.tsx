@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import {
   ArrowRight,
   MapPin,
@@ -14,15 +14,18 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CafeProvider, useCafe } from './context/CafeContext';
 import { EditorialVisual } from './components/EditorialVisual';
 import { LateriteStorySection } from './components/LateriteStorySection';
-import { CafeMenuStand } from './components/CafeMenuStand';
 import { ReservationEngine } from './components/ReservationEngine';
 import { SanctuaryMap } from './components/SanctuaryMap';
 import { AdminDashboard, AdminTab } from './components/AdminDashboard';
 import { SeoHead } from './components/SeoHead';
 import { GalleryItem, MenuItem } from './types/cafe';
+
+gsap.registerPlugin(ScrollTrigger);
 
 // Error Boundary for clear diagnostics (including Firestore quota or rule messages)
 class AppErrorBoundary extends React.Component<
@@ -282,6 +285,7 @@ const OneLoveRouter: React.FC = () => {
   const [coffeeProgress, setCoffeeProgress] = useState(0);
   const [mouseParallax, setMouseParallax] = useState({ x: 0, y: 0 });
   const homeMenuGalleryRef = useRef<HTMLElement | null>(null);
+  const appRootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let ticking = false;
@@ -379,6 +383,221 @@ const OneLoveRouter: React.FC = () => {
     return gallery.filter((g) => g.category === selectedGalleryCat);
   }, [gallery, selectedGalleryCat]);
 
+  // GSAP Master Choreography across Homepage & Subpages
+  useLayoutEffect(() => {
+    if (routeInfo.page === 'admin') return;
+    const rootEl = appRootRef.current;
+    if (!rootEl) return;
+
+    const ctx = gsap.context(() => {
+      // 1. Hero Entrance Timeline (when on Home)
+      const heroItems = gsap.utils.toArray<HTMLElement>('[data-gsap-hero]');
+      if (heroItems.length > 0) {
+        gsap.fromTo(
+          heroItems,
+          { y: 42, opacity: 0, filter: 'blur(4px)' },
+          {
+            y: 0,
+            opacity: 1,
+            filter: 'blur(0px)',
+            duration: 1.05,
+            stagger: 0.14,
+            ease: 'power3.out',
+            delay: 0.08,
+          }
+        );
+      }
+
+      // 2. Signature Plates & Highland Pour-Overs Section Header + Cards
+      const menuHeader = gsap.utils.toArray<HTMLElement>('[data-gsap-menu-header]');
+      if (menuHeader.length > 0) {
+        gsap.fromTo(
+          menuHeader,
+          { y: 32, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.85,
+            stagger: 0.1,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: menuHeader[0],
+              start: 'top 84%',
+              toggleActions: 'play none none none',
+            },
+          }
+        );
+      }
+
+      const menuCards = gsap.utils.toArray<HTMLElement>('[data-gsap-menu-card]');
+      if (menuCards.length > 0) {
+        ScrollTrigger.batch(menuCards, {
+          start: 'top 88%',
+          onEnter: (batch) => {
+            gsap.fromTo(
+              batch,
+              { y: 38, opacity: 0, scale: 0.97 },
+              {
+                y: 0,
+                opacity: 1,
+                scale: 1,
+                duration: 0.75,
+                stagger: 0.06,
+                ease: 'power3.out',
+                overwrite: true,
+              }
+            );
+          },
+          once: true,
+        });
+      }
+
+      // 3. Reserve Your Sanctuary Table Section
+      const reserveItems = gsap.utils.toArray<HTMLElement>('[data-gsap-reserve]');
+      if (reserveItems.length > 0) {
+        gsap.fromTo(
+          reserveItems,
+          { y: 36, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.9,
+            stagger: 0.14,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: reserveItems[0],
+              start: 'top 82%',
+              toggleActions: 'play none none none',
+            },
+          }
+        );
+      }
+
+      // 4. Experiences Under the Sigiriya Palms Section
+      const expHeader = gsap.utils.toArray<HTMLElement>('[data-gsap-exp-header]');
+      if (expHeader.length > 0) {
+        gsap.fromTo(
+          expHeader,
+          { y: 30, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.85,
+            stagger: 0.1,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: expHeader[0],
+              start: 'top 84%',
+              toggleActions: 'play none none none',
+            },
+          }
+        );
+      }
+
+      const expCards = gsap.utils.toArray<HTMLElement>('[data-gsap-exp-card]');
+      if (expCards.length > 0) {
+        gsap.fromTo(
+          expCards,
+          { y: 44, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.85,
+            stagger: 0.14,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: expCards[0],
+              start: 'top 85%',
+              toggleActions: 'play none none none',
+            },
+          }
+        );
+      }
+
+      // 5. Traveler & Partner Voices Section
+      const voiceItems = gsap.utils.toArray<HTMLElement>('[data-gsap-voice]');
+      if (voiceItems.length > 0) {
+        gsap.fromTo(
+          voiceItems,
+          { y: 36, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.85,
+            stagger: 0.15,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: voiceItems[0],
+              start: 'top 85%',
+              toggleActions: 'play none none none',
+            },
+          }
+        );
+      }
+
+      // 6. Subpages Entrance Choreography (/menu, /story, /gallery, /events, /contact, /reserve)
+      const subpageHeaders = gsap.utils.toArray<HTMLElement>('[data-gsap-subpage]');
+      if (subpageHeaders.length > 0) {
+        gsap.fromTo(
+          subpageHeaders,
+          { y: 28, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.8,
+            stagger: 0.1,
+            ease: 'power3.out',
+          }
+        );
+      }
+
+      const subpageCards = gsap.utils.toArray<HTMLElement>('[data-gsap-subcard]');
+      if (subpageCards.length > 0) {
+        ScrollTrigger.batch(subpageCards, {
+          start: 'top 90%',
+          onEnter: (batch) => {
+            gsap.fromTo(
+              batch,
+              { y: 30, opacity: 0 },
+              {
+                y: 0,
+                opacity: 1,
+                duration: 0.65,
+                stagger: 0.05,
+                ease: 'power2.out',
+                overwrite: true,
+              }
+            );
+          },
+          once: true,
+        });
+      }
+
+      // 7. Quiet Architectural Footer Reveal
+      const footerItems = gsap.utils.toArray<HTMLElement>('[data-gsap-footer]');
+      if (footerItems.length > 0) {
+        gsap.fromTo(
+          footerItems,
+          { y: 24, opacity: 0 },
+          {
+            y: 0,
+            opacity: 1,
+            duration: 0.8,
+            stagger: 0.1,
+            ease: 'power2.out',
+            scrollTrigger: {
+              trigger: footerItems[0],
+              start: 'top 92%',
+              toggleActions: 'play none none none',
+            },
+          }
+        );
+      }
+    }, rootEl);
+
+    return () => ctx.revert();
+  }, [pathname, routeInfo.page, selectedCategory, selectedGalleryCat]);
+
   // Protected Admin Route
   if (routeInfo.page === 'admin') {
     return (
@@ -396,15 +615,23 @@ const OneLoveRouter: React.FC = () => {
     );
   }
 
+  const isHeaderScrolledOrSubpage = routeInfo.page !== 'home' || scrollY > 48;
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#FCF9F4] text-[#110F0D]">
+    <div ref={appRootRef} className="min-h-screen flex flex-col bg-[#FCF9F4] text-[#110F0D]">
       <SeoHead
         currentPage={routeInfo.page}
         pathname={pathname}
         voucherCode={routeInfo.voucherCode}
       />
       {/* Strict 3-Zone Top Bar Contract */}
-      <header className="sticky top-0 z-40 h-[72px] bg-transparent px-4 sm:px-6 lg:px-12 flex items-center justify-between gap-3 sm:gap-8 text-white">
+      <header
+        className={`sticky top-0 z-40 h-[72px] px-4 sm:px-6 lg:px-12 flex items-center justify-between gap-3 sm:gap-8 text-white transition-all duration-500 ${
+          isHeaderScrolledOrSubpage
+            ? 'bg-[#110F0D]/85 backdrop-blur-md border-b border-white/10 shadow-[0_8px_30px_rgba(0,0,0,0.22)]'
+            : 'bg-transparent'
+        }`}
+      >
         {/* Zone 1: Brand Logo on Mobile, Wordmark on Desktop */}
         <a
           href="/"
@@ -576,7 +803,7 @@ const OneLoveRouter: React.FC = () => {
 
                 {/* Foreground Content Layer - Centered, Big Main Text Widespread & High-Contrast Secondary Text */}
                 <div
-                  className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-12 pt-12 pb-28 sm:py-24 lg:pb-32 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
+                  className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-12 py-16 sm:py-24 flex flex-col items-center justify-center text-center transition-transform duration-200 ease-out"
                   style={{
                     transform: `translate3d(${-mouseParallax.x * 0.1}px, ${scrollY * -0.12 - mouseParallax.y * 0.1}px, 0)`,
                     opacity: Math.max(0, 1 - scrollY / 700),
@@ -586,6 +813,7 @@ const OneLoveRouter: React.FC = () => {
                   <div className="space-y-5 sm:space-y-7 flex flex-col items-center justify-center text-center w-full">
                     {/* Big Main Text Widespread matching screenshot with luminous contrast + crawlable brand H1 prefix */}
                     <h1
+                      data-gsap-hero
                       style={{ textWrap: 'balance' }}
                       className="font-outfit text-3xl sm:text-6xl md:text-7xl lg:text-[90px] xl:text-[102px] font-light leading-[1.06] sm:leading-[1.04] tracking-tight text-[#FFFFFF] max-w-6xl mx-auto drop-shadow-[0_6px_28px_rgba(0,0,0,0.68)]"
                     >
@@ -596,20 +824,26 @@ const OneLoveRouter: React.FC = () => {
                     </h1>
 
                     {/* Crisp High-Contrast Secondary Text */}
-                    <p className="text-xs sm:text-sm md:text-base text-white/95 max-w-2xl mx-auto leading-relaxed font-normal drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)] px-1 sm:px-2">
+                    <p
+                      data-gsap-hero
+                      className="text-xs sm:text-sm md:text-base text-white/95 max-w-2xl mx-auto leading-relaxed font-normal drop-shadow-[0_2px_12px_rgba(0,0,0,0.75)] px-1 sm:px-2"
+                    >
                       {heroContent?.subheading ||
                         'Nestled in the emerald canopy beneath Sigiriya Lion Rock in Central Province, Sri Lanka, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
                     </p>
 
                     {/* High-Contrast Action Buttons matching reference screenshot */}
-                    <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 pt-2 w-full">
+                    <div
+                      data-gsap-hero
+                      className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 pt-2 w-full"
+                    >
                       <a
                         href="/menu"
                         onClick={(e) => {
                           e.preventDefault();
                           navigate('/menu');
                         }}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#D9622B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(217,98,43,0.45)] cursor-pointer inline-flex items-center justify-center"
+                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#D9622B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(217,98,43,0.45)] cursor-pointer inline-flex items-center justify-center"
                       >
                         View Menu
                       </a>
@@ -619,7 +853,7 @@ const OneLoveRouter: React.FC = () => {
                           e.preventDefault();
                           handleReserveCtaClick();
                         }}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#FFFDF9] text-[#110F0D] text-xs font-semibold uppercase tracking-wider hover:bg-[#F3ECE0] transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.38)] cursor-pointer inline-flex items-center justify-center"
+                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#FFFDF9] text-[#110F0D] text-xs font-semibold uppercase tracking-wider hover:bg-[#F3ECE0] hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.38)] cursor-pointer inline-flex items-center justify-center"
                       >
                         Reserve a Table
                       </a>
@@ -629,7 +863,7 @@ const OneLoveRouter: React.FC = () => {
                           e.preventDefault();
                           navigate('/story');
                         }}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#0F0D0B]/70 border border-white/45 text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#0F0D0B]/90 hover:border-white/75 transition-all whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-xs cursor-pointer inline-flex items-center justify-center"
+                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#0F0D0B]/70 border border-white/45 text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#0F0D0B]/90 hover:border-white/75 hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-xs cursor-pointer inline-flex items-center justify-center"
                       >
                         Discover More
                       </a>
@@ -656,11 +890,6 @@ const OneLoveRouter: React.FC = () => {
                   </div>
                 )}
               </section>
-
-              {/* 3D Wooden A-Frame Chalkboard "CAFÉ MENU" Stand straddling Hero & LateriteStorySection */}
-              <div className="absolute left-3 sm:left-8 lg:left-14 xl:left-24 -bottom-14 sm:-bottom-22 lg:-bottom-28 z-30">
-                <CafeMenuStand onClickMenu={() => navigate('/menu')} />
-              </div>
             </div>
 
             {/* 2. Crafted from Laterite Earth, Teak & Monsoon Light — 5-Photo Hover-Animated Collage */}
@@ -687,7 +916,7 @@ const OneLoveRouter: React.FC = () => {
 
               <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 space-y-8 sm:space-y-12">
                 <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
-                  <div className="space-y-2 max-w-2xl">
+                  <div data-gsap-menu-header className="space-y-2 max-w-2xl">
                     <div
                       style={{
                         color: coffeeProgress > 0.35 ? '#F3A871' : '#C65B2B',
@@ -706,6 +935,7 @@ const OneLoveRouter: React.FC = () => {
                     </h2>
                   </div>
                   <a
+                    data-gsap-menu-header
                     href="/menu"
                     onClick={(e) => {
                       e.preventDefault();
@@ -725,14 +955,15 @@ const OneLoveRouter: React.FC = () => {
                   {featuredDishes.map((dish) => (
                     <article
                       key={dish.id}
-                      className="bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between group shadow-[0_10px_28px_rgba(17,11,7,0.12)]"
+                      data-gsap-menu-card
+                      className="bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between group shadow-[0_10px_28px_rgba(17,11,7,0.12)] hover:-translate-y-1.5 hover:shadow-[0_20px_42px_rgba(17,11,7,0.22)] transition-all duration-300"
                     >
                       <div>
                         <div className="aspect-[4/3] overflow-hidden border-b border-[#E7DED3]">
                           <EditorialVisual
                             src={dish.imageUrl}
                             alt={dish.name}
-                            className="group-hover:scale-105 transition-transform duration-300"
+                            className="group-hover:scale-105 transition-transform duration-500 ease-out"
                           />
                         </div>
                         <div className="p-3 sm:p-5 space-y-1.5 sm:space-y-2">
@@ -741,7 +972,7 @@ const OneLoveRouter: React.FC = () => {
                             {dish.categoryName}
                             {dish.dietaryTags.length > 0 && ` · ${dish.dietaryTags.join(' · ')}`}
                           </div>
-                          <h3 className="text-sm sm:text-lg font-editorial font-semibold text-[#171513] leading-snug">
+                          <h3 className="text-sm sm:text-lg font-editorial font-semibold text-[#171513] leading-snug group-hover:text-[#C65B2B] transition-colors">
                             {dish.name}
                           </h3>
                           <p className="text-[11px] sm:text-xs text-[#171513]/70 leading-relaxed line-clamp-2 sm:line-clamp-none">
@@ -790,7 +1021,10 @@ const OneLoveRouter: React.FC = () => {
               className="scroll-mt-20 bg-[#171513] text-[#F8F4EE] py-14 sm:py-24 lg:py-28"
             >
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 space-y-8 sm:space-y-10">
-                <div className="text-center max-w-2xl mx-auto space-y-3">
+                <div data-gsap-reserve className="text-center max-w-2xl mx-auto space-y-3">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#D9622B] font-semibold">
+                    Live Floor Plan &amp; Concierge Booking
+                  </div>
                   <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#F8F4EE]">
                     Reserve Your Sanctuary Table
                   </h2>
@@ -800,7 +1034,7 @@ const OneLoveRouter: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="text-[#171513]">
+                <div data-gsap-reserve className="text-[#171513]">
                   <ReservationEngine />
                 </div>
               </div>
@@ -809,12 +1043,16 @@ const OneLoveRouter: React.FC = () => {
             {/* 5. Curated Evening Rituals & Experiences Preview - Swapped & Light Theme */}
             <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-14 sm:py-24 lg:py-28 border-b border-[#E7DED3] space-y-8 sm:space-y-12">
               <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
-                <div className="space-y-2 max-w-2xl">
+                <div data-gsap-exp-header className="space-y-2 max-w-2xl">
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-[#C65B2B] font-semibold">
+                    Twilight Gatherings &amp; Roastery Sessions
+                  </div>
                   <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#171513]">
                     Experiences Under the Sigiriya Palms
                   </h2>
                 </div>
                 <a
+                  data-gsap-exp-header
                   href="/events"
                   onClick={(e) => {
                     e.preventDefault();
@@ -833,17 +1071,22 @@ const OneLoveRouter: React.FC = () => {
                   .map((evt, idx) => (
                     <div
                       key={evt.id}
-                      className="bg-white border border-[#E7DED3] flex flex-col justify-between overflow-hidden shadow-xs"
+                      data-gsap-exp-card
+                      className="group bg-white border border-[#E7DED3] flex flex-col justify-between overflow-hidden shadow-xs hover:-translate-y-1.5 hover:shadow-[0_18px_38px_rgba(23,21,19,0.12)] transition-all duration-300"
                     >
                       <div>
                         <div className="aspect-[16/9] overflow-hidden border-b border-[#E7DED3]">
-                          <EditorialVisual src={evt.imageUrl} alt={evt.title} />
+                          <EditorialVisual
+                            src={evt.imageUrl}
+                            alt={evt.title}
+                            className="group-hover:scale-105 transition-transform duration-500 ease-out"
+                          />
                         </div>
                         <div className="p-5 sm:p-7 space-y-3">
                           <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-mono-tabular font-medium">
                             0{idx + 1} · {evt.category} · {evt.date}
                           </div>
-                          <h3 className="text-2xl font-editorial font-semibold text-[#171513]">
+                          <h3 className="text-2xl font-editorial font-semibold text-[#171513] group-hover:text-[#C65B2B] transition-colors">
                             {evt.title}
                           </h3>
                           <p className="text-xs text-[#171513]/70 leading-relaxed font-light">
@@ -871,14 +1114,20 @@ const OneLoveRouter: React.FC = () => {
 
             {/* 6. Attributable Traveler & Partner Voices */}
             <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-14 sm:py-24 space-y-8 sm:space-y-10">
-              <div className="text-center max-w-2xl mx-auto space-y-2">
+              <div data-gsap-voice className="text-center max-w-2xl mx-auto space-y-2">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-[#58644E] font-semibold">
+                  Field Notes &amp; Guest Reflections
+                </div>
                 <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#171513]">
                   What Travelers &amp; Collaborators Say
                 </h2>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-                <blockquote className="bg-white border border-[#E7DED3] p-6 sm:p-8 space-y-4">
+                <blockquote
+                  data-gsap-voice
+                  className="bg-white border border-[#E7DED3] p-6 sm:p-8 space-y-4 shadow-[0_10px_28px_rgba(23,21,19,0.05)] hover:-translate-y-1 transition-transform duration-300"
+                >
                   <p className="font-editorial italic text-lg sm:text-xl leading-relaxed text-[#171513]">
                     “After guiding guests up Pidurangala Rock at 5:30 AM, bringing them to OneLove
                     Café’s Jungle Verandah for red-rice egg hoppers and Kotmale pour-over coffee has
@@ -891,7 +1140,10 @@ const OneLoveRouter: React.FC = () => {
                   </footer>
                 </blockquote>
 
-                <blockquote className="bg-white border border-[#E7DED3] p-6 sm:p-8 space-y-4">
+                <blockquote
+                  data-gsap-voice
+                  className="bg-white border border-[#E7DED3] p-6 sm:p-8 space-y-4 shadow-[0_10px_28px_rgba(23,21,19,0.05)] hover:-translate-y-1 transition-transform duration-300"
+                >
                   <p className="font-editorial italic text-lg sm:text-xl leading-relaxed text-[#171513]">
                     “We reserved Table 06 beside the lotus pool using the interactive floor plan
                     before flying from Zurich. The wood-fired Trincomalee tiger prawns and candlelit
@@ -911,7 +1163,10 @@ const OneLoveRouter: React.FC = () => {
         {/* ==================== OUR MENU PAGE (/menu) ==================== */}
         {routeInfo.page === 'menu' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-24 space-y-8 sm:space-y-12">
-            <div className="border-b border-[#E7DED3] pb-8 sm:pb-10 flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+            <div
+              data-gsap-subpage
+              className="border-b border-[#E7DED3] pb-8 sm:pb-10 flex flex-wrap items-end justify-between gap-4 sm:gap-6"
+            >
               <div className="space-y-3 max-w-2xl">
                 <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                   Culinary &amp; Roastery Monograph · Sigiriya
@@ -934,7 +1189,7 @@ const OneLoveRouter: React.FC = () => {
             </div>
 
             {/* Interactive Filter Tabs & Search Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div data-gsap-subpage className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-1.5 bg-[#EFE9DF] p-1 border border-[#E7DED3] overflow-x-auto max-w-full">
                 <button
                   type="button"
@@ -982,11 +1237,16 @@ const OneLoveRouter: React.FC = () => {
               {filteredMenuItems.map((item) => (
                 <article
                   key={item.id}
-                  className="bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between shadow-[0_10px_28px_rgba(17,11,7,0.12)]"
+                  data-gsap-subcard
+                  className="group bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between shadow-[0_10px_28px_rgba(17,11,7,0.12)] hover:-translate-y-1.5 transition-all duration-300"
                 >
                   <div>
                     <div className="aspect-[4/3] overflow-hidden border-b border-[#E7DED3]">
-                      <EditorialVisual src={item.imageUrl} alt={item.name} />
+                      <EditorialVisual
+                        src={item.imageUrl}
+                        alt={item.name}
+                        className="group-hover:scale-105 transition-transform duration-500 ease-out"
+                      />
                     </div>
                     <div className="p-3 sm:p-6 space-y-1.5 sm:space-y-2.5">
                       <div className="text-[9px] sm:text-[11px] uppercase tracking-wider text-[#58644E] line-clamp-1">
@@ -994,7 +1254,7 @@ const OneLoveRouter: React.FC = () => {
                         {item.dietaryTags.length > 0 && ` · ${item.dietaryTags.join(' · ')}`}
                         {!item.isAvailable && ' · Currently Resting'}
                       </div>
-                      <h2 className="text-sm sm:text-xl font-editorial font-semibold text-[#171513] leading-snug">
+                      <h2 className="text-sm sm:text-xl font-editorial font-semibold text-[#171513] leading-snug group-hover:text-[#C65B2B] transition-colors">
                         {item.name}
                       </h2>
                       <p className="text-[11px] sm:text-xs text-[#171513]/70 leading-relaxed line-clamp-2 sm:line-clamp-none">
@@ -1042,7 +1302,10 @@ const OneLoveRouter: React.FC = () => {
           <div>
             <LateriteStorySection showMonographButton={false} />
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-24 space-y-12 sm:space-y-20">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 items-stretch">
+              <div
+                data-gsap-subpage
+                className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 items-stretch"
+              >
                 <div className="lg:col-span-7 min-h-[260px] sm:min-h-[420px] bg-white border border-[#E7DED3] p-2.5 sm:p-3">
                   <EditorialVisual
                     src={storyContent?.imageUrl || 'editorial:courtyard'}
@@ -1089,7 +1352,10 @@ const OneLoveRouter: React.FC = () => {
 
             {/* Secondary Story / Concierge Hospitality Showcase (Image editable via sectionKey: concierge) */}
             {conciergeContent && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 items-center bg-white border border-[#E7DED3] p-6 sm:p-10">
+              <div
+                data-gsap-subcard
+                className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 items-center bg-white border border-[#E7DED3] p-6 sm:p-10"
+              >
                 <div className="lg:col-span-6 space-y-4">
                   <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                     {conciergeContent.kicker}
@@ -1117,7 +1383,10 @@ const OneLoveRouter: React.FC = () => {
         {/* ==================== GALLERY PAGE (/gallery) ==================== */}
         {routeInfo.page === 'gallery' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-24 space-y-8 sm:space-y-12">
-            <div className="border-b border-[#E7DED3] pb-6 sm:pb-8 flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+            <div
+              data-gsap-subpage
+              className="border-b border-[#E7DED3] pb-6 sm:pb-8 flex flex-wrap items-end justify-between gap-4 sm:gap-6"
+            >
               <div className="space-y-2 max-w-2xl">
                 <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                   Visual Archive · OneLove Café Sigiriya
@@ -1156,21 +1425,22 @@ const OneLoveRouter: React.FC = () => {
               {filteredGallery.map((item) => (
                 <div
                   key={item.id}
+                  data-gsap-subcard
                   onClick={() => setLightboxItem(item)}
-                  className="bg-white border border-[#E7DED3] p-3 cursor-pointer group space-y-3"
+                  className="bg-white border border-[#E7DED3] p-3 cursor-pointer group space-y-3 hover:-translate-y-1.5 hover:shadow-[0_18px_36px_rgba(23,21,19,0.1)] transition-all duration-300"
                 >
                   <div className="aspect-[4/3] overflow-hidden">
                     <EditorialVisual
                       src={item.imageUrl}
                       alt={item.title}
-                      className="group-hover:scale-105 transition-transform duration-300"
+                      className="group-hover:scale-105 transition-transform duration-500 ease-out"
                     />
                   </div>
                   <div className="px-2 pb-2 space-y-1">
                     <div className="text-[11px] uppercase tracking-wider text-[#58644E]">
                       {item.category}
                     </div>
-                    <h2 className="text-lg font-editorial font-semibold">{item.title}</h2>
+                    <h2 className="text-lg font-editorial font-semibold group-hover:text-[#C65B2B] transition-colors">{item.title}</h2>
                     <p className="text-xs text-[#171513]/65">{item.caption}</p>
                   </div>
                 </div>
@@ -1215,7 +1485,7 @@ const OneLoveRouter: React.FC = () => {
         {/* ==================== EXPERIENCES & EVENTS PAGE (/events) ==================== */}
         {routeInfo.page === 'events' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-24 space-y-10 sm:space-y-14">
-            <div className="border-b border-[#E7DED3] pb-6 sm:pb-8 space-y-3 max-w-3xl">
+            <div data-gsap-subpage className="border-b border-[#E7DED3] pb-6 sm:pb-8 space-y-3 max-w-3xl">
               <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                 Sanctuary Gatherings &amp; Cultural Programming
               </div>
@@ -1234,7 +1504,8 @@ const OneLoveRouter: React.FC = () => {
                 .map((evt) => (
                   <div
                     key={evt.id}
-                    className="bg-white border border-[#E7DED3] grid grid-cols-1 lg:grid-cols-12 items-stretch"
+                    data-gsap-subcard
+                    className="bg-white border border-[#E7DED3] grid grid-cols-1 lg:grid-cols-12 items-stretch shadow-xs hover:shadow-[0_16px_36px_rgba(23,21,19,0.08)] transition-shadow duration-300"
                   >
                     <div className="lg:col-span-5 min-h-[220px] sm:min-h-[260px] border-b lg:border-b-0 lg:border-r border-[#E7DED3]">
                       <EditorialVisual
@@ -1275,7 +1546,7 @@ const OneLoveRouter: React.FC = () => {
         {/* ==================== CONTACT & LOCATION PAGE (/contact) ==================== */}
         {routeInfo.page === 'contact' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-24 space-y-10 sm:space-y-16">
-            <div className="border-b border-[#E7DED3] pb-6 sm:pb-8 space-y-3 max-w-3xl">
+            <div data-gsap-subpage className="border-b border-[#E7DED3] pb-6 sm:pb-8 space-y-3 max-w-3xl">
               <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                 Concierge Desk &amp; Directions · Sigiriya, Sri Lanka
               </div>
@@ -1288,7 +1559,7 @@ const OneLoveRouter: React.FC = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10">
+            <div data-gsap-subpage className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10">
               {/* Contact Information & Opening Hours */}
               <div className="lg:col-span-5 space-y-6">
                 <div className="bg-white border border-[#E7DED3] p-5 sm:p-7 space-y-5 text-xs">
@@ -1505,7 +1776,7 @@ const OneLoveRouter: React.FC = () => {
         {/* ==================== DEDICATED RESERVE PAGE (/reserve & /reserve/voucher/:code) ==================== */}
         {routeInfo.page === 'reserve' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-10 sm:py-20 space-y-8 sm:space-y-10">
-            <div className="text-center max-w-2xl mx-auto space-y-3">
+            <div data-gsap-subpage className="text-center max-w-2xl mx-auto space-y-3">
               <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
                 Table Reservations · OneLove Café Sigiriya
               </div>
@@ -1520,7 +1791,9 @@ const OneLoveRouter: React.FC = () => {
               </div>
             </div>
 
-            <ReservationEngine initialVoucherCode={routeInfo.voucherCode} />
+            <div data-gsap-subpage>
+              <ReservationEngine initialVoucherCode={routeInfo.voucherCode} />
+            </div>
           </div>
         )}
 
@@ -1559,7 +1832,10 @@ const OneLoveRouter: React.FC = () => {
 
       {/* Quiet Architectural Footer — 100% Editable via Admin Panel */}
       <footer className="bg-[#171513] text-[#F8F4EE] border-t border-[#2C2622]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-16 space-y-10 sm:space-y-12">
+        <div
+          data-gsap-footer
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-16 space-y-10 sm:space-y-12"
+        >
           <div className="flex flex-wrap items-center justify-between gap-5 sm:gap-6 border-b border-[#2C2622] pb-8 sm:pb-10">
             <div className="space-y-1">
               <div className="text-2xl sm:text-3xl font-editorial">

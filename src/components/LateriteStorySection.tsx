@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { ArrowRight } from 'lucide-react';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { useCafe } from '../context/CafeContext';
 import { EditorialVisual } from './EditorialVisual';
+
+gsap.registerPlugin(ScrollTrigger);
 
 interface LateriteStorySectionProps {
   onReadMonograph?: () => void;
@@ -13,6 +17,8 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
   showMonographButton = true,
 }) => {
   const { siteContent } = useCafe();
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const collageRef = useRef<HTMLDivElement | null>(null);
 
   const storyContent = siteContent.find((s) => s.sectionKey === 'story');
 
@@ -32,30 +38,201 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
     return fallbackSrc;
   };
 
+  useLayoutEffect(() => {
+    const sectionEl = sectionRef.current;
+    if (!sectionEl) return;
+
+    const ctx = gsap.context(() => {
+      // 1. Left Editorial Column Staggered Reveal
+      gsap.fromTo(
+        '[data-story-reveal]',
+        { y: 36, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.95,
+          stagger: 0.12,
+          ease: 'power3.out',
+          scrollTrigger: {
+            trigger: sectionEl,
+            start: 'top 78%',
+            toggleActions: 'play none none none',
+          },
+        }
+      );
+
+      // 2. Scrapbook Paper Layers & Botanical Sprigs Entrance
+      gsap.fromTo(
+        '[data-collage-paper]',
+        { scale: 0.82, opacity: 0 },
+        {
+          scale: 1,
+          opacity: 1,
+          duration: 1.1,
+          stagger: 0.1,
+          ease: 'power2.out',
+          scrollTrigger: {
+            trigger: sectionEl,
+            start: 'top 75%',
+          },
+        }
+      );
+
+      // 3. 5 Archival Polaroid Frames — Fan-Out Deal Animation
+      const frames = gsap.utils.toArray<HTMLElement>('[data-collage-frame]');
+      frames.forEach((frame, idx) => {
+        const startX = idx === 0 ? -40 : idx === 1 ? 45 : idx === 2 ? 0 : idx === 3 ? -55 : 55;
+        const startY = idx === 2 ? 35 : idx < 2 ? -30 : 45;
+        const startRot = idx % 2 === 0 ? -14 : 14;
+
+        gsap.fromTo(
+          frame,
+          {
+            x: startX,
+            y: startY,
+            rotation: startRot,
+            scale: 0.86,
+            opacity: 0,
+          },
+          {
+            x: 0,
+            y: 0,
+            rotation: 0,
+            scale: 1,
+            opacity: 1,
+            duration: 1.05,
+            delay: 0.08 + idx * 0.11,
+            ease: 'back.out(1.35)',
+            clearProps: 'transform',
+            scrollTrigger: {
+              trigger: sectionEl,
+              start: 'top 74%',
+              toggleActions: 'play none none none',
+            },
+          }
+        );
+      });
+
+      // 4. Continuous Gentle Botanical Sway
+      gsap.to('[data-collage-botanical="top-left"]', {
+        rotation: -4,
+        y: -4,
+        duration: 3.6,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+      });
+
+      gsap.to('[data-collage-botanical="bottom-right"]', {
+        rotation: 3.5,
+        y: 4,
+        duration: 4.2,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+      });
+    }, sectionEl);
+
+    return () => ctx.revert();
+  }, []);
+
+  const handleCollageMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const container = collageRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width - 0.5;
+    const relY = (e.clientY - rect.top) / rect.height - 0.5;
+
+    gsap.to(container, {
+      rotateY: relX * 7,
+      rotateX: -relY * 7,
+      duration: 0.5,
+      ease: 'power2.out',
+      transformPerspective: 1100,
+    });
+  };
+
+  const handleCollageMouseLeave = () => {
+    const container = collageRef.current;
+    if (!container) return;
+    gsap.to(container, {
+      rotateY: 0,
+      rotateX: 0,
+      duration: 0.7,
+      ease: 'power3.out',
+    });
+  };
+
   return (
-    <section className="relative overflow-hidden bg-[#FCF9F4] border-b border-[#DFD5C6] py-14 sm:py-22 lg:py-28">
+    <section
+      ref={sectionRef}
+      className="relative overflow-hidden bg-[#FCF9F4] border-b border-[#DFD5C6] py-16 sm:py-24 lg:py-28"
+    >
       {/* Sunlit Ambient Paper Glow */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_22%_18%,rgba(255,252,245,0.95),transparent_55%),radial-gradient(circle_at_72%_48%,rgba(217,98,43,0.09),transparent_62%)]" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-12">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 sm:gap-12 lg:gap-8 items-center">
-          {/* LEFT EDITORIAL COLUMN (with top clearance when overlapping Café Menu Stand is present on Home) */}
-          <div className={`lg:col-span-5 space-y-5 sm:space-y-6 z-10 ${showMonographButton ? 'pt-14 sm:pt-24 lg:pt-28' : ''}`}>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 sm:gap-12 lg:gap-10 items-center">
+          {/* LEFT EDITORIAL COLUMN */}
+          <div className="lg:col-span-5 space-y-5 sm:space-y-6 z-10">
+            <div
+              data-story-reveal
+              className="inline-flex items-center gap-2.5 text-[11px] uppercase tracking-[0.22em] text-[#C65B2B] font-semibold"
+            >
+              <span className="w-6 h-[1px] bg-[#C65B2B]" />
+              <span>{storyContent?.kicker || 'Architectural Sanctuary · Sigiriya'}</span>
+            </div>
+
             <h2
+              data-story-reveal
               style={{ textWrap: 'balance' }}
-              className="text-3xl sm:text-5xl lg:text-[52px] font-editorial font-medium leading-[1.12] tracking-tight text-[#110F0D]"
+              className="text-3xl sm:text-5xl lg:text-[52px] font-editorial font-medium leading-[1.1] tracking-tight text-[#110F0D]"
             >
               {storyContent?.heading ||
                 'Crafted from Laterite Earth, Teak & Monsoon Light.'}
             </h2>
 
-            <p className="text-sm sm:text-[15px] text-[#110F0D]/85 leading-[1.75] font-normal max-w-xl">
+            <p
+              data-story-reveal
+              className="text-sm sm:text-[15px] text-[#110F0D]/80 leading-[1.8] font-normal max-w-xl"
+            >
               {storyContent?.body ||
                 'OneLove Café began as a quiet refuge along the forested road between Kimbissa and the ancient fortress of Sigiriya in Central Province, Sri Lanka. We built around the existing Banyan, Frangipani, and Mara trees—using porous red laterite stone, reclaimed railway teak, and hand-troweled lime plaster so the pavilion breathes naturally with the rhythm of the jungle.'}
             </p>
 
+            {/* Architectural Material & Provenance Ledger */}
+            <div
+              data-story-reveal
+              className="grid grid-cols-3 gap-3 pt-2 pb-1 border-y border-[#E5DDD0] text-left"
+            >
+              <div className="py-2">
+                <div className="text-[10px] uppercase tracking-widest text-[#58644E] font-mono-tabular">
+                  Elevation
+                </div>
+                <div className="text-sm sm:text-base font-editorial font-semibold text-[#110F0D]">
+                  1,140 m Roast
+                </div>
+              </div>
+              <div className="py-2 border-x border-[#E5DDD0] px-3">
+                <div className="text-[10px] uppercase tracking-widest text-[#58644E] font-mono-tabular">
+                  Materiality
+                </div>
+                <div className="text-sm sm:text-base font-editorial font-semibold text-[#110F0D]">
+                  Laterite &amp; Teak
+                </div>
+              </div>
+              <div className="py-2 pl-1">
+                <div className="text-[10px] uppercase tracking-widest text-[#58644E] font-mono-tabular">
+                  Canopy
+                </div>
+                <div className="text-sm sm:text-base font-editorial font-semibold text-[#110F0D]">
+                  6 Min to Rock
+                </div>
+              </div>
+            </div>
+
             {showMonographButton && (
-              <div className="pt-1 sm:pt-2 flex flex-wrap items-center gap-3">
+              <div data-story-reveal className="pt-2 flex flex-wrap items-center gap-3">
                 <a
                   href="/story"
                   onClick={(e) => {
@@ -64,29 +241,38 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                       onReadMonograph();
                     }
                   }}
-                  className="w-full sm:w-auto justify-center min-h-[44px] px-7 py-3.5 rounded-full bg-[#110F0D] text-[#FCF9F4] text-[11px] font-semibold uppercase tracking-[0.16em] inline-flex items-center gap-3 hover:bg-[#D9622B] transition-all duration-300 shadow-md cursor-pointer"
+                  className="group/btn w-full sm:w-auto justify-center min-h-[46px] px-7 py-3.5 rounded-full bg-[#110F0D] text-[#FCF9F4] text-[11px] font-semibold uppercase tracking-[0.16em] inline-flex items-center gap-3 hover:bg-[#D9622B] transition-all duration-300 shadow-[0_10px_24px_rgba(17,15,13,0.18)] cursor-pointer"
                 >
                   <span>Read Sigiriya Monograph</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-3.5 h-3.5 transition-transform duration-300 group-hover/btn:translate-x-1" />
                 </a>
               </div>
             )}
           </div>
 
-          {/* RIGHT ARCHIVAL SCRAPBOOK COLLAGE COLUMN (Hover-Animated) */}
+          {/* RIGHT ARCHIVAL SCRAPBOOK COLLAGE COLUMN (GSAP 3D Tilt + Scroll Fan-Out) */}
           <div className="lg:col-span-7">
-            <div className="group/collage relative w-full max-w-[740px] mx-auto aspect-[4/3] sm:aspect-[16/11] select-none contrast-[1.08] saturate-[1.12]">
+            <div
+              ref={collageRef}
+              onMouseMove={handleCollageMouseMove}
+              onMouseLeave={handleCollageMouseLeave}
+              style={{ transformStyle: 'preserve-3d' }}
+              className="group/collage relative w-full max-w-[740px] mx-auto aspect-[4/3] sm:aspect-[16/11] select-none contrast-[1.08] saturate-[1.12]"
+            >
               {/* Background Watercolor & Torn Parchment Scrapbook Layers */}
               <div
+                data-collage-paper
                 aria-hidden="true"
                 className="pointer-events-none absolute left-[28%] top-[10%] w-[32%] h-[28%] rounded-full bg-[#7A8767]/15 blur-xl transition-transform duration-700 group-hover/collage:scale-110"
               />
               <div
+                data-collage-paper
                 aria-hidden="true"
                 className="pointer-events-none absolute left-[18%] bottom-[6%] w-[28%] h-[22%] rounded-full bg-[#8B9474]/18 blur-xl transition-transform duration-700 group-hover/collage:scale-110"
               />
               {/* Torn Kraft Paper Layer Under Bottom-Right of Main Print */}
               <div
+                data-collage-paper
                 aria-hidden="true"
                 className="pointer-events-none absolute right-[12%] bottom-[5%] w-[38%] h-[24%] bg-[#C8A97E] border border-[#B59469] shadow-md rotate-[8deg] transition-transform duration-700 ease-out group-hover/collage:rotate-[11deg] group-hover/collage:translate-x-1.5 group-hover/collage:translate-y-1"
                 style={{
@@ -96,6 +282,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
               />
               {/* Torn Vintage Cream Paper Strip Behind Left Print */}
               <div
+                data-collage-paper
                 aria-hidden="true"
                 className="pointer-events-none absolute left-[4%] top-[24%] w-[18%] h-[38%] bg-[#EFE7D6] shadow-sm -rotate-[12deg] transition-transform duration-700 ease-out group-hover/collage:-rotate-[15deg] group-hover/collage:-translate-x-1.5"
                 style={{
@@ -106,6 +293,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
               {/* TOP-LEFT BOTANICAL MARA / BANYAN LEAVES */}
               <svg
+                data-collage-botanical="top-left"
                 viewBox="0 0 220 260"
                 aria-hidden="true"
                 className="pointer-events-none absolute -left-[2%] top-[2%] w-[26%] sm:w-[24%] z-0 drop-shadow-md transition-transform duration-700 ease-out origin-bottom-right group-hover/collage:-rotate-6 group-hover/collage:-translate-x-2 group-hover/collage:-translate-y-1.5"
@@ -145,6 +333,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
               {/* PHOTO 2: TOP-LEFT VERTICAL PRINT (Monsoon Sunbeams Through Canopy) */}
               <div
+                data-collage-frame
                 className="group/frame absolute left-[5%] top-[6%] w-[34%] aspect-[3/4] z-10 bg-[#FAF6EE] p-2 sm:p-3 shadow-[0_16px_36px_rgba(23,21,19,0.18)] border border-[#E2D9C8] -rotate-[6deg] transition-all duration-500 ease-out group-hover/collage:-translate-x-2 group-hover/collage:-translate-y-1.5 group-hover/collage:-rotate-[8deg] hover:!z-40 hover:!scale-105 hover:!rotate-[-1deg] hover:!-translate-y-2.5 hover:shadow-[0_26px_55px_rgba(23,21,19,0.28)]"
               >
                 <div className="relative w-full h-full overflow-hidden bg-[#162417]">
@@ -158,6 +347,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
               {/* PHOTO 3: TOP-RIGHT ARCHIVAL MONOCHROME PRINT (Archival Sigiriya Lithograph) */}
               <div
+                data-collage-frame
                 className="group/frame absolute right-[4%] top-[2%] w-[46%] aspect-[16/10] z-10 bg-[#F3EFE4] p-2.5 sm:p-3.5 shadow-[0_14px_32px_rgba(23,21,19,0.14)] border border-[#DFD6C3] rotate-[4deg] transition-all duration-500 ease-out group-hover/collage:translate-x-2 group-hover/collage:-translate-y-1.5 group-hover/collage:rotate-[6deg] hover:!z-40 hover:!scale-105 hover:!rotate-[1deg] hover:!-translate-y-2 hover:shadow-[0_26px_55px_rgba(23,21,19,0.25)]"
               >
                 <div className="relative w-full h-full overflow-hidden bg-[#EFECE4]">
@@ -171,6 +361,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
               {/* PHOTO 1: CENTER-MAIN HERO LANDSCAPE PRINT (Wild Elephants & Sigiriya Horizon) */}
               <div
+                data-collage-frame
                 className="group/frame absolute left-[18%] top-[21%] w-[63%] aspect-[4/3] z-20 bg-[#FAF6EE] p-2.5 sm:p-4 shadow-[0_22px_50px_rgba(23,21,19,0.22)] border border-[#E2D9C8] -rotate-[0.5deg] transition-all duration-500 ease-out group-hover/collage:-translate-y-1 hover:!z-40 hover:!scale-[1.035] hover:!rotate-0 hover:!-translate-y-2 hover:shadow-[0_30px_65px_rgba(23,21,19,0.3)]"
               >
                 <div className="relative w-full h-full overflow-hidden bg-[#C7D7E2]">
@@ -184,6 +375,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
               {/* PHOTO 4: BOTTOM-LEFT PINNED VERTICAL PRINT (Reclaimed Railway Teak Pavilion) */}
               <div
+                data-collage-frame
                 className="group/frame absolute left-[3%] bottom-[3%] w-[26%] aspect-[3/4] z-30 bg-[#FAF6EE] p-2 sm:p-2.5 shadow-[0_18px_38px_rgba(23,21,19,0.24)] border border-[#E2D9C8] -rotate-[7deg] transition-all duration-500 ease-out group-hover/collage:-translate-x-2.5 group-hover/collage:translate-y-2 group-hover/collage:-rotate-[9deg] hover:!z-40 hover:!scale-110 hover:!rotate-[-1.5deg] hover:!-translate-y-1 hover:shadow-[0_28px_58px_rgba(23,21,19,0.32)]"
               >
                 {/* Brass / Wood Thumbtack Pin at Top Center */}
@@ -205,6 +397,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
               {/* PHOTO 5: RIGHT TAPED VERTICAL PRINT (Porous Red Laterite Earth Stone) */}
               <div
+                data-collage-frame
                 className="group/frame absolute right-[1%] top-[30%] w-[23%] aspect-[3/4] z-30 bg-[#FAF6EE] p-2 sm:p-2.5 shadow-[0_18px_38px_rgba(23,21,19,0.22)] border border-[#E2D9C8] rotate-[7deg] transition-all duration-500 ease-out group-hover/collage:translate-x-2.5 group-hover/collage:translate-y-1 group-hover/collage:rotate-[9deg] hover:!z-40 hover:!scale-110 hover:!rotate-[1.5deg] hover:!-translate-y-1.5 hover:shadow-[0_28px_58px_rgba(23,21,19,0.32)]"
               >
                 {/* Translucent Archival Masking Tape at Top Center */}
@@ -224,6 +417,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
               {/* BOTTOM-RIGHT FRANGIPANI (PLUMERIA) BLOSSOMS & BOTANICAL LINE ART */}
               <svg
+                data-collage-botanical="bottom-right"
                 viewBox="0 0 280 260"
                 aria-hidden="true"
                 className="pointer-events-none absolute right-[1%] -bottom-[2%] w-[34%] sm:w-[32%] z-35 drop-shadow-[0_12px_20px_rgba(23,21,19,0.22)] transition-transform duration-700 ease-out origin-center group-hover/collage:scale-106 group-hover/collage:rotate-3 group-hover/collage:translate-x-1.5"
