@@ -1255,7 +1255,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await firebaseSignOut(auth);
   }, []);
 
-  // Transaction-safe 10-minute table hold
+  // Instant 10-minute table hold (validates live in-memory state in 0ms and syncs hold to Firestore in parallel)
   const holdTableSlot = useCallback(
     async (date: string, time: string, tableId: string): Promise<HoldResult> => {
       const safeDate = (date || '').trim().slice(0, 10);
@@ -1267,72 +1267,83 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const holdRef = doc(db, 'reservationHolds', slotId);
       const nowMs = Date.now();
       const holdDurationMs = (settings.holdDurationMinutes || 10) * 60 * 1000;
-      const expiresAtMs = nowMs + holdDurationMs;
+      const expiresAtMs = Math.round(nowMs + holdDurationMs);
 
-      try {
-        await runTransaction(db, async (tx) => {
-          const slotSnap = await tx.get(slotRef);
-          if (slotSnap.exists()) {
-            const data = slotSnap.data() as AvailabilitySlotRecord;
-            if (data.status === 'reserved' || data.status === 'occupied') {
-              // Check if any active reservation (status == 'confirmed' or 'seated') still occupies this slot
-              const hasActiveReservation = reservations.some(
-                (r) =>
-                  r.date === safeDate &&
-                  r.tableId === safeTableId &&
-                  (r.time === safeTime ||
-                    r.time.replace(/[^a-zA-Z0-9]/g, '-') === normalizedTime) &&
-                  (r.status === 'confirmed' || r.status === 'seated')
-              );
-              if (hasActiveReservation) {
-                throw new Error('This table has just been reserved by another guest.');
-              }
-              // If the reservation was cancelled or rejected, this table is free for a new reservation!
-            }
-            if (
-              data.status === 'held' &&
-              data.sessionId !== sessionId &&
-              data.holdExpiresAtMs > nowMs
-            ) {
-              throw new Error('This table is currently being held by another guest.');
-            }
-          }
+      // 1. Instant local check against real-time onSnapshot reservations & availability
+      const hasActiveReservation = reservations.some(
+        (r) =>
+          r.date === safeDate &&
+          r.tableId === safeTableId &&
+          (r.time === safeTime || r.time.replace(/[^a-zA-Z0-9]/g, '-') === normalizedTime) &&
+          (r.status === 'confirmed' || r.status === 'seated')
+      );
+      if (hasActiveReservation) {
+        throw new Error('This table has just been reserved by another guest.');
+      }
 
-          tx.set(slotRef, {
+      const existingSlot = availability.find(
+        (s) =>
+          s.id === slotId ||
+          (s.date === safeDate && s.time === safeTime && s.tableId === safeTableId)
+      );
+      if (
+        existingSlot &&
+        existingSlot.status === 'held' &&
+        existingSlot.sessionId !== sessionId &&
+        existingSlot.holdExpiresAtMs > nowMs
+      ) {
+        throw new Error('This table is currently being held by another guest.');
+      }
+
+      // 2. Optimistically update local availability state immediately
+      setAvailability((prev) => {
+        const filtered = prev.filter((s) => s.id !== slotId);
+        return [
+          ...filtered,
+          {
+            id: slotId,
             date: safeDate,
             time: safeTime,
             tableId: safeTableId,
             status: 'held',
-            holdExpiresAtMs: Math.round(expiresAtMs),
+            holdExpiresAtMs: expiresAtMs,
             sessionId: sessionId.slice(0, 80),
             referenceCode: 'HOLD',
-            updatedAt: serverTimestamp(),
-          });
+          },
+        ];
+      });
 
-          tx.set(holdRef, {
-            slotId: slotId.slice(0, 80),
-            date: safeDate,
-            time: safeTime,
-            tableId: safeTableId,
-            sessionId: sessionId.slice(0, 80),
-            expiresAtMs: Math.round(expiresAtMs),
-            createdAt: serverTimestamp(),
-          });
-        });
+      // 3. Persist hold & availability lock to Firestore in the background without blocking Step 4 -> Step 5 UI transition
+      Promise.all([
+        setDoc(slotRef, {
+          date: safeDate,
+          time: safeTime,
+          tableId: safeTableId,
+          status: 'held',
+          holdExpiresAtMs: expiresAtMs,
+          sessionId: sessionId.slice(0, 80),
+          referenceCode: 'HOLD',
+          updatedAt: serverTimestamp(),
+        }),
+        setDoc(holdRef, {
+          slotId: slotId.slice(0, 80),
+          date: safeDate,
+          time: safeTime,
+          tableId: safeTableId,
+          sessionId: sessionId.slice(0, 80),
+          expiresAtMs,
+          createdAt: serverTimestamp(),
+        }),
+      ]).catch((err) => {
+        console.warn('Background hold sync note:', err);
+      });
 
-        return { slotId, expiresAtMs };
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('another guest')) {
-          throw error;
-        }
-        console.warn('Non-blocking hold fallback:', error);
-        return { slotId, expiresAtMs };
-      }
+      return { slotId, expiresAtMs };
     },
-    [sessionId, settings.holdDurationMinutes, reservations]
+    [sessionId, settings.holdDurationMinutes, reservations, availability]
   );
 
-  // Direct Firestore Reservation Confirmation (Synced with Android Admin Companion App)
+  // Direct Firestore Reservation Confirmation (Fast Parallel Write + Instant Optimistic State)
   const confirmReservation = useCallback(
     async (input: ConfirmReservationInput): Promise<ReservationRecord> => {
       const safeDate = (input.date || '').trim().slice(0, 10);
@@ -1372,79 +1383,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const slotRef = doc(db, 'availability', slotId);
       const reservationRef = doc(db, 'reservations', reservationId);
 
-      // 1. Save Directly to Firestore `reservations` collection FIRST
-      try {
-        await setDoc(reservationRef, {
-          referenceCode,
-          date: safeDate,
-          time: safeTime,
-          servicePeriod: safeServicePeriod,
-          partySize: safePartySize,
-          tableId: safeTableId,
-          tableLabel: safeTableLabel,
-          zoneId: safeZoneId,
-          zoneName: safeZoneName,
-          guestName: safeGuestName,
-          guestEmail: safeGuestEmail,
-          whatsapp: safeWhatsapp,
-          country: safeCountry,
-          occasion: safeOccasion,
-          dietaryNotes: safeDietaryNotes,
-          specialRequests: safeSpecialRequests,
-          status: 'confirmed',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, `reservations/${reservationId}`);
-      }
-
-      // 2. Update Floor Plan Availability Slot (non-blocking if slot doc has a stale lock)
-      try {
-        await setDoc(slotRef, {
-          date: safeDate,
-          time: safeTime,
-          tableId: safeTableId,
-          status: 'reserved',
-          holdExpiresAtMs: 0,
-          sessionId: sessionId.slice(0, 80),
-          referenceCode,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (slotError) {
-        console.warn('Availability slot update skipped:', slotError);
-      }
-
-      // 3. Optional Backend API / Notification Call (non-blocking, safe text parsing)
-      try {
-        const response = await fetch('/api/reservations/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            date: safeDate,
-            time: safeTime,
-            servicePeriod: safeServicePeriod,
-            partySize: safePartySize,
-            tableId: safeTableId,
-            tableLabel: safeTableLabel,
-            zoneId: safeZoneId,
-            zoneName: safeZoneName,
-            guestName: safeGuestName,
-            guestEmail: safeGuestEmail,
-            whatsapp: safeWhatsapp,
-            country: safeCountry,
-            occasion: safeOccasion || 'None',
-            dietaryNotes: safeDietaryNotes,
-            specialRequests: safeSpecialRequests,
-          }),
-        });
-        const rawText = await response.text();
-        const data = rawText ? JSON.parse(rawText) : {};
-        void data;
-      } catch (e) {
-        console.warn('Optional API call skipped:', e);
-      }
-
       const confirmedRecord: ReservationRecord = {
         id: reservationId,
         referenceCode,
@@ -1466,6 +1404,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'confirmed',
       };
 
+      // 1. Optimistically update local state & cache voucher immediately
+      setReservations((prev) => [
+        confirmedRecord,
+        ...prev.filter((r) => r.id !== reservationId),
+      ]);
       if (typeof window !== 'undefined') {
         try {
           window.localStorage.setItem(
@@ -1477,12 +1420,77 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      // 2. Write reservation & availability slot to Firestore in parallel
+      const reservationWritePromise = setDoc(reservationRef, {
+        referenceCode,
+        date: safeDate,
+        time: safeTime,
+        servicePeriod: safeServicePeriod,
+        partySize: safePartySize,
+        tableId: safeTableId,
+        tableLabel: safeTableLabel,
+        zoneId: safeZoneId,
+        zoneName: safeZoneName,
+        guestName: safeGuestName,
+        guestEmail: safeGuestEmail,
+        whatsapp: safeWhatsapp,
+        country: safeCountry,
+        occasion: safeOccasion,
+        dietaryNotes: safeDietaryNotes,
+        specialRequests: safeSpecialRequests,
+        status: 'confirmed',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      const slotWritePromise = setDoc(slotRef, {
+        date: safeDate,
+        time: safeTime,
+        tableId: safeTableId,
+        status: 'reserved',
+        holdExpiresAtMs: 0,
+        sessionId: sessionId.slice(0, 80),
+        referenceCode,
+        updatedAt: serverTimestamp(),
+      }).catch((slotError) => {
+        console.warn('Availability slot update skipped:', slotError);
+      });
+
+      try {
+        await Promise.all([reservationWritePromise, slotWritePromise]);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.CREATE, `reservations/${reservationId}`);
+      }
+
+      // 3. Fire optional Backend API / Notification Call in background (never blocks UI)
+      fetch('/api/reservations/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: safeDate,
+          time: safeTime,
+          servicePeriod: safeServicePeriod,
+          partySize: safePartySize,
+          tableId: safeTableId,
+          tableLabel: safeTableLabel,
+          zoneId: safeZoneId,
+          zoneName: safeZoneName,
+          guestName: safeGuestName,
+          guestEmail: safeGuestEmail,
+          whatsapp: safeWhatsapp,
+          country: safeCountry,
+          occasion: safeOccasion || 'None',
+          dietaryNotes: safeDietaryNotes,
+          specialRequests: safeSpecialRequests,
+        }),
+      }).catch(() => {});
+
       return confirmedRecord;
     },
     [sessionId]
   );
 
-  // Public Concierge Inquiry Submission (Direct Firestore Write First + Safe Optional API)
+  // Public Concierge Inquiry Submission (Direct Firestore Write + Non-blocking Background API)
   const submitInquiry = useCallback(
     async (input: {
       name: string;
@@ -1523,25 +1531,18 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         handleFirestoreError(error, OperationType.CREATE, `inquiries/${inquiryId}`);
       }
 
-      // Optional non-blocking API validation/notification call with safe text parsing
-      try {
-        const response = await fetch('/api/inquiries/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: safeName,
-            email: safeEmail,
-            phone: safePhone,
-            subject: safeSubject,
-            message: safeMessage,
-          }),
-        });
-        const rawText = await response.text();
-        const data = rawText ? JSON.parse(rawText) : {};
-        void data;
-      } catch (e) {
-        console.warn('Optional API call skipped:', e);
-      }
+      // Non-blocking background notification/validation call
+      fetch('/api/inquiries/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: safeName,
+          email: safeEmail,
+          phone: safePhone,
+          subject: safeSubject,
+          message: safeMessage,
+        }),
+      }).catch(() => {});
     },
     []
   );

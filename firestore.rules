@@ -350,7 +350,7 @@ service cloud.firestore {
         incoming().createdAt == request.time;
       allow update: if isValidId(holdId) &&
         isValidReservationHold(incoming()) &&
-        incoming().createdAt == existing().createdAt;
+        (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time);
       allow delete: if isValidId(holdId);
     }
 
@@ -368,7 +368,7 @@ service cloud.firestore {
           isAdmin() ||
           existing().status == 'available' ||
           existing().status == 'held' ||
-          incoming().status == 'available'
+          incoming().status in ['available', 'held', 'reserved']
         );
       allow delete: if isValidId(slotId) && (isAdmin() || existing().status == 'available' || existing().status == 'held');
     }
