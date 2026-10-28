@@ -10,5 +10,9 @@
   },
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "R2_PUBLIC_URL": "https://cdn.onelovecafesigiriya.com",
+    "R2_BUCKET_NAME": "onelove-assets"
   }
 }

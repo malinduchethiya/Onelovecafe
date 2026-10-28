@@ -174,6 +174,22 @@ async function readWorkerManifest(env: WorkerEnv, force = false): Promise<R2Medi
         }
       }
     }
+
+    // Edge HTTP fallback to public R2 CDN domain (bypasses browser CORS and works even without Worker S3 secrets)
+    const publicUrl = (
+      env.R2_PUBLIC_URL ||
+      env.S3_PUBLIC_URL ||
+      'https://cdn.onelovecafesigiriya.com'
+    ).replace(/\/$/, '');
+    const cdnResp = await fetch(`${publicUrl}/${R2_MANIFEST_OBJECT_KEY}?t=${Date.now()}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (cdnResp.ok) {
+      const text = await cdnResp.text();
+      workerR2Manifest = normalizeWorkerR2Manifest(JSON.parse(text) as Partial<R2MediaManifest>);
+      workerManifestLoaded = true;
+      return workerR2Manifest;
+    }
   } catch {
     // Fallback to in-memory state
   }

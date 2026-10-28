@@ -203,9 +203,17 @@ function writeLocalCache<T>(key: string, value: T): void {
   }
 }
 
+function sanitizeCdnUrl(url: string | undefined | null): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  // Never store or read raw base64 image payloads in Firestore — only R2 CDN links or editorial/asset paths
+  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('siteContent:')) return '';
+  return trimmed;
+}
+
 const INITIAL_SETTINGS: CafeSettings = {
   ...DEFAULT_SETTINGS,
-  heroImages: [],
+  heroImages: DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
 };
 
 const INITIAL_R2_MANIFEST: R2MediaManifest = {
@@ -223,38 +231,40 @@ const INITIAL_R2_MANIFEST: R2MediaManifest = {
 
 const INITIAL_MENU_ITEMS: MenuItem[] = DEFAULT_MENU_ITEMS.map((item) => ({
   ...item,
-  imageUrl: '',
+  imageUrl: sanitizeCdnUrl(item.imageUrl),
 }));
 
 const INITIAL_GALLERY: GalleryItem[] = DEFAULT_GALLERY.map((g) => ({
   ...g,
-  imageUrl: '',
+  imageUrl: sanitizeCdnUrl(g.imageUrl),
 }));
 
 const INITIAL_EVENTS: CafeEvent[] = DEFAULT_EVENTS.map((e) => ({
   ...e,
-  imageUrl: '',
+  imageUrl: sanitizeCdnUrl(e.imageUrl),
 }));
 
 const INITIAL_SITE_CONTENT: SiteContentSection[] = DEFAULT_SITE_CONTENT.map((s) => ({
   ...s,
-  imageUrl: s.sectionKey.startsWith('story_collage_') ? s.imageUrl : '',
+  imageUrl: sanitizeCdnUrl(s.imageUrl),
 }));
 
 function mergeSiteContentWithDefaults(cached: SiteContentSection[]): SiteContentSection[] {
   const map = new Map<string, SiteContentSection>();
-  cached.forEach((sec) => map.set(sec.sectionKey, sec));
+  cached.forEach((sec) =>
+    map.set(sec.sectionKey, { ...sec, imageUrl: sanitizeCdnUrl(sec.imageUrl) })
+  );
   DEFAULT_SITE_CONTENT.forEach((def) => {
     const existing = map.get(def.sectionKey);
     if (!existing) {
       map.set(def.sectionKey, {
         ...def,
-        imageUrl: def.sectionKey.startsWith('story_collage_') ? def.imageUrl : '',
+        imageUrl: sanitizeCdnUrl(def.imageUrl),
       });
-    } else if (def.sectionKey.startsWith('story_collage_') && !existing.imageUrl) {
+    } else if (!existing.imageUrl && def.imageUrl) {
       map.set(def.sectionKey, {
         ...existing,
-        imageUrl: def.imageUrl,
+        imageUrl: sanitizeCdnUrl(def.imageUrl),
       });
     }
   });
@@ -438,67 +448,72 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  // 2. Cloudflare R2 Media Manifest Sync (100% R2 Image Reading & Writing — Zero Firestore Image Access)
+  // 2. Cloudflare R2 Media Manifest & Firestore CDN Link Sync
   const r2ManifestRef = useRef<R2MediaManifest>(r2Manifest);
   useEffect(() => {
     r2ManifestRef.current = r2Manifest;
   }, [r2Manifest]);
 
   const fetchR2Manifest = useCallback(async () => {
+    const applyNormalizedManifest = (m: R2MediaManifest) => {
+      const normalized: R2MediaManifest = {
+        version: typeof m.version === 'number' ? m.version : 1,
+        updatedAt: m.updatedAt || new Date().toISOString(),
+        heroImages: Array.isArray(m.heroImages)
+          ? m.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+          : [],
+        heroSlideshowSpeedSeconds:
+          typeof m.heroSlideshowSpeedSeconds === 'number' ? m.heroSlideshowSpeedSeconds : 5,
+        floorPlanImageUrl: sanitizeCdnUrl(m.floorPlanImageUrl),
+        menuImages: m.menuImages && typeof m.menuImages === 'object' ? m.menuImages : {},
+        galleryItems: Array.isArray(m.galleryItems) ? m.galleryItems : [],
+        eventImages: m.eventImages && typeof m.eventImages === 'object' ? m.eventImages : {},
+        sectionImages:
+          m.sectionImages && typeof m.sectionImages === 'object' ? m.sectionImages : {},
+        seoImages:
+          m.seoImages && typeof m.seoImages === 'object'
+            ? {
+                defaultOgImageUrl: sanitizeCdnUrl(m.seoImages.defaultOgImageUrl),
+                brandLogoUrl: sanitizeCdnUrl(m.seoImages.brandLogoUrl),
+                pageOgImages: m.seoImages.pageOgImages || {},
+              }
+            : { defaultOgImageUrl: '', brandLogoUrl: '', pageOgImages: {} },
+      };
+      r2ManifestRef.current = normalized;
+      setR2Manifest(normalized);
+      writeLocalCache('onelove_cache_r2Manifest', normalized);
+    };
+
     try {
       const res = await fetch('/api/storage/manifest?refresh=1');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
-        if (data.ok && data.manifest) {
+        if (data?.ok && data?.manifest) {
           const m = data.manifest as R2MediaManifest;
-          const normalized: R2MediaManifest = {
-            version: typeof m.version === 'number' ? m.version : 1,
-            updatedAt: m.updatedAt || new Date().toISOString(),
-            heroImages: Array.isArray(m.heroImages) ? m.heroImages : [],
-            heroSlideshowSpeedSeconds:
-              typeof m.heroSlideshowSpeedSeconds === 'number' ? m.heroSlideshowSpeedSeconds : 5,
-            floorPlanImageUrl: typeof m.floorPlanImageUrl === 'string' ? m.floorPlanImageUrl : '',
-            menuImages: m.menuImages && typeof m.menuImages === 'object' ? m.menuImages : {},
-            galleryItems: Array.isArray(m.galleryItems) ? m.galleryItems : [],
-            eventImages: m.eventImages && typeof m.eventImages === 'object' ? m.eventImages : {},
-            sectionImages: m.sectionImages && typeof m.sectionImages === 'object' ? m.sectionImages : {},
-            seoImages:
-              m.seoImages && typeof m.seoImages === 'object'
-                ? {
-                    defaultOgImageUrl: m.seoImages.defaultOgImageUrl || '',
-                    brandLogoUrl: m.seoImages.brandLogoUrl || '',
-                    pageOgImages: m.seoImages.pageOgImages || {},
-                  }
-                : { defaultOgImageUrl: '', brandLogoUrl: '', pageOgImages: {} },
-          };
-          r2ManifestRef.current = normalized;
-          setR2Manifest(normalized);
-          writeLocalCache('onelove_cache_r2Manifest', normalized);
-          if (normalized.galleryItems.length > 0) {
-            setGallery(normalized.galleryItems);
-            writeLocalCache('onelove_cache_gallery', normalized.galleryItems);
+          const isBlankMemoryFallback = data.source === 'memory' && (m.version || 1) <= 1;
+          if (!isBlankMemoryFallback) {
+            applyNormalizedManifest(m);
+            return;
           }
-          return;
         }
       }
-      // Direct R2 CDN fallback if /api/storage/manifest is unavailable on static host
+    } catch {
+      // Fall through to direct CDN fetch
+    }
+
+    try {
       const cdnRes = await fetch(
         `https://cdn.onelovecafesigiriya.com/manifest/site-media.json?t=${Date.now()}`
       );
       if (cdnRes.ok) {
         const m = (await cdnRes.json()) as R2MediaManifest;
         if (m && typeof m === 'object') {
-          r2ManifestRef.current = m;
-          setR2Manifest(m);
-          writeLocalCache('onelove_cache_r2Manifest', m);
-          if (Array.isArray(m.galleryItems) && m.galleryItems.length > 0) {
-            setGallery(m.galleryItems);
-            writeLocalCache('onelove_cache_gallery', m.galleryItems);
-          }
+          applyNormalizedManifest(m);
         }
       }
-    } catch (err) {
-      console.warn('R2 manifest fetch warning:', err);
+    } catch {
+      // If browser CORS blocks direct JSON fetch, Firestore real-time R2 CDN links handle all images
     }
   }, []);
 
@@ -512,7 +527,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       r2ManifestRef.current = next;
       setR2Manifest(next);
       writeLocalCache('onelove_cache_r2Manifest', next);
-      if (Array.isArray(next.galleryItems)) {
+      if (Array.isArray(next.galleryItems) && next.galleryItems.length > 0) {
         setGallery(next.galleryItems);
         writeLocalCache('onelove_cache_gallery', next.galleryItems);
       }
@@ -528,7 +543,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ),
           }),
         });
-        if (res.ok) {
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
           const data = await res.json();
           if (data.ok && data.manifest) {
             r2ManifestRef.current = data.manifest;
@@ -537,7 +553,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (err) {
-        console.error('Failed to persist R2 manifest to Cloudflare R2:', err);
+        console.warn('R2 manifest sync note:', err);
       }
       return next;
     },
@@ -565,7 +581,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchR2Manifest();
   }, [fetchR2Manifest]);
 
-  // 2b. Non-Image Real-Time Listeners (Text, Pricing, Tables, Hours & Reservations only — ZERO Image Reads from Firestore)
+  // 2b. Real-Time Firestore Listeners (Reads R2 CDN links + Text, Pricing, Tables, Hours & Reservations)
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
@@ -576,17 +592,19 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const mainDoc = snap.docs.find((d) => d.id === 'main');
           if (mainDoc) {
             const data = mainDoc.data() as Omit<CafeSettings, 'id'>;
+            const cleanHeroLinks = Array.isArray(data.heroImages)
+              ? data.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+              : [];
             const nextSettings: CafeSettings = {
               ...DEFAULT_SETTINGS,
               id: mainDoc.id,
               ...data,
-              // Images are NEVER read from Firestore; they come exclusively from Cloudflare R2 (r2Manifest)
-              heroImages: [],
+              heroImages: cleanHeroLinks,
               heroSlideshowSpeedSeconds:
                 typeof data.heroSlideshowSpeedSeconds === 'number'
                   ? data.heroSlideshowSpeedSeconds
                   : DEFAULT_SETTINGS.heroSlideshowSpeedSeconds,
-              floorPlanImageUrl: '',
+              floorPlanImageUrl: sanitizeCdnUrl(data.floorPlanImageUrl),
               googleMapsEmbedUrl:
                 !data.googleMapsEmbedUrl || data.googleMapsEmbedUrl.includes('7.9541,80.7547')
                   ? DEFAULT_SETTINGS.googleMapsEmbedUrl
@@ -688,7 +706,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const deletedIds = new Set<string>(
               readLocalCache<string[]>('onelove_deleted_menu_ids', [])
             );
-            // Strip imageUrl when reading from Firestore — menu item images load 100% from Cloudflare R2
             const list = snap.docs
               .filter((d) => !deletedIds.has(d.id))
               .map((d) => {
@@ -696,7 +713,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return {
                   id: d.id,
                   ...raw,
-                  imageUrl: '',
+                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
                 };
               });
             const existingIds = new Set(list.map((m) => m.id));
@@ -716,13 +733,35 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     unsubs.push(
       onSnapshot(
+        collection(db, 'gallery'),
+        (snap) => {
+          if (!snap.empty) {
+            const list = snap.docs
+              .map((d) => {
+                const raw = d.data() as Omit<GalleryItem, 'id'>;
+                return {
+                  id: d.id,
+                  ...raw,
+                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
+                };
+              })
+              .sort((a, b) => a.sortOrder - b.sortOrder);
+            setGallery(list);
+            writeLocalCache('onelove_cache_gallery', list);
+          }
+        },
+        (err) => handleFirestoreError(err, OperationType.LIST, 'gallery')
+      )
+    );
+
+    unsubs.push(
+      onSnapshot(
         collection(db, 'events'),
         (snap) => {
           if (!snap.empty) {
             const deletedIds = new Set<string>(
               readLocalCache<string[]>('onelove_deleted_event_ids', [])
             );
-            // Strip imageUrl when reading from Firestore — event images load 100% from Cloudflare R2
             const list = snap.docs
               .filter((d) => !deletedIds.has(d.id))
               .map((d) => {
@@ -730,7 +769,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return {
                   id: d.id,
                   ...raw,
-                  imageUrl: '',
+                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
                 };
               });
             const existingIds = new Set(list.map((e) => e.id));
@@ -753,10 +792,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         collection(db, 'siteContent'),
         (snap) => {
           if (!snap.empty) {
-            // Ignore legacy hero_slide_* chunks, deduplicate by sectionKey, and strip imageUrl from Firestore siteContent
             const byKey = new Map<string, SiteContentSection>();
             INITIAL_SITE_CONTENT.forEach((def) => {
-              byKey.set(def.sectionKey, { ...def, imageUrl: '' });
+              byKey.set(def.sectionKey, { ...def, imageUrl: sanitizeCdnUrl(def.imageUrl) });
             });
             snap.docs
               .filter((d) => !d.id.startsWith('sec_hero_slide_'))
@@ -768,7 +806,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   id: d.id,
                   ...raw,
                   sectionKey: key,
-                  imageUrl: '',
+                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
                 });
               });
             const merged = Array.from(byKey.values());
@@ -854,7 +892,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
-    // 11. Global SEO Configuration Real-Time Listener (Text only — SEO images come from Cloudflare R2)
+    // 11. Global SEO Configuration Real-Time Listener
     unsubs.push(
       onSnapshot(
         collection(db, 'seoConfig'),
@@ -866,8 +904,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...DEFAULT_GLOBAL_SEO,
               ...data,
               id: 'main',
-              defaultOgImageUrl: DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
-              brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
+              defaultOgImageUrl:
+                sanitizeCdnUrl(data.defaultOgImageUrl) || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
+              brandLogoUrl:
+                sanitizeCdnUrl(data.brandLogoUrl) || DEFAULT_GLOBAL_SEO.brandLogoUrl,
               defaultTitle:
                 !data.defaultTitle || data.defaultTitle.includes('Breakfast, Brunch & Coffee')
                   ? DEFAULT_GLOBAL_SEO.defaultTitle
@@ -898,7 +938,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
-    // 12. Per-Page SEO Configuration Real-Time Listener (Text only — Page OG images come from Cloudflare R2)
+    // 12. Per-Page SEO Configuration Real-Time Listener
     unsubs.push(
       onSnapshot(
         collection(db, 'seoPages'),
@@ -913,7 +953,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   ...DEFAULT_PAGE_SEO[key],
                   ...rawPage,
                   id: key,
-                  ogImageUrl: DEFAULT_PAGE_SEO[key].ogImageUrl,
+                  ogImageUrl:
+                    sanitizeCdnUrl(rawPage.ogImageUrl) || DEFAULT_PAGE_SEO[key].ogImageUrl,
                 };
                 if (key === 'home') {
                   if (
@@ -970,18 +1011,21 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     provider: string;
     bucket?: string | null;
     publicUrl?: string | null;
+    manifestUrl?: string | null;
   } | null>(null);
 
   const checkStorageStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/storage/status');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
         setStorageStatus({
           configured: Boolean(data.configured),
           provider: data.provider || 'inline',
           bucket: data.bucket || null,
           publicUrl: data.publicUrl || null,
+          manifestUrl: data.manifestUrl || null,
         });
       }
     } catch {
@@ -993,16 +1037,22 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkStorageStatus();
   }, [checkStorageStatus]);
 
-  // Seed initial sanctuary data (non-image records in Firestore, gallery in Cloudflare R2)
+  // Seed initial sanctuary data with R2 CDN links if present in r2Manifest
   const seedDatabaseIfNeeded = useCallback(async () => {
     if (!isAdmin) return;
     try {
+      const m = r2ManifestRef.current;
       const { id: settingId, ...settingData } = DEFAULT_SETTINGS;
+      const seedHero =
+        Array.isArray(m.heroImages) && m.heroImages.length > 0
+          ? m.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+          : (settingData.heroImages || []).map((u) => sanitizeCdnUrl(u)).filter(Boolean);
       await setDoc(doc(db, 'settings', settingId), {
         ...settingData,
-        heroImages: [],
-        heroSlideshowSpeedSeconds: settingData.heroSlideshowSpeedSeconds || 5,
-        floorPlanImageUrl: '',
+        heroImages: seedHero,
+        heroSlideshowSpeedSeconds:
+          m.heroSlideshowSpeedSeconds || settingData.heroSlideshowSpeedSeconds || 5,
+        floorPlanImageUrl: sanitizeCdnUrl(m.floorPlanImageUrl),
         updatedAt: serverTimestamp(),
       });
 
@@ -1028,27 +1078,62 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       for (const item of DEFAULT_MENU_ITEMS) {
         const { id, ...data } = item;
+        const r2Img = sanitizeCdnUrl(m.menuImages?.[id]) || sanitizeCdnUrl(data.imageUrl);
         await setDoc(doc(db, 'menuItems', id), {
           ...data,
-          imageUrl: '',
+          imageUrl: r2Img,
           updatedAt: serverTimestamp(),
+        });
+      }
+
+      const gallerySource =
+        Array.isArray(m.galleryItems) && m.galleryItems.length > 0
+          ? m.galleryItems
+          : DEFAULT_GALLERY;
+      for (const gItem of gallerySource) {
+        const validCategories = [
+          'Architecture',
+          'Culinary',
+          'Coffee & Botanicals',
+          'Evening Sanctuary',
+          'Sigiriya Surroundings',
+        ] as const;
+        const safeCat = validCategories.includes(gItem.category as (typeof validCategories)[number])
+          ? gItem.category
+          : 'Architecture';
+        const validRatios = ['16:9', '4:3', '3:4', '1:1'] as const;
+        const safeRatio = validRatios.includes(gItem.aspectRatio as (typeof validRatios)[number])
+          ? gItem.aspectRatio
+          : '4:3';
+        await setDoc(doc(db, 'gallery', gItem.id), {
+          title: (gItem.title || 'Sanctuary Moment').slice(0, 100),
+          category: safeCat,
+          caption: (gItem.caption || '').slice(0, 300),
+          imageUrl: sanitizeCdnUrl(gItem.imageUrl),
+          aspectRatio: safeRatio,
+          isFeatured: Boolean(gItem.isFeatured),
+          sortOrder: Number(gItem.sortOrder) || 1,
+          createdAt: serverTimestamp(),
         });
       }
 
       for (const evt of DEFAULT_EVENTS) {
         const { id, ...data } = evt;
+        const r2Img = sanitizeCdnUrl(m.eventImages?.[id]) || sanitizeCdnUrl(data.imageUrl);
         await setDoc(doc(db, 'events', id), {
           ...data,
-          imageUrl: '',
+          imageUrl: r2Img,
           updatedAt: serverTimestamp(),
         });
       }
 
       for (const sc of DEFAULT_SITE_CONTENT) {
         const { id, ...data } = sc;
+        const r2Img =
+          sanitizeCdnUrl(m.sectionImages?.[data.sectionKey]) || sanitizeCdnUrl(data.imageUrl);
         await setDoc(doc(db, 'siteContent', id), {
           ...data,
-          imageUrl: '',
+          imageUrl: r2Img,
           updatedAt: serverTimestamp(),
         });
       }
@@ -1057,7 +1142,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'SEED_SANCTUARY_DATA',
         'settings',
         'main',
-        'Initialized default OneLove Café Sigiriya text, tables, menu, and zones (zero images in Firestore)'
+        'Initialized OneLove Café Sigiriya data with R2 CDN image links in Firestore'
       );
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'seedDatabase');
@@ -1725,17 +1810,17 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (item: MenuItem) => {
       try {
         const { id, ...data } = item;
-        const rawImageUrl = (data.imageUrl || '').trim();
-        const cleanImageUrl = rawImageUrl.startsWith('editorial:') ? '' : rawImageUrl;
+        const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
+        const r2ManifestUrl = cleanImageUrl.startsWith('editorial:') ? '' : cleanImageUrl;
         const prevImageUrl = r2ManifestRef.current.menuImages?.[id] || '';
         const urlsToDelete =
-          prevImageUrl && prevImageUrl !== cleanImageUrl ? [prevImageUrl] : [];
+          prevImageUrl && prevImageUrl !== r2ManifestUrl ? [prevImageUrl] : [];
 
         // 1. Save image URL in Cloudflare R2 manifest (and delete replaced image from R2 bucket)
         await updateR2Manifest((prev) => {
           const nextMenuImages = { ...(prev.menuImages || {}) };
-          if (cleanImageUrl) {
-            nextMenuImages[id] = cleanImageUrl;
+          if (r2ManifestUrl) {
+            nextMenuImages[id] = r2ManifestUrl;
           } else {
             delete nextMenuImages[id];
           }
@@ -1745,8 +1830,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }, urlsToDelete);
 
-        // 2. Save text/price metadata only in local state & Firestore (imageUrl is ALWAYS empty in Firestore)
-        const firestoreItem: MenuItem = { ...item, imageUrl: '' };
+        // 2. Save R2 CDN link + item metadata in local state & Firestore
+        const firestoreItem: MenuItem = { ...item, imageUrl: cleanImageUrl };
         setMenuItems((prev) => {
           const exists = prev.some((m) => m.id === item.id);
           const next = exists
@@ -1768,7 +1853,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           priceLkr: Math.max(0, Number(data.priceLkr) || 0),
           priceUsd: Math.max(0, Number(data.priceUsd) || 0),
           priceCurrency: validItemCurrency,
-          imageUrl: '',
+          imageUrl: cleanImageUrl,
           dietaryTags: (data.dietaryTags || []).slice(0, 10),
           isFeatured: Boolean(data.isFeatured),
           isAvailable: Boolean(data.isAvailable),
@@ -1778,7 +1863,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'SAVE_MENU_ITEM',
           'menuItems',
           id,
-          `Saved menu item ${data.name} (image synced to Cloudflare R2)`
+          `Saved menu item ${data.name} (R2 CDN link synced to Firestore)`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `menuItems/${item.id}`);
@@ -1827,22 +1912,41 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [updateR2Manifest]
   );
 
-  // Gallery items & images live 100% in Cloudflare R2 (Zero Firestore reads or writes)
   const saveGalleryItem = useCallback(
     async (item: GalleryItem) => {
       try {
         const existing = r2ManifestRef.current.galleryItems.find((g) => g.id === item.id);
         const prevUrl = existing?.imageUrl || '';
-        const nextUrl = (item.imageUrl || '').trim();
+        const nextUrl = sanitizeCdnUrl(item.imageUrl);
         const urlsToDelete = prevUrl && prevUrl !== nextUrl ? [prevUrl] : [];
+
+        const validCategories = [
+          'Architecture',
+          'Culinary',
+          'Coffee & Botanicals',
+          'Evening Sanctuary',
+          'Sigiriya Surroundings',
+        ] as const;
+        const safeCategory = validCategories.includes(
+          item.category as (typeof validCategories)[number]
+        )
+          ? item.category
+          : 'Architecture';
+
+        const validRatios = ['16:9', '4:3', '3:4', '1:1'] as const;
+        const safeAspectRatio = validRatios.includes(
+          item.aspectRatio as (typeof validRatios)[number]
+        )
+          ? item.aspectRatio
+          : '4:3';
 
         const normalizedItem: GalleryItem = {
           id: item.id,
           title: (item.title || 'Sanctuary Moment').slice(0, 100),
-          category: item.category || 'Garden',
+          category: safeCategory,
           caption: (item.caption || '').slice(0, 300),
           imageUrl: nextUrl,
-          aspectRatio: item.aspectRatio || '4:3',
+          aspectRatio: safeAspectRatio,
           isFeatured: Boolean(item.isFeatured),
           sortOrder: Number(item.sortOrder) || 1,
         };
@@ -1861,17 +1965,41 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }, urlsToDelete);
 
-        // Clean up any legacy Firestore document if one existed previously
-        await deleteDoc(doc(db, 'gallery', item.id)).catch(() => {});
+        setGallery((prev) => {
+          const exists = prev.some((g) => g.id === normalizedItem.id);
+          const nextList = (
+            exists
+              ? prev.map((g) => (g.id === normalizedItem.id ? normalizedItem : g))
+              : [...prev, normalizedItem]
+          ).sort((a, b) => a.sortOrder - b.sortOrder);
+          writeLocalCache('onelove_cache_gallery', nextList);
+          return nextList;
+        });
+
+        const existingSnap = await getDoc(doc(db, 'gallery', normalizedItem.id));
+        const createdAtVal = existingSnap.exists()
+          ? existingSnap.data().createdAt
+          : serverTimestamp();
+
+        await setDoc(doc(db, 'gallery', normalizedItem.id), {
+          title: normalizedItem.title,
+          category: safeCategory,
+          caption: normalizedItem.caption,
+          imageUrl: nextUrl,
+          aspectRatio: safeAspectRatio,
+          isFeatured: normalizedItem.isFeatured,
+          sortOrder: normalizedItem.sortOrder,
+          createdAt: createdAtVal,
+        });
 
         await logAdminAction(
-          'SAVE_GALLERY_ITEM_R2',
-          'r2_gallery',
-          item.id,
-          `Saved gallery photo "${normalizedItem.title}" directly to Cloudflare R2`
+          'SAVE_GALLERY_ITEM',
+          'gallery',
+          normalizedItem.id,
+          `Saved gallery photo "${normalizedItem.title}" (R2 CDN link synced to Firestore)`
         );
       } catch (error) {
-        console.error('Failed to save gallery item to R2:', error);
+        handleFirestoreError(error, OperationType.WRITE, `gallery/${item.id}`);
       }
     },
     [updateR2Manifest]
@@ -1891,17 +2019,22 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           prevUrl ? [prevUrl] : []
         );
 
-        // Clean up any legacy Firestore document if one existed previously
+        setGallery((prev) => {
+          const next = prev.filter((g) => g.id !== id);
+          writeLocalCache('onelove_cache_gallery', next);
+          return next;
+        });
+
         await deleteDoc(doc(db, 'gallery', id)).catch(() => {});
 
         await logAdminAction(
-          'DELETE_GALLERY_ITEM_R2',
-          'r2_gallery',
+          'DELETE_GALLERY_ITEM',
+          'gallery',
           id,
           `Deleted gallery item ${id} and removed object from Cloudflare R2`
         );
       } catch (error) {
-        console.error('Failed to delete gallery item from R2:', error);
+        handleFirestoreError(error, OperationType.DELETE, `gallery/${id}`);
       }
     },
     [updateR2Manifest]
@@ -1911,17 +2044,17 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (evt: CafeEvent) => {
       try {
         const { id, ...data } = evt;
-        const rawImageUrl = (data.imageUrl || '').trim();
-        const cleanImageUrl = rawImageUrl.startsWith('editorial:') ? '' : rawImageUrl;
+        const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
+        const r2ManifestUrl = cleanImageUrl.startsWith('editorial:') ? '' : cleanImageUrl;
         const prevImageUrl = r2ManifestRef.current.eventImages?.[id] || '';
         const urlsToDelete =
-          prevImageUrl && prevImageUrl !== cleanImageUrl ? [prevImageUrl] : [];
+          prevImageUrl && prevImageUrl !== r2ManifestUrl ? [prevImageUrl] : [];
 
         // 1. Save event image URL in Cloudflare R2 manifest (and delete replaced image from R2)
         await updateR2Manifest((prev) => {
           const nextEventImages = { ...(prev.eventImages || {}) };
-          if (cleanImageUrl) {
-            nextEventImages[id] = cleanImageUrl;
+          if (r2ManifestUrl) {
+            nextEventImages[id] = r2ManifestUrl;
           } else {
             delete nextEventImages[id];
           }
@@ -1931,8 +2064,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }, urlsToDelete);
 
-        // 2. Save text metadata only in local state & Firestore (imageUrl is ALWAYS empty in Firestore)
-        const firestoreEvt: CafeEvent = { ...evt, imageUrl: '' };
+        // 2. Save R2 CDN link + event metadata in local state & Firestore
+        const firestoreEvt: CafeEvent = { ...evt, imageUrl: cleanImageUrl };
         setEvents((prev) => {
           const exists = prev.some((e) => e.id === evt.id);
           const next = exists
@@ -1949,7 +2082,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           time: (data.time || '18:00').slice(0, 40),
           category: (data.category || 'Evening Ritual').slice(0, 60),
           description: (data.description || 'Curated experience at OneLove Café.').slice(0, 600),
-          imageUrl: '',
+          imageUrl: cleanImageUrl,
           priceInfo: (data.priceInfo || '').slice(0, 80),
           isFeatured: Boolean(data.isFeatured),
           isActive: Boolean(data.isActive),
@@ -1959,7 +2092,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'SAVE_EVENT',
           'events',
           id,
-          `Saved event ${data.title} (image synced to Cloudflare R2)`
+          `Saved event ${data.title} (R2 CDN link synced to Firestore)`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `events/${evt.id}`);
@@ -2013,17 +2146,17 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { id, ...data } = section;
         const sectionKey = (data.sectionKey || 'section').slice(0, 60);
-        const rawImageUrl = (data.imageUrl || '').trim();
-        const cleanImageUrl = rawImageUrl.startsWith('editorial:') ? '' : rawImageUrl;
+        const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
+        const r2ManifestUrl = cleanImageUrl.startsWith('editorial:') ? '' : cleanImageUrl;
         const prevImageUrl = r2ManifestRef.current.sectionImages?.[sectionKey] || '';
         const urlsToDelete =
-          prevImageUrl && prevImageUrl !== cleanImageUrl ? [prevImageUrl] : [];
+          prevImageUrl && prevImageUrl !== r2ManifestUrl ? [prevImageUrl] : [];
 
         // 1. Save section image URL in Cloudflare R2 manifest (and delete replaced image from R2)
         await updateR2Manifest((prev) => {
           const nextSectionImages = { ...(prev.sectionImages || {}) };
-          if (cleanImageUrl) {
-            nextSectionImages[sectionKey] = cleanImageUrl;
+          if (r2ManifestUrl) {
+            nextSectionImages[sectionKey] = r2ManifestUrl;
           } else {
             delete nextSectionImages[sectionKey];
           }
@@ -2033,8 +2166,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
         }, urlsToDelete);
 
-        // 2. Save text metadata only in local state & Firestore (imageUrl is ALWAYS empty in Firestore)
-        const firestoreSection: SiteContentSection = { ...section, sectionKey, imageUrl: '' };
+        // 2. Save R2 CDN link + text metadata in local state & Firestore
+        const firestoreSection: SiteContentSection = {
+          ...section,
+          sectionKey,
+          imageUrl: cleanImageUrl,
+        };
         setSiteContent((prev) => {
           const exists = prev.some((s) => s.id === section.id || s.sectionKey === sectionKey);
           const next = exists
@@ -2054,14 +2191,14 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           body: (data.body || '').slice(0, 1200),
           ctaLabel: (data.ctaLabel || '').slice(0, 60),
           ctaLink: (data.ctaLink || '').slice(0, 120),
-          imageUrl: '',
+          imageUrl: cleanImageUrl,
           updatedAt: serverTimestamp(),
         });
         await logAdminAction(
           'SAVE_SITE_CONTENT',
           'siteContent',
           id,
-          `Updated website section ${sectionKey} (image synced to Cloudflare R2)`
+          `Updated website section ${sectionKey} (R2 CDN link synced to Firestore)`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `siteContent/${section.id}`);
@@ -2076,19 +2213,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { id, ...data } = newSettings;
         const nextHeroImages = Array.isArray(data.heroImages)
           ? data.heroImages
-              .filter(
-                (img) =>
-                  typeof img === 'string' &&
-                  img.trim().length > 0 &&
-                  !img.startsWith('siteContent:')
-              )
+              .map((img) => sanitizeCdnUrl(img))
+              .filter(Boolean)
               .slice(0, 12)
           : [];
         const speedSec = Math.min(
           60,
           Math.max(1, Number(data.heroSlideshowSpeedSeconds) || 5)
         );
-        const nextFloorPlanUrl = (data.floorPlanImageUrl || '').trim();
+        const nextFloorPlanUrl = sanitizeCdnUrl(data.floorPlanImageUrl);
 
         // Determine any removed Hero slides or replaced Floor Plan URL so they are physically deleted from R2
         const prevHeroImages = r2ManifestRef.current.heroImages || [];
@@ -2100,7 +2233,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           prevFloorPlanUrl && prevFloorPlanUrl !== nextFloorPlanUrl ? [prevFloorPlanUrl] : [];
         const urlsToDelete = [...removedHeroUrls, ...removedFloorPlanUrls];
 
-        // 1. Persist Hero Slideshow images & Floor Plan image 100% to Cloudflare R2 manifest
+        // 1. Persist Hero Slideshow images & Floor Plan image to Cloudflare R2 manifest
         await updateR2Manifest(
           (prev) => ({
             ...prev,
@@ -2116,15 +2249,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? data.menuCurrencyDisplay
             : 'both';
 
-        // 2. Save text/operational settings to local state & Firestore (ZERO images in Firestore)
-        const textOnlySettings: CafeSettings = {
+        // 2. Save R2 CDN links + operational settings to local state & Firestore
+        const updatedSettings: CafeSettings = {
           ...newSettings,
-          heroImages: [],
+          heroImages: nextHeroImages,
           heroSlideshowSpeedSeconds: speedSec,
-          floorPlanImageUrl: '',
+          floorPlanImageUrl: nextFloorPlanUrl,
         };
-        setSettings(textOnlySettings);
-        writeLocalCache('onelove_cache_settings', textOnlySettings);
+        setSettings(updatedSettings);
+        writeLocalCache('onelove_cache_settings', updatedSettings);
 
         await setDoc(doc(db, 'settings', id || 'main'), {
           cafeName: (data.cafeName || 'OneLove Café').slice(0, 80),
@@ -2149,9 +2282,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             Math.max(0, Math.round(Number(data.sameDayCutoffHour) || 21))
           ),
           bookingPolicy: (data.bookingPolicy || '').slice(0, 600),
-          heroImages: [],
+          heroImages: nextHeroImages,
           heroSlideshowSpeedSeconds: speedSec,
-          floorPlanImageUrl: '',
+          floorPlanImageUrl: nextFloorPlanUrl,
           googleMapsEmbedUrl: (data.googleMapsEmbedUrl || '').slice(0, 2000),
           mapTitle: (data.mapTitle || 'Our Sanctuary Location').slice(0, 120),
           mapSubtitle: (data.mapSubtitle || '').slice(0, 250),
@@ -2162,7 +2295,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'SAVE_SETTINGS',
           'settings',
           id || 'main',
-          `Updated global café settings & synced ${nextHeroImages.length} Hero image(s) to Cloudflare R2`
+          `Updated global café settings & synced ${nextHeroImages.length} R2 Hero CDN link(s) to Firestore`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `settings/${newSettings.id}`);
@@ -2256,49 +2389,66 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  // Update any of the 5 Laterite Earth, Teak & Monsoon Light collage frames directly in Cloudflare R2
+  // Update any of the 5 Laterite Earth, Teak & Monsoon Light collage frames in R2 + Firestore
   const updateCollageImageFromDevice = useCallback(
     async (slotIndex: number, file: File) => {
       const sectionKey = `story_collage_${slotIndex}`;
-      const prevUrl = r2ManifestRef.current.sectionImages?.[sectionKey] || '';
+      const existingSec =
+        siteContent.find((s) => s.sectionKey === sectionKey) ||
+        DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
+      const prevUrl =
+        r2ManifestRef.current.sectionImages?.[sectionKey] ||
+        (existingSec?.imageUrl?.startsWith('http') ? existingSec.imageUrl : '');
       const uploadedR2Url = await uploadMediaFile(file, 'collage', prevUrl);
 
-      await updateR2Manifest((prev) => ({
-        ...prev,
-        sectionImages: {
-          ...(prev.sectionImages || {}),
-          [sectionKey]: uploadedR2Url,
-        },
-      }));
+      await saveSiteContent({
+        id: existingSec?.id || `sec_story_collage_${slotIndex}`,
+        sectionKey,
+        kicker: existingSec?.kicker || `Story Collage Frame 0${slotIndex}`,
+        heading: existingSec?.heading || `Story Collage Photo ${slotIndex}`,
+        subheading: existingSec?.subheading || 'Laterite Earth, Teak & Monsoon Light',
+        body: existingSec?.body || '',
+        ctaLabel: existingSec?.ctaLabel || '',
+        ctaLink: existingSec?.ctaLink || '/story',
+        imageUrl: uploadedR2Url,
+      });
     },
-    [uploadMediaFile, updateR2Manifest]
+    [siteContent, uploadMediaFile, saveSiteContent]
   );
 
   const resetCollageImage = useCallback(
     async (slotIndex: number) => {
       const sectionKey = `story_collage_${slotIndex}`;
-      const prevUrl = r2ManifestRef.current.sectionImages?.[sectionKey] || '';
+      const defaultSec = DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
+      const existingSec = siteContent.find((s) => s.sectionKey === sectionKey) || defaultSec;
+      const prevUrl =
+        r2ManifestRef.current.sectionImages?.[sectionKey] ||
+        (existingSec?.imageUrl?.startsWith('http') ? existingSec.imageUrl : '');
 
-      await updateR2Manifest(
-        (prev) => {
-          const nextSectionImages = { ...(prev.sectionImages || {}) };
-          delete nextSectionImages[sectionKey];
-          return {
-            ...prev,
-            sectionImages: nextSectionImages,
-          };
-        },
-        prevUrl ? [prevUrl] : []
-      );
+      if (prevUrl) {
+        await deleteMediaFromR2(prevUrl);
+      }
+
+      await saveSiteContent({
+        id: existingSec?.id || `sec_story_collage_${slotIndex}`,
+        sectionKey,
+        kicker: existingSec?.kicker || `Story Collage Frame 0${slotIndex}`,
+        heading: existingSec?.heading || `Story Collage Photo ${slotIndex}`,
+        subheading: existingSec?.subheading || 'Laterite Earth, Teak & Monsoon Light',
+        body: existingSec?.body || '',
+        ctaLabel: existingSec?.ctaLabel || '',
+        ctaLink: existingSec?.ctaLink || '/story',
+        imageUrl: defaultSec?.imageUrl || '',
+      });
     },
-    [updateR2Manifest]
+    [siteContent, deleteMediaFromR2, saveSiteContent]
   );
 
   const saveSeoGlobal = useCallback(
     async (config: GlobalSeoConfig) => {
       try {
-        const cleanOgUrl = (config.defaultOgImageUrl || '').trim();
-        const cleanLogoUrl = (config.brandLogoUrl || '').trim();
+        const cleanOgUrl = sanitizeCdnUrl(config.defaultOgImageUrl);
+        const cleanLogoUrl = sanitizeCdnUrl(config.brandLogoUrl);
         const prevOgUrl = r2ManifestRef.current.seoImages?.defaultOgImageUrl || '';
         const prevLogoUrl = r2ManifestRef.current.seoImages?.brandLogoUrl || '';
 
@@ -2323,13 +2473,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           urlsToDelete
         );
 
-        // 2. Save text SEO configuration to Firestore (with empty image fields in Firestore)
+        // 2. Save SEO configuration + R2 CDN links to Firestore
         const merged: GlobalSeoConfig = {
           ...DEFAULT_GLOBAL_SEO,
           ...config,
           id: 'main',
-          defaultOgImageUrl: '',
-          brandLogoUrl: '',
+          defaultOgImageUrl: cleanOgUrl || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
+          brandLogoUrl: cleanLogoUrl || DEFAULT_GLOBAL_SEO.brandLogoUrl,
         };
         setSeoGlobal(merged);
         writeLocalCache('onelove_cache_seoGlobal', merged);
@@ -2348,8 +2498,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             .slice(0, 200),
           language: (data.language || 'en').slice(0, 16),
           googleVerificationTag: (data.googleVerificationTag || '').slice(0, 200),
-          defaultOgImageUrl: '',
-          brandLogoUrl: '',
+          defaultOgImageUrl: cleanOgUrl,
+          brandLogoUrl: cleanLogoUrl,
           faviconSourceUrl: '',
           favicon48Url: '',
           favicon96Url: '',
@@ -2381,7 +2531,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'SAVE_SEO_GLOBAL',
           'seoConfig',
           'main',
-          `Updated global SEO configuration (${data.siteName} · SEO images synced to Cloudflare R2)`
+          `Updated global SEO configuration (${data.siteName} · R2 CDN links synced to Firestore)`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, 'seoConfig/main');
@@ -2393,7 +2543,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const saveSeoPage = useCallback(
     async (page: PageSeoConfig) => {
       try {
-        const cleanOgUrl = (page.ogImageUrl || '').trim();
+        const cleanOgUrl = sanitizeCdnUrl(page.ogImageUrl);
         const prevOgUrl = r2ManifestRef.current.seoImages?.pageOgImages?.[page.id] || '';
         const urlsToDelete =
           prevOgUrl && prevOgUrl !== cleanOgUrl && !prevOgUrl.startsWith('/assets/')
@@ -2415,14 +2565,14 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           urlsToDelete
         );
 
-        const textOnlyPage: PageSeoConfig = { ...page, ogImageUrl: '' };
+        const updatedPage: PageSeoConfig = { ...page, ogImageUrl: cleanOgUrl };
         setSeoPages((prev) => {
-          const next = { ...prev, [page.id]: textOnlyPage };
+          const next = { ...prev, [page.id]: updatedPage };
           writeLocalCache('onelove_cache_seoPages', next);
           return next;
         });
 
-        const { id, ...data } = textOnlyPage;
+        const { id, ...data } = updatedPage;
         await setDoc(doc(db, 'seoPages', id), {
           routePath: (data.routePath || '/').slice(0, 120),
           pageLabel: (data.pageLabel || id).slice(0, 120),
@@ -2433,7 +2583,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           supportingKeywords: (data.supportingKeywords || []).slice(0, 40),
           ogTitle: (data.ogTitle || data.title || '').slice(0, 160),
           ogDescription: (data.ogDescription || data.metaDescription || '').slice(0, 500),
-          ogImageUrl: '',
+          ogImageUrl: cleanOgUrl,
           indexable: Boolean(data.indexable),
           updatedAt: serverTimestamp(),
         });
@@ -2442,7 +2592,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'SAVE_SEO_PAGE',
           'seoPages',
           id,
-          `Updated page SEO metadata for ${data.routePath} (OG image synced to Cloudflare R2)`
+          `Updated page SEO metadata for ${data.routePath} (R2 OG link synced to Firestore)`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `seoPages/${page.id}`);
@@ -2458,51 +2608,295 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [saveSeoGlobal, saveSeoPage]);
 
-  // 100% Cloudflare R2 Resolved State (All images across the entire site come exclusively from r2Manifest)
+  // Automatic backfill: Ensure any R2 CDN links in r2Manifest are synced to Firestore when Admin is active
+  const r2SyncedVersionRef = useRef<number>(0);
+  useEffect(() => {
+    if (!authReady || !isAdmin) return;
+    if (!r2Manifest || (r2Manifest.version || 1) <= 1) return;
+    if (r2SyncedVersionRef.current === r2Manifest.version) return;
+    r2SyncedVersionRef.current = r2Manifest.version;
+
+    const syncR2LinksToFirestore = async () => {
+      try {
+        // 1. Sync Hero images & Floor Plan R2 CDN links to settings/main if Firestore is missing them
+        const r2Hero = (r2Manifest.heroImages || [])
+          .map((u) => sanitizeCdnUrl(u))
+          .filter((u) => u.startsWith('http'));
+        const fsHero = (settings.heroImages || []).filter((u) => u.startsWith('http'));
+        const r2Floor = sanitizeCdnUrl(r2Manifest.floorPlanImageUrl);
+        if (
+          (r2Hero.length > 0 && fsHero.join('|') !== r2Hero.join('|')) ||
+          (r2Floor && settings.floorPlanImageUrl !== r2Floor)
+        ) {
+          const validMenuCurrency =
+            settings.menuCurrencyDisplay &&
+            ['both', 'lkr', 'usd'].includes(settings.menuCurrencyDisplay)
+              ? settings.menuCurrencyDisplay
+              : 'both';
+          await setDoc(doc(db, 'settings', 'main'), {
+            cafeName: (settings.cafeName || 'OneLove Café').slice(0, 80),
+            tagline: (settings.tagline || '').slice(0, 160),
+            address: (settings.address || '').slice(0, 200),
+            phone: (settings.phone || '').slice(0, 40),
+            whatsapp: (settings.whatsapp || '').slice(0, 40),
+            email: (settings.email || '').slice(0, 120),
+            instagram: (settings.instagram || '').slice(0, 100),
+            coordinates: (settings.coordinates || '').slice(0, 60),
+            gracePeriodMinutes: Math.min(
+              60,
+              Math.max(5, Math.round(Number(settings.gracePeriodMinutes) || 15))
+            ),
+            holdDurationMinutes: Math.min(
+              30,
+              Math.max(3, Math.round(Number(settings.holdDurationMinutes) || 10))
+            ),
+            maxPartySize: Math.min(
+              30,
+              Math.max(2, Math.round(Number(settings.maxPartySize) || 12))
+            ),
+            sameDayCutoffHour: Math.min(
+              23,
+              Math.max(0, Math.round(Number(settings.sameDayCutoffHour) || 21))
+            ),
+            bookingPolicy: (settings.bookingPolicy || '').slice(0, 600),
+            heroImages: r2Hero.length > 0 ? r2Hero : settings.heroImages || [],
+            heroSlideshowSpeedSeconds:
+              r2Manifest.heroSlideshowSpeedSeconds || settings.heroSlideshowSpeedSeconds || 5,
+            floorPlanImageUrl: r2Floor || sanitizeCdnUrl(settings.floorPlanImageUrl),
+            googleMapsEmbedUrl: (settings.googleMapsEmbedUrl || '').slice(0, 2000),
+            mapTitle: (settings.mapTitle || 'Our Sanctuary Location').slice(0, 120),
+            mapSubtitle: (settings.mapSubtitle || '').slice(0, 250),
+            menuCurrencyDisplay: validMenuCurrency,
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        // 2. Sync Menu Item R2 CDN links to menuItems/{id}
+        const menuMap = r2Manifest.menuImages || {};
+        for (const [itemId, r2Url] of Object.entries(menuMap)) {
+          const cleanUrl = sanitizeCdnUrl(r2Url);
+          if (!cleanUrl.startsWith('http')) continue;
+          const existingItem =
+            menuItems.find((m) => m.id === itemId) ||
+            DEFAULT_MENU_ITEMS.find((m) => m.id === itemId);
+          if (existingItem && existingItem.imageUrl !== cleanUrl) {
+            const validItemCurrency =
+              existingItem.priceCurrency &&
+              ['default', 'both', 'lkr', 'usd'].includes(existingItem.priceCurrency)
+                ? existingItem.priceCurrency
+                : 'default';
+            await setDoc(doc(db, 'menuItems', itemId), {
+              name: (existingItem.name || 'Untitled Dish').slice(0, 100),
+              categoryId: (existingItem.categoryId || 'cat_coffee').slice(0, 60),
+              categoryName: (
+                existingItem.categoryName || 'Specialty Coffee & Botanicals'
+              ).slice(0, 60),
+              description: (existingItem.description || 'Crafted fresh in Sigiriya.').slice(0, 400),
+              priceLkr: Math.max(0, Number(existingItem.priceLkr) || 0),
+              priceUsd: Math.max(0, Number(existingItem.priceUsd) || 0),
+              priceCurrency: validItemCurrency,
+              imageUrl: cleanUrl,
+              dietaryTags: (existingItem.dietaryTags || []).slice(0, 10),
+              isFeatured: Boolean(existingItem.isFeatured),
+              isAvailable: Boolean(existingItem.isAvailable),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+
+        // 3. Sync Gallery R2 CDN links to gallery/{id}
+        const validCategories = [
+          'Architecture',
+          'Culinary',
+          'Coffee & Botanicals',
+          'Evening Sanctuary',
+          'Sigiriya Surroundings',
+        ] as const;
+        const validRatios = ['16:9', '4:3', '3:4', '1:1'] as const;
+        for (const gItem of r2Manifest.galleryItems || []) {
+          const cleanUrl = sanitizeCdnUrl(gItem.imageUrl);
+          const existingGal = gallery.find((g) => g.id === gItem.id);
+          if (!existingGal || existingGal.imageUrl !== cleanUrl) {
+            const safeCategory = validCategories.includes(
+              gItem.category as (typeof validCategories)[number]
+            )
+              ? gItem.category
+              : 'Architecture';
+            const safeAspectRatio = validRatios.includes(
+              gItem.aspectRatio as (typeof validRatios)[number]
+            )
+              ? gItem.aspectRatio
+              : '4:3';
+            const existingSnap = await getDoc(doc(db, 'gallery', gItem.id));
+            const createdAtVal = existingSnap.exists()
+              ? existingSnap.data().createdAt
+              : serverTimestamp();
+            await setDoc(doc(db, 'gallery', gItem.id), {
+              title: (gItem.title || 'Sanctuary Moment').slice(0, 100),
+              category: safeCategory,
+              caption: (gItem.caption || '').slice(0, 300),
+              imageUrl: cleanUrl,
+              aspectRatio: safeAspectRatio,
+              isFeatured: Boolean(gItem.isFeatured),
+              sortOrder: Number(gItem.sortOrder) || 1,
+              createdAt: createdAtVal,
+            });
+          }
+        }
+
+        // 4. Sync Event R2 CDN links to events/{id}
+        const eventMap = r2Manifest.eventImages || {};
+        for (const [evtId, r2Url] of Object.entries(eventMap)) {
+          const cleanUrl = sanitizeCdnUrl(r2Url);
+          if (!cleanUrl.startsWith('http')) continue;
+          const existingEvt =
+            events.find((e) => e.id === evtId) || DEFAULT_EVENTS.find((e) => e.id === evtId);
+          if (existingEvt && existingEvt.imageUrl !== cleanUrl) {
+            await setDoc(doc(db, 'events', evtId), {
+              title: (existingEvt.title || 'Sanctuary Gathering').slice(0, 120),
+              subtitle: (existingEvt.subtitle || '').slice(0, 140),
+              date: (existingEvt.date || 'Weekly').slice(0, 40),
+              time: (existingEvt.time || '18:00').slice(0, 40),
+              category: (existingEvt.category || 'Evening Ritual').slice(0, 60),
+              description: (
+                existingEvt.description || 'Curated experience at OneLove Café.'
+              ).slice(0, 600),
+              imageUrl: cleanUrl,
+              priceInfo: (existingEvt.priceInfo || '').slice(0, 80),
+              isFeatured: Boolean(existingEvt.isFeatured),
+              isActive: Boolean(existingEvt.isActive),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+
+        // 5. Sync Section & Collage R2 CDN links to siteContent/{id}
+        const secMap = r2Manifest.sectionImages || {};
+        for (const [sectionKey, r2Url] of Object.entries(secMap)) {
+          const cleanUrl = sanitizeCdnUrl(r2Url);
+          if (!cleanUrl.startsWith('http')) continue;
+          const existingSec =
+            siteContent.find((s) => s.sectionKey === sectionKey) ||
+            DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
+          if (!existingSec || existingSec.imageUrl !== cleanUrl) {
+            const docId = existingSec?.id || `sec_${sectionKey}`;
+            await setDoc(doc(db, 'siteContent', docId), {
+              sectionKey: sectionKey.slice(0, 60),
+              kicker: (existingSec?.kicker || sectionKey).slice(0, 100),
+              heading: (existingSec?.heading || 'OneLove Café Sigiriya').slice(0, 160),
+              subheading: (existingSec?.subheading || '').slice(0, 400),
+              body: (existingSec?.body || '').slice(0, 1200),
+              ctaLabel: (existingSec?.ctaLabel || '').slice(0, 60),
+              ctaLink: (existingSec?.ctaLink || '/').slice(0, 120),
+              imageUrl: cleanUrl,
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Auto R2-to-Firestore CDN link sync note:', err);
+      }
+    };
+
+    syncR2LinksToFirestore();
+  }, [authReady, isAdmin, r2Manifest, settings, menuItems, gallery, events, siteContent]);
+
+  // Resolved State: Combines real-time Firestore R2 CDN links with r2Manifest & editorial fallbacks
   const resolvedSettings = useMemo<CafeSettings>(() => {
-    const r2Hero = Array.isArray(r2Manifest.heroImages)
-      ? r2Manifest.heroImages.filter((u) => typeof u === 'string' && u.trim().length > 0)
+    const fsHero = Array.isArray(settings.heroImages)
+      ? settings.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
       : [];
+    const r2Hero = Array.isArray(r2Manifest.heroImages)
+      ? r2Manifest.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+      : [];
+    const fsHasHttp = fsHero.some((u) => u.startsWith('http'));
+    const r2HasHttp = r2Hero.some((u) => u.startsWith('http'));
+    const activeHero = fsHasHttp
+      ? fsHero
+      : r2HasHttp
+      ? r2Hero
+      : fsHero.length > 0
+      ? fsHero
+      : r2Hero.length > 0
+      ? r2Hero
+      : DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'];
+
     return {
       ...settings,
-      heroImages:
-        r2Hero.length > 0
-          ? r2Hero
-          : DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
+      heroImages: activeHero,
       heroSlideshowSpeedSeconds:
-        typeof r2Manifest.heroSlideshowSpeedSeconds === 'number'
-          ? r2Manifest.heroSlideshowSpeedSeconds
-          : settings.heroSlideshowSpeedSeconds || 5,
-      floorPlanImageUrl: r2Manifest.floorPlanImageUrl || '',
+        settings.heroSlideshowSpeedSeconds ||
+        r2Manifest.heroSlideshowSpeedSeconds ||
+        5,
+      floorPlanImageUrl:
+        sanitizeCdnUrl(settings.floorPlanImageUrl) ||
+        sanitizeCdnUrl(r2Manifest.floorPlanImageUrl) ||
+        '',
     };
   }, [settings, r2Manifest]);
 
   const resolvedMenuItems = useMemo<MenuItem[]>(() => {
     const map = r2Manifest.menuImages || {};
     return menuItems.map((item) => {
-      const r2Url = map[item.id];
+      const fsUrl = sanitizeCdnUrl(item.imageUrl);
+      const r2Url = sanitizeCdnUrl(map[item.id]);
       const defaultUrl =
         DEFAULT_MENU_ITEMS.find((d) => d.id === item.id)?.imageUrl || 'editorial:hopper-bowl';
+      const activeUrl = fsUrl.startsWith('http')
+        ? fsUrl
+        : r2Url.startsWith('http')
+        ? r2Url
+        : fsUrl || r2Url || defaultUrl;
       return {
         ...item,
-        imageUrl: r2Url && r2Url.trim().length > 0 ? r2Url : defaultUrl,
+        imageUrl: activeUrl,
       };
     });
   }, [menuItems, r2Manifest.menuImages]);
 
   const resolvedGallery = useMemo<GalleryItem[]>(() => {
-    return Array.isArray(r2Manifest.galleryItems) ? r2Manifest.galleryItems : [];
-  }, [r2Manifest.galleryItems]);
+    const r2List = Array.isArray(r2Manifest.galleryItems) ? r2Manifest.galleryItems : [];
+    const fsList = Array.isArray(gallery) ? gallery : [];
+    if (fsList.length === 0) return r2List;
+
+    const mergedMap = new Map<string, GalleryItem>();
+    r2List.forEach((g) => mergedMap.set(g.id, { ...g, imageUrl: sanitizeCdnUrl(g.imageUrl) }));
+    fsList.forEach((fsItem) => {
+      const r2Item = mergedMap.get(fsItem.id);
+      const fsUrl = sanitizeCdnUrl(fsItem.imageUrl);
+      const r2Url = sanitizeCdnUrl(r2Item?.imageUrl);
+      const defaultUrl =
+        DEFAULT_GALLERY.find((d) => d.id === fsItem.id)?.imageUrl || 'editorial:hero-sanctuary';
+      const activeUrl = fsUrl.startsWith('http')
+        ? fsUrl
+        : r2Url.startsWith('http')
+        ? r2Url
+        : fsUrl || r2Url || defaultUrl;
+      mergedMap.set(fsItem.id, {
+        ...(r2Item || {}),
+        ...fsItem,
+        imageUrl: activeUrl,
+      });
+    });
+
+    return Array.from(mergedMap.values()).sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [gallery, r2Manifest.galleryItems]);
 
   const resolvedEvents = useMemo<CafeEvent[]>(() => {
     const map = r2Manifest.eventImages || {};
     return events.map((evt) => {
-      const r2Url = map[evt.id];
+      const fsUrl = sanitizeCdnUrl(evt.imageUrl);
+      const r2Url = sanitizeCdnUrl(map[evt.id]);
       const defaultUrl =
         DEFAULT_EVENTS.find((d) => d.id === evt.id)?.imageUrl || 'editorial:evening-hearth';
+      const activeUrl = fsUrl.startsWith('http')
+        ? fsUrl
+        : r2Url.startsWith('http')
+        ? r2Url
+        : fsUrl || r2Url || defaultUrl;
       return {
         ...evt,
-        imageUrl: r2Url && r2Url.trim().length > 0 ? r2Url : defaultUrl,
+        imageUrl: activeUrl,
       };
     });
   }, [events, r2Manifest.eventImages]);
@@ -2541,22 +2935,39 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return Array.from(byKey.values()).map((sec) => {
-      const r2Img = map[sec.sectionKey] || '';
+      const fsImg = sanitizeCdnUrl(sec.imageUrl);
+      const r2Img = sanitizeCdnUrl(map[sec.sectionKey]);
       const defaultSecImg =
         DEFAULT_SITE_CONTENT.find((d) => d.sectionKey === sec.sectionKey)?.imageUrl || '';
+      const activeImg = fsImg.startsWith('http')
+        ? fsImg
+        : r2Img.startsWith('http')
+        ? r2Img
+        : fsImg || r2Img || defaultSecImg;
       return {
         ...sec,
-        imageUrl: r2Img && r2Img.trim().length > 0 ? r2Img : defaultSecImg,
+        imageUrl: activeImg,
       };
     });
   }, [siteContent, r2Manifest.sectionImages]);
 
   const resolvedSeoGlobal = useMemo<GlobalSeoConfig>(() => {
+    const fsOg = sanitizeCdnUrl(seoGlobal.defaultOgImageUrl);
+    const r2Og = sanitizeCdnUrl(r2Manifest.seoImages?.defaultOgImageUrl);
+    const fsLogo = sanitizeCdnUrl(seoGlobal.brandLogoUrl);
+    const r2Logo = sanitizeCdnUrl(r2Manifest.seoImages?.brandLogoUrl);
     return {
       ...seoGlobal,
-      defaultOgImageUrl:
-        r2Manifest.seoImages?.defaultOgImageUrl || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
-      brandLogoUrl: r2Manifest.seoImages?.brandLogoUrl || DEFAULT_GLOBAL_SEO.brandLogoUrl,
+      defaultOgImageUrl: fsOg.startsWith('http')
+        ? fsOg
+        : r2Og.startsWith('http')
+        ? r2Og
+        : fsOg || r2Og || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
+      brandLogoUrl: fsLogo.startsWith('http')
+        ? fsLogo
+        : r2Logo.startsWith('http')
+        ? r2Logo
+        : fsLogo || r2Logo || DEFAULT_GLOBAL_SEO.brandLogoUrl,
     };
   }, [seoGlobal, r2Manifest.seoImages]);
 
@@ -2564,16 +2975,22 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const pageOgMap = r2Manifest.seoImages?.pageOgImages || {};
     const next = { ...seoPages };
     (Object.keys(next) as SeoPageKey[]).forEach((key) => {
+      const fsPageOg = sanitizeCdnUrl(next[key]?.ogImageUrl);
+      const r2PageOg = sanitizeCdnUrl(pageOgMap[key]);
       next[key] = {
         ...next[key],
-        ogImageUrl:
-          pageOgMap[key] ||
-          r2Manifest.seoImages?.defaultOgImageUrl ||
-          DEFAULT_PAGE_SEO[key].ogImageUrl,
+        ogImageUrl: fsPageOg.startsWith('http')
+          ? fsPageOg
+          : r2PageOg.startsWith('http')
+          ? r2PageOg
+          : fsPageOg ||
+            r2PageOg ||
+            resolvedSeoGlobal.defaultOgImageUrl ||
+            DEFAULT_PAGE_SEO[key].ogImageUrl,
       };
     });
     return next;
-  }, [seoPages, r2Manifest.seoImages]);
+  }, [seoPages, r2Manifest.seoImages, resolvedSeoGlobal.defaultOgImageUrl]);
 
   // Sync live SEO configuration (with R2-resolved OG/brand images) to the Express server
   useEffect(() => {
