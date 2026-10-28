@@ -178,9 +178,17 @@ function readLocalCache<T>(key: string, fallback: T): T {
 function writeLocalCache<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(key, JSON.stringify(value));
+    const serialized = JSON.stringify(value);
+    // Always remove old entry first so a QuotaExceededError never leaves stale old images in localStorage
+    window.localStorage.removeItem(key);
+    window.localStorage.setItem(key, serialized);
   } catch {
-    // Ignore storage quota errors when Base64 payloads exceed localStorage limit (IndexedDB handles full cache)
+    // If localStorage is full, ensure the stale key remains cleared so fresh state/IndexedDB is used
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -1728,9 +1736,14 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? data.menuCurrencyDisplay
           : 'both';
 
-      // Offload Base64 4K Hero Slides into dedicated siteContent documents (up to 2 chunks of 850KB = 1.7MB per 4K slide)
-      // so that settings/main never exceeds Firestore's 1MB single-document limit.
+      // Keep Base64 Hero Slides directly inline in `settings/main` (`heroImages`) up to 820KB total
+      // so existing Cloudflare Pages deployments immediately display the new images without needing a redeploy,
+      // and only offload extra slides to `siteContent` if total size exceeds 820KB.
+      const INLINE_SETTINGS_BUDGET = 820_000;
       const CHUNK_LIMIT = 850_000;
+      const floorPlanLen = (data.floorPlanImageUrl || '').slice(0, 850000).length;
+      let runningInlineBytes = floorPlanLen;
+
       const firestoreHeroRefs: string[] = [];
       const optimisticHeroSections: SiteContentSection[] = [];
       const firestoreSlideWrites: Array<{
@@ -1742,49 +1755,56 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       for (let i = 0; i < rawHeroImages.length; i++) {
         const img = rawHeroImages[i];
         if (img.startsWith('data:image')) {
-          const slideKey = `hero_slide_${i}`;
-          const slideDocId = `sec_${slideKey}`;
-          const part1 = img.slice(0, CHUNK_LIMIT);
-          const part2 = img.length > CHUNK_LIMIT ? img.slice(CHUNK_LIMIT, CHUNK_LIMIT * 2) : '';
+          if (runningInlineBytes + img.length <= INLINE_SETTINGS_BUDGET) {
+            // Fits directly inside `settings/main.heroImages` — 100% compatible with all Cloudflare Pages builds
+            runningInlineBytes += img.length;
+            firestoreHeroRefs.push(img);
+          } else {
+            // Overflow slide offloaded to dedicated `siteContent` document
+            const slideKey = `hero_slide_${i}`;
+            const slideDocId = `sec_${slideKey}`;
+            const part1 = img.slice(0, CHUNK_LIMIT);
+            const part2 = img.length > CHUNK_LIMIT ? img.slice(CHUNK_LIMIT, CHUNK_LIMIT * 2) : '';
 
-          const sec1Payload: Omit<SiteContentSection, 'id'> = {
-            sectionKey: slideKey,
-            kicker: `Hero Slide 0${i + 1}`,
-            heading: `Homepage 4K Hero Slide 0${i + 1}`,
-            subheading: '4K UHD Hero Background Image',
-            body: `Dedicated Firestore storage for 4K Hero slide #${i + 1}.`,
-            ctaLabel: 'Explore',
-            ctaLink: '/',
-            imageUrl: part1,
-          };
-          optimisticHeroSections.push({ id: slideDocId, ...sec1Payload });
-
-          const slidePart2Key = `${slideKey}_p2`;
-          const slidePart2DocId = `sec_${slidePart2Key}`;
-
-          if (part2.length > 0) {
-            const sec2Payload: Omit<SiteContentSection, 'id'> = {
-              sectionKey: slidePart2Key,
-              kicker: `Hero Slide 0${i + 1} Part 2`,
-              heading: `Homepage 4K Hero Slide 0${i + 1} (Part 2)`,
-              subheading: '4K UHD Hero Background Continuation',
-              body: `Continuation chunk for 4K Hero slide #${i + 1}.`,
+            const sec1Payload: Omit<SiteContentSection, 'id'> = {
+              sectionKey: slideKey,
+              kicker: `Hero Slide 0${i + 1}`,
+              heading: `Homepage 4K Hero Slide 0${i + 1}`,
+              subheading: '4K UHD Hero Background Image',
+              body: `Dedicated Firestore storage for 4K Hero slide #${i + 1}.`,
               ctaLabel: 'Explore',
               ctaLink: '/',
-              imageUrl: part2,
+              imageUrl: part1,
             };
-            optimisticHeroSections.push({ id: slidePart2DocId, ...sec2Payload });
-            firestoreSlideWrites.push({ docId: slideDocId, payload: sec1Payload });
-            firestoreSlideWrites.push({ docId: slidePart2DocId, payload: sec2Payload });
-          } else {
-            firestoreSlideWrites.push({
-              docId: slideDocId,
-              payload: sec1Payload,
-              cleanupPart2DocId: slidePart2DocId,
-            });
-          }
+            optimisticHeroSections.push({ id: slideDocId, ...sec1Payload });
 
-          firestoreHeroRefs.push(`siteContent:${slideKey}`);
+            const slidePart2Key = `${slideKey}_p2`;
+            const slidePart2DocId = `sec_${slidePart2Key}`;
+
+            if (part2.length > 0) {
+              const sec2Payload: Omit<SiteContentSection, 'id'> = {
+                sectionKey: slidePart2Key,
+                kicker: `Hero Slide 0${i + 1} Part 2`,
+                heading: `Homepage 4K Hero Slide 0${i + 1} (Part 2)`,
+                subheading: '4K UHD Hero Background Continuation',
+                body: `Continuation chunk for 4K Hero slide #${i + 1}.`,
+                ctaLabel: 'Explore',
+                ctaLink: '/',
+                imageUrl: part2,
+              };
+              optimisticHeroSections.push({ id: slidePart2DocId, ...sec2Payload });
+              firestoreSlideWrites.push({ docId: slideDocId, payload: sec1Payload });
+              firestoreSlideWrites.push({ docId: slidePart2DocId, payload: sec2Payload });
+            } else {
+              firestoreSlideWrites.push({
+                docId: slideDocId,
+                payload: sec1Payload,
+                cleanupPart2DocId: slidePart2DocId,
+              });
+            }
+
+            firestoreHeroRefs.push(`siteContent:${slideKey}`);
+          }
         } else {
           firestoreHeroRefs.push(img);
         }
@@ -1877,11 +1897,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const uploadMediaFile = useCallback(async (file: File, folder = 'menu'): Promise<string> => {
     const isHeroSlideshow = folder === 'hero';
     const isLargeBackdrop = folder === 'floorplan' || folder === 'menu_gallery_bg';
-    const maxWidth = isHeroSlideshow ? 3840 : isLargeBackdrop ? 2560 : 1920;
-    const maxHeight = isHeroSlideshow ? 2160 : isLargeBackdrop ? 1440 : 1280;
-    const quality = isHeroSlideshow ? 0.90 : isLargeBackdrop ? 0.88 : 0.86;
-    // Hero slides support up to 1.68MB Base64 (split across two 850KB Firestore documents); single-doc images cap at 820KB
-    const maxBase64Length = isHeroSlideshow ? 1_680_000 : 820_000;
+    const maxWidth = isHeroSlideshow ? 2880 : isLargeBackdrop ? 2560 : 1920;
+    const maxHeight = isHeroSlideshow ? 1620 : isLargeBackdrop ? 1440 : 1280;
+    const quality = isHeroSlideshow ? 0.88 : isLargeBackdrop ? 0.86 : 0.85;
+    // Target ~400KB Base64 per 4K Hero slide so 2 slides fit directly inline in settings/main (and overflow slides use siteContent)
+    const maxBase64Length = isHeroSlideshow ? 400_000 : 780_000;
 
     const base64DataUrl = await fileToCompressedBase64(
       file,
