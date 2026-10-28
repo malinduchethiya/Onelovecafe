@@ -2374,8 +2374,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const data = await res.json();
-      if (!data.ok || !data.url) {
-        throw new Error('Cloudflare R2 upload did not return a valid URL');
+      if (
+        !data.ok ||
+        typeof data.url !== 'string' ||
+        !data.url.startsWith('http') ||
+        data.url.startsWith('data:')
+      ) {
+        throw new Error('Cloudflare R2 upload did not return a valid R2 CDN URL');
       }
 
       await logAdminAction(
@@ -2500,11 +2505,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           googleVerificationTag: (data.googleVerificationTag || '').slice(0, 200),
           defaultOgImageUrl: cleanOgUrl,
           brandLogoUrl: cleanLogoUrl,
-          faviconSourceUrl: '',
-          favicon48Url: '',
-          favicon96Url: '',
-          favicon192Url: '',
-          appleTouchIconUrl: '',
+          faviconSourceUrl: sanitizeCdnUrl(data.faviconSourceUrl),
+          favicon48Url: sanitizeCdnUrl(data.favicon48Url),
+          favicon96Url: sanitizeCdnUrl(data.favicon96Url),
+          favicon192Url: sanitizeCdnUrl(data.favicon192Url),
+          appleTouchIconUrl: sanitizeCdnUrl(data.appleTouchIconUrl),
           allowIndexing: Boolean(data.allowIndexing),
           noindexPreviewDomains: Boolean(data.noindexPreviewDomains),
           businessType: data.businessType === 'Restaurant' ? 'Restaurant' : 'CafeOrCoffeeShop',
@@ -2791,6 +2796,36 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               imageUrl: cleanUrl,
               updatedAt: serverTimestamp(),
             });
+          }
+        }
+
+        // 6. Purge any legacy pre-R2 base64 docs in siteContent (sec_hero_slide_0..3, hero, footer)
+        const legacySlideIds = [
+          'sec_hero_slide_0',
+          'sec_hero_slide_1',
+          'sec_hero_slide_2',
+          'sec_hero_slide_3',
+        ];
+        for (const slideId of legacySlideIds) {
+          await deleteDoc(doc(db, 'siteContent', slideId)).catch(() => {});
+        }
+        for (const legacyDocId of ['hero', 'footer']) {
+          const snap = await getDoc(doc(db, 'siteContent', legacyDocId));
+          if (snap.exists()) {
+            const raw = snap.data();
+            if (typeof raw.imageUrl === 'string' && raw.imageUrl.startsWith('data:')) {
+              await setDoc(doc(db, 'siteContent', legacyDocId), {
+                sectionKey: (raw.sectionKey || legacyDocId).slice(0, 60),
+                kicker: (raw.kicker || '').slice(0, 100),
+                heading: (raw.heading || 'OneLove Café Sigiriya').slice(0, 160),
+                subheading: (raw.subheading || '').slice(0, 400),
+                body: (raw.body || '').slice(0, 1200),
+                ctaLabel: (raw.ctaLabel || '').slice(0, 60),
+                ctaLink: (raw.ctaLink || '/').slice(0, 120),
+                imageUrl: '',
+                updatedAt: serverTimestamp(),
+              }).catch(() => {});
+            }
           }
         }
       } catch (err) {

@@ -172,6 +172,10 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidCdnLink(url) {
+      return url is string && url.size() <= 2000 && !url.matches('^data:.*');
+    }
+
     function isValidMenuItem(data) {
       return data.keys().hasAll(['name', 'categoryId', 'categoryName', 'description', 'priceLkr', 'priceUsd', 'imageUrl', 'dietaryTags', 'isFeatured', 'isAvailable', 'updatedAt']) &&
         data.keys().hasOnly(['name', 'categoryId', 'categoryName', 'description', 'priceLkr', 'priceUsd', 'priceCurrency', 'imageUrl', 'dietaryTags', 'isFeatured', 'isAvailable', 'updatedAt']) &&
@@ -182,7 +186,7 @@ service cloud.firestore {
         data.priceLkr is number && data.priceLkr >= 0 &&
         data.priceUsd is number && data.priceUsd >= 0 &&
         (!('priceCurrency' in data) || (data.priceCurrency in ['default', 'both', 'lkr', 'usd'])) &&
-        data.imageUrl is string && data.imageUrl.size() <= 900000 &&
+        isValidCdnLink(data.imageUrl) &&
         data.dietaryTags is list && data.dietaryTags.size() <= 10 &&
         (data.dietaryTags.size() == 0 || data.dietaryTags[0] is string) &&
         data.isFeatured is bool &&
@@ -196,7 +200,7 @@ service cloud.firestore {
         data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
         data.category in ['Architecture', 'Culinary', 'Coffee & Botanicals', 'Evening Sanctuary', 'Sigiriya Surroundings'] &&
         data.caption is string && data.caption.size() <= 300 &&
-        data.imageUrl is string && data.imageUrl.size() <= 900000 &&
+        isValidCdnLink(data.imageUrl) &&
         data.aspectRatio in ['16:9', '4:3', '3:4', '1:1'] &&
         data.isFeatured is bool &&
         data.sortOrder is int &&
@@ -212,7 +216,7 @@ service cloud.firestore {
         data.time is string && data.time.size() >= 1 && data.time.size() <= 40 &&
         data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
         data.description is string && data.description.size() >= 1 && data.description.size() <= 600 &&
-        data.imageUrl is string && data.imageUrl.size() <= 900000 &&
+        isValidCdnLink(data.imageUrl) &&
         data.priceInfo is string && data.priceInfo.size() <= 80 &&
         data.isFeatured is bool &&
         data.isActive is bool &&
@@ -229,7 +233,7 @@ service cloud.firestore {
         data.body is string && data.body.size() <= 1200 &&
         data.ctaLabel is string && data.ctaLabel.size() <= 60 &&
         data.ctaLink is string && data.ctaLink.size() <= 120 &&
-        data.imageUrl is string && data.imageUrl.size() <= 900000 &&
+        isValidCdnLink(data.imageUrl) &&
         data.updatedAt is timestamp;
     }
 
@@ -259,9 +263,9 @@ service cloud.firestore {
         data.maxPartySize is int && data.maxPartySize >= 2 && data.maxPartySize <= 30 &&
         data.sameDayCutoffHour is int && data.sameDayCutoffHour >= 0 && data.sameDayCutoffHour <= 23 &&
         data.bookingPolicy is string && data.bookingPolicy.size() <= 600 &&
-        (!('heroImages' in data) || (data.heroImages is list && data.heroImages.size() <= 12 && (data.heroImages.size() == 0 || data.heroImages[0] is string))) &&
+        (!('heroImages' in data) || (data.heroImages is list && data.heroImages.size() <= 12 && (data.heroImages.size() == 0 || isValidCdnLink(data.heroImages[0])))) &&
         (!('heroSlideshowSpeedSeconds' in data) || (data.heroSlideshowSpeedSeconds is number && data.heroSlideshowSpeedSeconds >= 1 && data.heroSlideshowSpeedSeconds <= 60)) &&
-        (!('floorPlanImageUrl' in data) || (data.floorPlanImageUrl is string && data.floorPlanImageUrl.size() <= 900000)) &&
+        (!('floorPlanImageUrl' in data) || isValidCdnLink(data.floorPlanImageUrl)) &&
         (!('googleMapsEmbedUrl' in data) || (data.googleMapsEmbedUrl is string && data.googleMapsEmbedUrl.size() <= 2000)) &&
         (!('mapTitle' in data) || (data.mapTitle is string && data.mapTitle.size() <= 120)) &&
         (!('mapSubtitle' in data) || (data.mapSubtitle is string && data.mapSubtitle.size() <= 250)) &&

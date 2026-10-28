@@ -174,56 +174,80 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
     reader.readAsDataURL(file);
   };
 
-  const renderSquareFaviconAtSize = (targetSize: number): string => {
-    if (!cropSourceImg) return '';
-    const offscreen = document.createElement('canvas');
-    offscreen.width = targetSize;
-    offscreen.height = targetSize;
-    const ctx = offscreen.getContext('2d');
-    if (!ctx) return '';
+  const renderSquareFaviconFileAtSize = (targetSize: number, filename: string): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      if (!cropSourceImg) {
+        reject(new Error('No source image'));
+        return;
+      }
+      const offscreen = document.createElement('canvas');
+      offscreen.width = targetSize;
+      offscreen.height = targetSize;
+      const ctx = offscreen.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Canvas context unavailable'));
+        return;
+      }
 
-    if (cropBg !== 'transparent') {
-      ctx.fillStyle = cropBg;
-      ctx.fillRect(0, 0, targetSize, targetSize);
-    }
+      if (cropBg !== 'transparent') {
+        ctx.fillStyle = cropBg;
+        ctx.fillRect(0, 0, targetSize, targetSize);
+      }
 
-    const minDim = Math.min(cropSourceImg.width, cropSourceImg.height);
-    const baseScale = targetSize / minDim;
-    const scale = baseScale * cropZoom;
+      const minDim = Math.min(cropSourceImg.width, cropSourceImg.height);
+      const baseScale = targetSize / minDim;
+      const scale = baseScale * cropZoom;
 
-    const drawW = cropSourceImg.width * scale;
-    const drawH = cropSourceImg.height * scale;
-    const dx = (targetSize - drawW) / 2 + (cropPanX / 100) * (drawW / 2);
-    const dy = (targetSize - drawH) / 2 + (cropPanY / 100) * (drawH / 2);
+      const drawW = cropSourceImg.width * scale;
+      const drawH = cropSourceImg.height * scale;
+      const dx = (targetSize - drawW) / 2 + (cropPanX / 100) * (drawW / 2);
+      const dy = (targetSize - drawH) / 2 + (cropPanY / 100) * (drawH / 2);
 
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(cropSourceImg, dx, dy, drawW, drawH);
-    return offscreen.toDataURL('image/png');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(cropSourceImg, dx, dy, drawW, drawH);
+
+      offscreen.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Failed to encode favicon PNG'));
+          return;
+        }
+        resolve(new File([blob], filename, { type: 'image/png' }));
+      }, 'image/png');
+    });
   };
 
   const handleApplyAndSaveFavicons = async () => {
     if (!cropSourceImg) return;
     setGeneratingFavicons(true);
     try {
-      const png48 = renderSquareFaviconAtSize(48);
-      const png96 = renderSquareFaviconAtSize(96);
-      const png180 = renderSquareFaviconAtSize(180);
-      const png192 = renderSquareFaviconAtSize(192);
+      const [file48, file96, file180, file192] = await Promise.all([
+        renderSquareFaviconFileAtSize(48, 'favicon-48x48.png'),
+        renderSquareFaviconFileAtSize(96, 'favicon-96x96.png'),
+        renderSquareFaviconFileAtSize(180, 'apple-touch-icon.png'),
+        renderSquareFaviconFileAtSize(192, 'favicon-192x192.png'),
+      ]);
+
+      const [r2Url48, r2Url96, r2Url180, r2Url192] = await Promise.all([
+        uploadMediaFile(file48, 'seo', globalForm.favicon48Url),
+        uploadMediaFile(file96, 'seo', globalForm.favicon96Url),
+        uploadMediaFile(file180, 'seo', globalForm.appleTouchIconUrl),
+        uploadMediaFile(file192, 'seo', globalForm.favicon192Url),
+      ]);
 
       const updated: GlobalSeoConfig = {
         ...globalForm,
-        faviconSourceUrl: png192,
-        favicon48Url: png48,
-        favicon96Url: png96,
-        favicon192Url: png192,
-        appleTouchIconUrl: png180,
+        faviconSourceUrl: r2Url192,
+        favicon48Url: r2Url48,
+        favicon96Url: r2Url96,
+        favicon192Url: r2Url192,
+        appleTouchIconUrl: r2Url180,
       };
       setGlobalForm(updated);
       await saveSeoGlobal(updated);
       setCropSourceImg(null);
       onShowToast(
-        'Generated 48×48, 96×96, 192×192 & 180×180 Apple Touch icons and published to /favicon.ico & Firestore.'
+        'Uploaded 48×48, 96×96, 192×192 & 180×180 icons to Cloudflare R2 and synced CDN links to Firestore.'
       );
     } finally {
       setGeneratingFavicons(false);

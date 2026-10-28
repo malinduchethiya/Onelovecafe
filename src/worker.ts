@@ -714,14 +714,16 @@ export default {
         );
 
         if (!hasR2Binding && !hasS3Creds) {
-          return jsonResponse({
-            ok: true,
-            success: true,
-            url: dataUrl,
-            storage: 'inline',
-            configured: false,
-            message: 'R2 storage credentials not configured; stored as inline payload.',
-          });
+          return jsonResponse(
+            {
+              ok: false,
+              success: false,
+              configured: false,
+              error:
+                'Cloudflare R2 storage is required for image uploads. Images are never stored in Firestore.',
+            },
+            503
+          );
         }
 
         const matches = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);

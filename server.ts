@@ -858,14 +858,12 @@ async function startServer() {
 
       const r2 = getR2Client();
       if (!r2) {
-        // Fallback: If R2 is not configured in environment, return the compressed dataUrl
-        res.status(200).json({
-          ok: true,
-          success: true,
-          url: dataUrl,
-          storage: 'inline',
+        res.status(503).json({
+          ok: false,
+          success: false,
           configured: false,
-          message: 'Cloudflare R2 credentials not configured; stored as inline payload.',
+          error:
+            'Cloudflare R2 credentials are required for image uploads. Images are never stored in Firestore.',
         });
         return;
       }
