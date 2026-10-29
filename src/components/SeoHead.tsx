@@ -203,6 +203,7 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
         : '/apple-touch-icon.png';
 
     updateIconLink('favicon-ico', 'icon', 'any', '/favicon.ico');
+    updateIconLink('favicon-shortcut', 'shortcut icon', '', '/favicon.ico');
     updateIconLink('favicon-48', 'icon', '48x48', fav48);
     updateIconLink('favicon-96', 'icon', '96x96', fav96);
     updateIconLink('favicon-192', 'icon', '192x192', fav192);

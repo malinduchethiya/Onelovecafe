@@ -1,7 +1,6 @@
 import { GlobalSeoConfig, PageSeoConfig, SeoKeywordCategory, SeoPageKey } from '../types/seo';
 
-export const DEFAULT_BRAND_FAVICON_PATH =
-  '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02_10c5e84e.jpg';
+export const DEFAULT_BRAND_FAVICON_PATH = '/favicon-192x192.png';
 
 export const DEFAULT_BRAND_LOGO_PATH =
   '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png';
@@ -22,7 +21,7 @@ export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   defaultTitle: 'OneLove Café Sigiriya | Café & Restaurant in Sri Lanka',
   titleTemplate: '%s | OneLove Café Sigiriya',
   defaultDescription:
-    'Visit OneLove Café in Sigiriya, Central Province, Sri Lanka. Explore our specialty coffee & brunch menu, get directions near Lion Rock, and reserve a table.',
+    'Visit One Love Café Sigiriya, Sri Lanka. Enjoy delicious food, fresh coffee, refreshing drinks and a relaxing atmosphere near Sigiriya Rock.',
   canonicalDomain: 'https://onelovecafesigiriya.com',
   language: 'en',
   googleVerificationTag: '',
@@ -71,7 +70,7 @@ export const DEFAULT_PAGE_SEO: Record<SeoPageKey, PageSeoConfig> = {
     pageLabel: 'Home (/)',
     title: 'OneLove Café Sigiriya | Café & Restaurant in Sri Lanka',
     metaDescription:
-      'Visit OneLove Café in Sigiriya, Central Province, Sri Lanka. Explore our specialty coffee & brunch menu, get directions near Lion Rock, and reserve a table.',
+      'Visit One Love Café Sigiriya, Sri Lanka. Enjoy delicious food, fresh coffee, refreshing drinks and a relaxing atmosphere near Sigiriya Rock.',
     canonicalPath: '/',
     primaryKeyword: 'OneLove Cafe Sigiriya',
     supportingKeywords: [
@@ -86,7 +85,7 @@ export const DEFAULT_PAGE_SEO: Record<SeoPageKey, PageSeoConfig> = {
     ],
     ogTitle: 'OneLove Café Sigiriya | Café & Restaurant in Sri Lanka',
     ogDescription:
-      'Visit OneLove Café in Sigiriya, Central Province, Sri Lanka. Explore our specialty coffee & brunch menu, get directions near Lion Rock, and reserve a table.',
+      'Visit One Love Café Sigiriya, Sri Lanka. Enjoy delicious food, fresh coffee, refreshing drinks and a relaxing atmosphere near Sigiriya Rock.',
     ogImageUrl: DEFAULT_BRAND_FAVICON_PATH,
     indexable: true,
   },

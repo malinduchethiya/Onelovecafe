@@ -332,7 +332,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           : cached.defaultTitle,
       defaultDescription:
         !cached.defaultDescription ||
-        cached.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls')
+        cached.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
+        cached.defaultDescription.includes('Explore our specialty coffee & brunch menu')
           ? DEFAULT_GLOBAL_SEO.defaultDescription
           : cached.defaultDescription,
       telephone:
@@ -368,12 +369,14 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             : homePage.ogTitle,
         metaDescription:
           !homePage.metaDescription ||
-          homePage.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls')
+          homePage.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
+          homePage.metaDescription.includes('Explore our specialty coffee & brunch menu')
             ? DEFAULT_PAGE_SEO.home.metaDescription
             : homePage.metaDescription,
         ogDescription:
           !homePage.ogDescription ||
-          homePage.ogDescription.includes('Tropical garden café, specialty Ceylon coffee roastery')
+          homePage.ogDescription.includes('Tropical garden café, specialty Ceylon coffee roastery') ||
+          homePage.ogDescription.includes('Explore our specialty coffee & brunch menu')
             ? DEFAULT_PAGE_SEO.home.ogDescription
             : homePage.ogDescription,
       },
@@ -914,7 +917,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   : data.defaultTitle,
               defaultDescription:
                 !data.defaultDescription ||
-                data.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls')
+                data.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
+                data.defaultDescription.includes('Explore our specialty coffee & brunch menu')
                   ? DEFAULT_GLOBAL_SEO.defaultDescription
                   : data.defaultDescription,
               telephone:
@@ -974,7 +978,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     !mergedPage.metaDescription ||
                     mergedPage.metaDescription.includes(
                       'Enjoy specialty coffee, fresh smoothie bowls'
-                    )
+                    ) ||
+                    mergedPage.metaDescription.includes('Explore our specialty coffee & brunch menu')
                   ) {
                     mergedPage.metaDescription = DEFAULT_PAGE_SEO.home.metaDescription;
                   }
@@ -982,7 +987,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     !mergedPage.ogDescription ||
                     mergedPage.ogDescription.includes(
                       'Tropical garden café, specialty Ceylon coffee roastery'
-                    )
+                    ) ||
+                    mergedPage.ogDescription.includes('Explore our specialty coffee & brunch menu')
                   ) {
                     mergedPage.ogDescription = DEFAULT_PAGE_SEO.home.ogDescription;
                   }

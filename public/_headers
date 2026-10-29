@@ -6,5 +6,20 @@
   Content-Type: text/plain; charset=utf-8
   Cache-Control: public, max-age=3600
 
+/favicon.ico
+  Content-Type: image/x-icon
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+
+/favicon-*.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+
+/apple-touch-icon.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+
 /admin*
   X-Robots-Tag: noindex, nofollow

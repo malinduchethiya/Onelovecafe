@@ -46,7 +46,8 @@ function normalizeRuntimeSeoState(rawState: Partial<SeoRuntimeState>): SeoRuntim
   }
   if (
     !globalConfig.defaultDescription ||
-    globalConfig.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls')
+    globalConfig.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
+    globalConfig.defaultDescription.includes('Explore our specialty coffee & brunch menu')
   ) {
     globalConfig.defaultDescription = DEFAULT_GLOBAL_SEO.defaultDescription;
   }
@@ -75,7 +76,8 @@ function normalizeRuntimeSeoState(rawState: Partial<SeoRuntimeState>): SeoRuntim
   if (
     pagesConfig.home &&
     (!pagesConfig.home.metaDescription ||
-      pagesConfig.home.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls'))
+      pagesConfig.home.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
+      pagesConfig.home.metaDescription.includes('Explore our specialty coffee & brunch menu'))
   ) {
     pagesConfig.home = {
       ...pagesConfig.home,
@@ -294,10 +296,12 @@ function injectServerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
 }
 
 // Serve dynamic or default binary favicon for Google Search crawler
-function sendFaviconResponse(res: express.Response, customDataUrl: string | undefined) {
-  res.setHeader('Cache-Control', 'public, max-age=3600');
-  if (customDataUrl && customDataUrl.startsWith('data:image/')) {
-    const matches = customDataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+function sendFaviconResponse(res: express.Response, preferredFile: string, customUrl?: string) {
+  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  if (customUrl && customUrl.startsWith('data:image/')) {
+    const matches = customUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
     if (matches && matches[2]) {
       const mimeType = matches[1];
       const buffer = Buffer.from(matches[2], 'base64');
@@ -305,6 +309,14 @@ function sendFaviconResponse(res: express.Response, customDataUrl: string | unde
       res.status(200).send(buffer);
       return;
     }
+  }
+
+  const targetFile = path.join(__dirname, 'public', preferredFile);
+  if (fs.existsSync(targetFile)) {
+    const isIco = preferredFile.endsWith('.ico');
+    res.setHeader('Content-Type', isIco ? 'image/x-icon' : 'image/png');
+    res.sendFile(targetFile);
+    return;
   }
 
   const defaultAssetFile = path.join(
@@ -598,27 +610,27 @@ async function startServer() {
 
   // Public Google Search Favicon Endpoints (Multiples of 48px, 1:1 Square)
   app.get('/favicon.ico', (_req, res) => {
-    sendFaviconResponse(res, seoState.global.favicon48Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon.ico', seoState.global.favicon48Url || seoState.global.faviconSourceUrl);
   });
 
   app.get('/favicon-48x48.png', (_req, res) => {
-    sendFaviconResponse(res, seoState.global.favicon48Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon-48x48.png', seoState.global.favicon48Url || seoState.global.faviconSourceUrl);
   });
 
   app.get('/favicon-96x96.png', (_req, res) => {
-    sendFaviconResponse(res, seoState.global.favicon96Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon-96x96.png', seoState.global.favicon96Url || seoState.global.faviconSourceUrl);
   });
 
   app.get('/favicon-192x192.png', (_req, res) => {
-    sendFaviconResponse(res, seoState.global.favicon192Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon-192x192.png', seoState.global.favicon192Url || seoState.global.faviconSourceUrl);
   });
 
   app.get('/apple-touch-icon.png', (_req, res) => {
-    sendFaviconResponse(res, seoState.global.appleTouchIconUrl || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'apple-touch-icon.png', seoState.global.appleTouchIconUrl || seoState.global.faviconSourceUrl);
   });
 
   app.get('/api/seo/favicon', (_req, res) => {
-    sendFaviconResponse(res, seoState.global.favicon96Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon-96x96.png', seoState.global.favicon96Url || seoState.global.faviconSourceUrl);
   });
 
   // Live SEO State Sync Endpoint (Receives updates from Firestore listener / Admin SEO Panel)
