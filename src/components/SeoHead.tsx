@@ -172,42 +172,36 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
     }
     canonicalEl.href = canonicalUrl;
 
-    // Update Favicon Links dynamically if custom cropped icons exist in seoGlobal
-    const updateIconLink = (id: string, rel: string, sizes: string, href: string) => {
+    // Always point Favicon & Apple Touch Icon links directly to static project files
+    const updateIconLink = (
+      id: string,
+      rel: string,
+      sizes: string,
+      href: string,
+      type?: string
+    ) => {
       let link = document.getElementById(id) as HTMLLinkElement | null;
       if (!link) {
         link = document.createElement('link');
         link.id = id;
         link.rel = rel;
         if (sizes) link.sizes = sizes;
+        if (type) link.type = type;
         document.head.appendChild(link);
       }
       link.href = href;
+      if (type) link.type = type;
     };
 
-    const fav48 =
-      seoGlobal.favicon48Url && seoGlobal.favicon48Url.startsWith('data:')
-        ? seoGlobal.favicon48Url
-        : '/favicon-48x48.png';
-    const fav96 =
-      seoGlobal.favicon96Url && seoGlobal.favicon96Url.startsWith('data:')
-        ? seoGlobal.favicon96Url
-        : '/favicon-96x96.png';
-    const fav192 =
-      seoGlobal.favicon192Url && seoGlobal.favicon192Url.startsWith('data:')
-        ? seoGlobal.favicon192Url
-        : '/favicon-192x192.png';
-    const appleIcon =
-      seoGlobal.appleTouchIconUrl && seoGlobal.appleTouchIconUrl.startsWith('data:')
-        ? seoGlobal.appleTouchIconUrl
-        : '/apple-touch-icon.png';
-
-    updateIconLink('favicon-ico', 'icon', 'any', '/favicon.ico');
-    updateIconLink('favicon-shortcut', 'shortcut icon', '', '/favicon.ico');
-    updateIconLink('favicon-48', 'icon', '48x48', fav48);
-    updateIconLink('favicon-96', 'icon', '96x96', fav96);
-    updateIconLink('favicon-192', 'icon', '192x192', fav192);
-    updateIconLink('apple-touch-icon', 'apple-touch-icon', '180x180', appleIcon);
+    updateIconLink('favicon-ico', 'icon', '16x16 32x32 48x48', '/favicon.ico', 'image/x-icon');
+    updateIconLink('favicon-shortcut', 'shortcut icon', '', '/favicon.ico', 'image/x-icon');
+    updateIconLink('favicon-48', 'icon', '48x48', '/favicon-48x48.png', 'image/png');
+    updateIconLink('favicon-96', 'icon', '96x96', '/favicon-96x96.png', 'image/png');
+    updateIconLink('favicon-192', 'icon', '192x192', '/favicon-192x192.png', 'image/png');
+    updateIconLink('favicon-512', 'icon', '512x512', '/favicon-512x512.png', 'image/png');
+    updateIconLink('favicon-32', 'icon', '32x32', '/favicon-32x32.png', 'image/png');
+    updateIconLink('favicon-16', 'icon', '16x16', '/favicon-16x16.png', 'image/png');
+    updateIconLink('apple-touch-icon', 'apple-touch-icon', '180x180', '/apple-touch-icon.png');
 
     // Update JSON-LD Structured Data script
     if (!isAdminRoute) {

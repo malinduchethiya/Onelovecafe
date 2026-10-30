@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
+import { PROJECT_FAVICON_ASSETS_BASE64 } from './src/data/projectFaviconAssets';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,23 +16,26 @@ export default defineConfig(() => {
       {
         name: 'cloudflare-spa-and-assets-guard',
         buildStart() {
-          const defaultIconSource = path.resolve(
-            __dirname,
-            'public/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02_10c5e84e.jpg'
-          );
-          if (fs.existsSync(defaultIconSource)) {
-            const faviconTargets = [
-              'public/favicon.ico',
-              'public/favicon-48x48.png',
-              'public/favicon-96x96.png',
-              'public/favicon-192x192.png',
-              'public/apple-touch-icon.png',
-            ];
-            for (const relTarget of faviconTargets) {
-              const absTarget = path.resolve(__dirname, relTarget);
-              if (!fs.existsSync(absTarget)) {
-                fs.copyFileSync(defaultIconSource, absTarget);
+          for (const [relTarget, base64Data] of Object.entries(PROJECT_FAVICON_ASSETS_BASE64)) {
+            const absTarget = path.resolve(__dirname, relTarget);
+            const expectedBuf = Buffer.from(base64Data, 'base64');
+            let needsWrite = !fs.existsSync(absTarget);
+            if (!needsWrite) {
+              try {
+                const currentBuf = fs.readFileSync(absTarget);
+                // Overwrite if file was corrupted (e.g. old 602-byte JPEG header 0xFF 0xD8) or size mismatch
+                if (
+                  currentBuf.length < 200 ||
+                  (currentBuf[0] === 0xff && currentBuf[1] === 0xd8)
+                ) {
+                  needsWrite = true;
+                }
+              } catch {
+                needsWrite = true;
               }
+            }
+            if (needsWrite) {
+              fs.writeFileSync(absTarget, expectedBuf);
             }
           }
         },

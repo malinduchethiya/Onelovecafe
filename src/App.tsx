@@ -698,10 +698,7 @@ const OneLoveRouter: React.FC = () => {
           className="flex items-center font-editorial text-lg sm:text-2xl font-bold tracking-wider text-white drop-shadow-sm whitespace-nowrap shrink-0"
         >
           <img
-            src={
-              seoGlobal?.brandLogoUrl ||
-              '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png'
-            }
+            src="/logo-transparent.png"
             alt="OneLove Café Sigiriya"
             width="48"
             height="48"
@@ -2117,10 +2114,7 @@ const OneLoveRouter: React.FC = () => {
               <p className="leading-relaxed">{settings.tagline}</p>
               <div className="pt-2">
                 <img
-                  src={
-                    seoGlobal?.brandLogoUrl ||
-                    '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png'
-                  }
+                  src="/logo-transparent.png"
                   alt="OneLove Café Sigiriya Sri Lanka Emblem"
                   loading="lazy"
                   decoding="async"

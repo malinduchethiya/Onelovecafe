@@ -1,12 +1,22 @@
 {
   "name": "OneLove Café Sigiriya",
   "short_name": "OneLove Café",
-  "description": "Specialty Ceylon coffee, smoothie bowls, tropical breakfast, brunch, and wood-fired dining in Sigiriya, Sri Lanka.",
+  "description": "Visit One Love Café Sigiriya, Sri Lanka. Enjoy delicious food, fresh coffee, refreshing drinks and a relaxing atmosphere near Sigiriya Rock.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F8F4EE",
   "theme_color": "#F8F4EE",
   "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
     {
       "src": "/favicon-48x48.png",
       "sizes": "48x48",
@@ -20,6 +30,12 @@
     {
       "src": "/favicon-192x192.png",
       "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon-512x512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }

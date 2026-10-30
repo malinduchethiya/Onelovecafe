@@ -1,8 +1,34 @@
-User-agent: *
+User-agent: Googlebot-Image
+Allow: /favicon.ico
+Allow: /favicon-*.png
+Allow: /apple-touch-icon.png
+Allow: /logo.png
+Allow: /logo-transparent.png
+Allow: /
+
+User-agent: Googlebot
+Allow: /favicon.ico
+Allow: /favicon-*.png
+Allow: /apple-touch-icon.png
+Allow: /logo.png
+Allow: /site.webmanifest
 Allow: /
 Disallow: /admin
 Disallow: /admin/
 Disallow: /admin/seo
 Disallow: /reserve/voucher/
 Disallow: /api/
+
+User-agent: *
+Allow: /
+Allow: /favicon.ico
+Allow: /favicon-*.png
+Allow: /apple-touch-icon.png
+Allow: /logo.png
+Disallow: /admin
+Disallow: /admin/
+Disallow: /admin/seo
+Disallow: /reserve/voucher/
+Disallow: /api/
+
 Sitemap: https://onelovecafesigiriya.com/sitemap.xml

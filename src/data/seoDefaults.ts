@@ -2,8 +2,7 @@ import { GlobalSeoConfig, PageSeoConfig, SeoKeywordCategory, SeoPageKey } from '
 
 export const DEFAULT_BRAND_FAVICON_PATH = '/favicon-192x192.png';
 
-export const DEFAULT_BRAND_LOGO_PATH =
-  '/assets/aistudio/WhatsApp_Image_2026-10-26_at_07.57.02-removebg-preview_7b99b00d.png';
+export const DEFAULT_BRAND_LOGO_PATH = '/logo.png';
 
 export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   id: 'main',
@@ -495,6 +494,8 @@ export function buildStructuredDataGraph(
       logo: {
         '@type': 'ImageObject',
         url: logoUrl,
+        width: 512,
+        height: 512,
       },
       contactPoint: {
         '@type': 'ContactPoint',
@@ -515,7 +516,7 @@ export function buildStructuredDataGraph(
       description: globalSeo.defaultDescription,
       url: `${domain}/`,
       logo: logoUrl,
-      image: [logoUrl],
+      image: [logoUrl, `${domain}/favicon-512x512.png`],
       telephone: globalSeo.telephone || '+94 66 228 6420',
       email: globalSeo.email || 'concierge@onelovecafe.lk',
       priceRange: globalSeo.priceRange || '$$',

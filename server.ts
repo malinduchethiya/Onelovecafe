@@ -295,21 +295,11 @@ function injectServerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   return html;
 }
 
-// Serve dynamic or default binary favicon for Google Search crawler
-function sendFaviconResponse(res: express.Response, preferredFile: string, customUrl?: string) {
+// Serve project binary favicon and logo files directly for Google Search & Googlebot-Image crawler
+function sendFaviconResponse(res: express.Response, preferredFile: string, _customUrl?: string) {
   res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
   res.setHeader('Access-Control-Allow-Origin', '*');
-
-  if (customUrl && customUrl.startsWith('data:image/')) {
-    const matches = customUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-    if (matches && matches[2]) {
-      const mimeType = matches[1];
-      const buffer = Buffer.from(matches[2], 'base64');
-      res.setHeader('Content-Type', mimeType);
-      res.status(200).send(buffer);
-      return;
-    }
-  }
+  res.setHeader('X-Robots-Tag', 'all');
 
   const targetFile = path.join(__dirname, 'public', preferredFile);
   if (fs.existsSync(targetFile)) {
@@ -608,29 +598,49 @@ async function startServer() {
     next();
   });
 
-  // Public Google Search Favicon Endpoints (Multiples of 48px, 1:1 Square)
+  // Public Google Search Favicon & Logo Endpoints (Direct Project Files, 1:1 Square, Multiples of 48px)
   app.get('/favicon.ico', (_req, res) => {
-    sendFaviconResponse(res, 'favicon.ico', seoState.global.favicon48Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon.ico');
+  });
+
+  app.get('/favicon-16x16.png', (_req, res) => {
+    sendFaviconResponse(res, 'favicon-16x16.png');
+  });
+
+  app.get('/favicon-32x32.png', (_req, res) => {
+    sendFaviconResponse(res, 'favicon-32x32.png');
   });
 
   app.get('/favicon-48x48.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-48x48.png', seoState.global.favicon48Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon-48x48.png');
   });
 
   app.get('/favicon-96x96.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-96x96.png', seoState.global.favicon96Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon-96x96.png');
   });
 
   app.get('/favicon-192x192.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-192x192.png', seoState.global.favicon192Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon-192x192.png');
+  });
+
+  app.get('/favicon-512x512.png', (_req, res) => {
+    sendFaviconResponse(res, 'favicon-512x512.png');
   });
 
   app.get('/apple-touch-icon.png', (_req, res) => {
-    sendFaviconResponse(res, 'apple-touch-icon.png', seoState.global.appleTouchIconUrl || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'apple-touch-icon.png');
+  });
+
+  app.get('/logo.png', (_req, res) => {
+    sendFaviconResponse(res, 'logo.png');
+  });
+
+  app.get('/logo-transparent.png', (_req, res) => {
+    sendFaviconResponse(res, 'logo-transparent.png');
   });
 
   app.get('/api/seo/favicon', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-96x96.png', seoState.global.favicon96Url || seoState.global.faviconSourceUrl);
+    sendFaviconResponse(res, 'favicon-96x96.png');
   });
 
   // Live SEO State Sync Endpoint (Receives updates from Firestore listener / Admin SEO Panel)
