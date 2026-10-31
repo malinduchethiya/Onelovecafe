@@ -213,19 +213,21 @@ function sanitizeCdnUrl(url: string | undefined | null): string {
 
 const INITIAL_SETTINGS: CafeSettings = {
   ...DEFAULT_SETTINGS,
-  heroImages: DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
+  heroImages: DEFAULT_SETTINGS.heroImages || [],
 };
 
 const INITIAL_R2_MANIFEST: R2MediaManifest = {
   version: 1,
   updatedAt: new Date(0).toISOString(),
-  heroImages: DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
+  heroImages: DEFAULT_SETTINGS.heroImages || [],
   heroSlideshowSpeedSeconds: DEFAULT_SETTINGS.heroSlideshowSpeedSeconds || 5,
   floorPlanImageUrl: '',
-  menuImages: {},
+  menuImages: Object.fromEntries(DEFAULT_MENU_ITEMS.map((m) => [m.id, m.imageUrl])),
   galleryItems: DEFAULT_GALLERY.map((g) => ({ ...g })),
-  eventImages: {},
-  sectionImages: {},
+  eventImages: Object.fromEntries(DEFAULT_EVENTS.map((e) => [e.id, e.imageUrl])),
+  sectionImages: Object.fromEntries(
+    DEFAULT_SITE_CONTENT.filter((s) => s.imageUrl).map((s) => [s.sectionKey, s.imageUrl])
+  ),
   seoImages: {},
 };
 
@@ -256,15 +258,16 @@ function mergeSiteContentWithDefaults(cached: SiteContentSection[]): SiteContent
   );
   DEFAULT_SITE_CONTENT.forEach((def) => {
     const existing = map.get(def.sectionKey);
+    const defImg = sanitizeCdnUrl(def.imageUrl);
     if (!existing) {
       map.set(def.sectionKey, {
         ...def,
-        imageUrl: sanitizeCdnUrl(def.imageUrl),
+        imageUrl: defImg,
       });
-    } else if (!existing.imageUrl && def.imageUrl) {
+    } else if ((!existing.imageUrl || existing.imageUrl.startsWith('editorial:')) && defImg) {
       map.set(def.sectionKey, {
         ...existing,
-        imageUrl: sanitizeCdnUrl(def.imageUrl),
+        imageUrl: defImg,
       });
     }
   });
@@ -286,16 +289,32 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authReady, setAuthReady] = useState(false);
   const [sessionId] = useState<string>(getOrCreateSessionId);
 
-  const [r2Manifest, setR2Manifest] = useState<R2MediaManifest>(() =>
-    readLocalCache('onelove_cache_r2Manifest', INITIAL_R2_MANIFEST)
-  );
+  const [r2Manifest, setR2Manifest] = useState<R2MediaManifest>(() => {
+    const cached = readLocalCache('onelove_cache_r2Manifest', INITIAL_R2_MANIFEST);
+    const hasHttpHero =
+      Array.isArray(cached.heroImages) && cached.heroImages.some((u) => u.startsWith('http'));
+    return {
+      ...INITIAL_R2_MANIFEST,
+      ...cached,
+      heroImages: hasHttpHero ? cached.heroImages : INITIAL_R2_MANIFEST.heroImages,
+      menuImages: { ...INITIAL_R2_MANIFEST.menuImages, ...(cached.menuImages || {}) },
+      eventImages: { ...INITIAL_R2_MANIFEST.eventImages, ...(cached.eventImages || {}) },
+      sectionImages: { ...INITIAL_R2_MANIFEST.sectionImages, ...(cached.sectionImages || {}) },
+    };
+  });
 
   const [settings, setSettings] = useState<CafeSettings>(() => {
     const cached = readLocalCache('onelove_cache_settings', INITIAL_SETTINGS);
-    if (!cached.googleMapsEmbedUrl || cached.googleMapsEmbedUrl.includes('7.9541,80.7547')) {
-      return { ...cached, googleMapsEmbedUrl: DEFAULT_SETTINGS.googleMapsEmbedUrl };
-    }
-    return cached;
+    const hasHttpHero =
+      Array.isArray(cached.heroImages) && cached.heroImages.some((u) => u.startsWith('http'));
+    return {
+      ...cached,
+      heroImages: hasHttpHero ? cached.heroImages : DEFAULT_SETTINGS.heroImages,
+      googleMapsEmbedUrl:
+        !cached.googleMapsEmbedUrl || cached.googleMapsEmbedUrl.includes('7.9541,80.7547')
+          ? DEFAULT_SETTINGS.googleMapsEmbedUrl
+          : cached.googleMapsEmbedUrl,
+    };
   });
   const [zones, setZones] = useState<SeatingZone[]>(() =>
     readLocalCache('onelove_cache_zones', DEFAULT_ZONES)
@@ -309,13 +328,31 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     readLocalCache('onelove_cache_categories', DEFAULT_MENU_CATEGORIES)
   );
   const [menuItems, setMenuItems] = useState<MenuItem[]>(() =>
-    readLocalCache('onelove_cache_menuItems', INITIAL_MENU_ITEMS)
+    readLocalCache('onelove_cache_menuItems', INITIAL_MENU_ITEMS).map((item) => {
+      const def = INITIAL_MENU_ITEMS.find((d) => d.id === item.id);
+      if ((!item.imageUrl || item.imageUrl.startsWith('editorial:')) && def?.imageUrl) {
+        return { ...item, imageUrl: def.imageUrl };
+      }
+      return item;
+    })
   );
   const [gallery, setGallery] = useState<GalleryItem[]>(() =>
-    readLocalCache('onelove_cache_gallery', INITIAL_GALLERY)
+    readLocalCache('onelove_cache_gallery', INITIAL_GALLERY).map((g) => {
+      const def = INITIAL_GALLERY.find((d) => d.id === g.id);
+      if ((!g.imageUrl || g.imageUrl.startsWith('editorial:')) && def?.imageUrl) {
+        return { ...g, imageUrl: def.imageUrl };
+      }
+      return g;
+    })
   );
   const [events, setEvents] = useState<CafeEvent[]>(() =>
-    readLocalCache('onelove_cache_events', INITIAL_EVENTS)
+    readLocalCache('onelove_cache_events', INITIAL_EVENTS).map((e) => {
+      const def = INITIAL_EVENTS.find((d) => d.id === e.id);
+      if ((!e.imageUrl || e.imageUrl.startsWith('editorial:')) && def?.imageUrl) {
+        return { ...e, imageUrl: def.imageUrl };
+      }
+      return e;
+    })
   );
   const [siteContent, setSiteContent] = useState<SiteContentSection[]>(() =>
     mergeSiteContentWithDefaults(readLocalCache('onelove_cache_siteContent', INITIAL_SITE_CONTENT))
@@ -2888,6 +2925,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? fsUrl
         : r2Url.startsWith('http')
         ? r2Url
+        : defaultUrl.startsWith('http')
+        ? defaultUrl
         : fsUrl || r2Url || defaultUrl;
       return {
         ...item,
@@ -2913,6 +2952,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? fsUrl
         : r2Url.startsWith('http')
         ? r2Url
+        : defaultUrl.startsWith('http')
+        ? defaultUrl
         : fsUrl || r2Url || defaultUrl;
       mergedMap.set(fsItem.id, {
         ...(r2Item || {}),
@@ -2935,6 +2976,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? fsUrl
         : r2Url.startsWith('http')
         ? r2Url
+        : defaultUrl.startsWith('http')
+        ? defaultUrl
         : fsUrl || r2Url || defaultUrl;
       return {
         ...evt,
@@ -2985,6 +3028,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? fsImg
         : r2Img.startsWith('http')
         ? r2Img
+        : defaultSecImg.startsWith('http')
+        ? defaultSecImg
         : fsImg || r2Img || defaultSecImg;
       return {
         ...sec,

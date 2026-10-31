@@ -801,7 +801,7 @@ const OneLoveRouter: React.FC = () => {
               <section
                 onMouseMove={handleHeroMouseMove}
                 onMouseLeave={handleHeroMouseLeave}
-                className="relative -mt-[72px] pt-[72px] min-h-screen flex items-center justify-center bg-[#0C0F0A] text-white overflow-hidden"
+                className="relative -mt-[72px] pt-[72px] min-h-screen flex items-center justify-center bg-[#3A2E25] text-white overflow-hidden"
               >
                 {/* Background Slideshow Layer with Elevated Luminance & Contrast */}
                 <div
@@ -821,14 +821,14 @@ const OneLoveRouter: React.FC = () => {
                       <EditorialVisual
                         src={slideSrc}
                         alt={`OneLove Café Sigiriya, Sri Lanka hero slide ${idx + 1}`}
-                        priority={idx === 0}
+                        priority={true}
                         className="h-full w-full object-cover contrast-[1.18] saturate-[1.24] brightness-[1.06]"
                       />
                     </div>
                   ))}
-                  {/* Sunlit Chiaroscuro Lighting Overlay: Golden-Emerald Midtone Glow + Deep Obsidian Vignette */}
-                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_55%_42%,rgba(255,248,214,0.14)_0%,rgba(12,15,10,0.22)_52%,rgba(8,10,7,0.72)_100%)]" />
-                  <div className="absolute inset-0 bg-gradient-to-b from-[#0A0C08]/55 via-black/15 to-[#090B07]/78" />
+                  {/* Sunlit Chiaroscuro Lighting Overlay: Golden-Emerald Midtone Glow + Warm Vignette */}
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_55%_42%,rgba(255,248,214,0.14)_0%,rgba(24,18,14,0.18)_52%,rgba(18,14,10,0.58)_100%)]" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-[#1E1712]/40 via-transparent to-[#18120E]/65" />
                 </div>
 
                 {/* Slider Navigation Arrows (Left & Right) matching reference screenshot */}
@@ -1108,7 +1108,7 @@ const OneLoveRouter: React.FC = () => {
             <section
               ref={homeMenuGalleryRef}
               style={{
-                backgroundColor: menuGalleryBgUrl ? '#1E1611' : dynamicCoffeeBg,
+                backgroundColor: menuGalleryBgUrl ? '#3A2B20' : dynamicCoffeeBg,
                 borderColor:
                   menuGalleryBgUrl || coffeeProgress > 0.35
                     ? `rgba(231, 222, 211, ${Math.max(0.18, 1 - coffeeProgress * 0.75)})`
@@ -1120,7 +1120,7 @@ const OneLoveRouter: React.FC = () => {
               {menuGalleryBgUrl && (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+                  className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-[#3A2B20]"
                 >
                   <div
                     className="w-full h-full"
@@ -1132,11 +1132,12 @@ const OneLoveRouter: React.FC = () => {
                     <EditorialVisual
                       src={menuGalleryBgUrl}
                       alt=""
+                      priority={true}
                       className="w-full h-full object-cover"
                     />
                   </div>
                   {/* Subtle Atmospheric Scrim for Crisp Typography & Card Contrast */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-[#140E0A]/50 via-[#140E0A]/35 to-[#140E0A]/55" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-[#241A13]/45 via-[#241A13]/30 to-[#241A13]/50" />
                 </div>
               )}
 
@@ -1194,7 +1195,7 @@ const OneLoveRouter: React.FC = () => {
                       className="bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between group shadow-[0_10px_28px_rgba(17,11,7,0.12)] hover:-translate-y-1.5 hover:shadow-[0_20px_42px_rgba(17,11,7,0.22)] transition-all duration-300"
                     >
                       <div>
-                        <div className="aspect-[4/3] overflow-hidden border-b border-[#E7DED3]">
+                        <div className="aspect-[4/3] overflow-hidden bg-[#EAE2D6] border-b border-[#E7DED3]">
                           <EditorialVisual
                             src={dish.imageUrl}
                             alt={dish.name}
@@ -1310,7 +1311,7 @@ const OneLoveRouter: React.FC = () => {
                       className="group bg-white border border-[#E7DED3] flex flex-col justify-between overflow-hidden shadow-xs hover:-translate-y-1.5 hover:shadow-[0_18px_38px_rgba(23,21,19,0.12)] transition-all duration-300"
                     >
                       <div>
-                        <div className="aspect-[16/9] overflow-hidden border-b border-[#E7DED3]">
+                        <div className="aspect-[16/9] overflow-hidden bg-[#EAE2D6] border-b border-[#E7DED3]">
                           <EditorialVisual
                             src={evt.imageUrl}
                             alt={evt.title}
@@ -1481,7 +1482,7 @@ const OneLoveRouter: React.FC = () => {
                   className="group bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between shadow-[0_10px_28px_rgba(17,11,7,0.12)] hover:-translate-y-1.5 transition-all duration-300"
                 >
                   <div>
-                    <div className="aspect-[4/3] overflow-hidden border-b border-[#E7DED3]">
+                    <div className="aspect-[4/3] overflow-hidden bg-[#EAE2D6] border-b border-[#E7DED3]">
                       <EditorialVisual
                         src={item.imageUrl}
                         alt={item.name}
@@ -1669,7 +1670,7 @@ const OneLoveRouter: React.FC = () => {
                   onClick={() => setLightboxItem(item)}
                   className="bg-white border border-[#E7DED3] p-3 cursor-pointer group space-y-3 hover:-translate-y-1.5 hover:shadow-[0_18px_36px_rgba(23,21,19,0.1)] transition-all duration-300"
                 >
-                  <div className="aspect-[4/3] overflow-hidden">
+                  <div className="aspect-[4/3] overflow-hidden bg-[#EAE2D6]">
                     <EditorialVisual
                       src={item.imageUrl}
                       alt={item.title}

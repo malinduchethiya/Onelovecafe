@@ -22,7 +22,7 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({
   if (!src || src === 'loading' || imgError) {
     return (
       <div
-        className={`w-full h-full bg-[#E7DED3]/35 ${className}`}
+        className={`w-full h-full bg-[#EAE2D6] ${className}`}
         role="img"
         aria-label={alt}
       />
@@ -33,17 +33,16 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({
   const key = src.replace('editorial:', '');
 
   if (!isEditorialKey) {
-    const isDataUrl = src.startsWith('data:');
     return (
       <img
         src={src}
         alt={alt}
         referrerPolicy="no-referrer"
-        loading={priority || isDataUrl ? 'eager' : 'lazy'}
+        loading="eager"
         fetchPriority={priority ? 'high' : undefined}
-        decoding={isDataUrl ? 'sync' : 'async'}
+        decoding="sync"
         onError={() => setImgError(true)}
-        className={`w-full h-full object-cover contrast-[1.15] saturate-[1.2] brightness-[1.05] ${className}`}
+        className={`w-full h-full object-cover bg-[#EAE2D6] contrast-[1.15] saturate-[1.2] brightness-[1.05] ${className}`}
       />
     );
   }
@@ -53,7 +52,7 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({
     case 'hero-sanctuary':
     case 'sigiriya-mist':
       return (
-        <div className={`relative w-full h-full overflow-hidden bg-[#12160F] ${className}`} role="img" aria-label={alt}>
+        <div className={`relative w-full h-full overflow-hidden bg-[#EAE2D6] ${className}`} role="img" aria-label={alt}>
           <svg viewBox="0 0 1200 675" className="w-full h-full object-cover contrast-[1.12] saturate-[1.15]" preserveAspectRatio="xMidYMid slice">
             <defs>
               <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -134,7 +133,7 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({
 
     case 'evening-hearth':
       return (
-        <div className={`relative w-full h-full overflow-hidden bg-[#171513] ${className}`} role="img" aria-label={alt}>
+        <div className={`relative w-full h-full overflow-hidden bg-[#EAE2D6] ${className}`} role="img" aria-label={alt}>
           <svg viewBox="0 0 1200 675" className="w-full h-full object-cover" preserveAspectRatio="xMidYMid slice">
             <rect width="1200" height="675" fill="#171513" />
             <radialGradient id="hearthGlow" cx="50%" cy="62%" r="45%">
@@ -313,7 +312,7 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({
 
     case 'collage-jungle-sunbeams':
       return (
-        <div className={`relative w-full h-full overflow-hidden bg-[#162417] ${className}`} role="img" aria-label={alt}>
+        <div className={`relative w-full h-full overflow-hidden bg-[#EAE2D6] ${className}`} role="img" aria-label={alt}>
           <svg viewBox="0 0 480 640" className="w-full h-full object-cover" preserveAspectRatio="xMidYMid slice">
             <defs>
               <radialGradient id="canopySun" cx="46%" cy="28%" r="55%">
@@ -383,7 +382,7 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({
 
     case 'collage-teak-pavilion':
       return (
-        <div className={`relative w-full h-full overflow-hidden bg-[#2C2219] ${className}`} role="img" aria-label={alt}>
+        <div className={`relative w-full h-full overflow-hidden bg-[#EAE2D6] ${className}`} role="img" aria-label={alt}>
           <svg viewBox="0 0 450 600" className="w-full h-full object-cover" preserveAspectRatio="xMidYMid slice">
             {/* Forest Canopy Background */}
             <rect width="450" height="600" fill="#3B492E" />
@@ -413,7 +412,7 @@ export const EditorialVisual: React.FC<EditorialVisualProps> = ({
 
     case 'collage-laterite-stone':
       return (
-        <div className={`relative w-full h-full overflow-hidden bg-[#4A1E10] ${className}`} role="img" aria-label={alt}>
+        <div className={`relative w-full h-full overflow-hidden bg-[#EAE2D6] ${className}`} role="img" aria-label={alt}>
           <svg viewBox="0 0 420 540" className="w-full h-full object-cover" preserveAspectRatio="xMidYMid slice">
             {/* Deep Mortar Bed */}
             <rect width="420" height="540" fill="#2A120A" />

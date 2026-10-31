@@ -342,10 +342,11 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                 data-collage-frame
                 className="group/frame absolute left-[5%] top-[6%] w-[34%] aspect-[3/4] z-10 bg-[#FAF6EE] p-2 sm:p-3 shadow-[0_16px_36px_rgba(23,21,19,0.18)] border border-[#E2D9C8] -rotate-[6deg] transition-all duration-500 ease-out group-hover/collage:-translate-x-2 group-hover/collage:-translate-y-1.5 group-hover/collage:-rotate-[8deg] hover:!z-40 hover:!scale-105 hover:!rotate-[-1deg] hover:!-translate-y-2.5 hover:shadow-[0_26px_55px_rgba(23,21,19,0.28)]"
               >
-                <div className="relative w-full h-full overflow-hidden bg-[#162417]">
+                <div className="relative w-full h-full overflow-hidden bg-[#EAE2D6]">
                   <EditorialVisual
-                    src={getSlotImage(2, 'editorial:collage-jungle-sunbeams')}
+                    src={getSlotImage(2, 'https://cdn.onelovecafesigiriya.com/collage/1793182271989-wp2352856-coffee-shop-wallpapers.webp')}
                     alt="Monsoon Sunbeams Through Canopy"
+                    priority={true}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/frame:scale-108"
                   />
                 </div>
@@ -356,10 +357,11 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                 data-collage-frame
                 className="group/frame absolute right-[4%] top-[2%] w-[46%] aspect-[16/10] z-10 bg-[#F3EFE4] p-2.5 sm:p-3.5 shadow-[0_14px_32px_rgba(23,21,19,0.14)] border border-[#DFD6C3] rotate-[4deg] transition-all duration-500 ease-out group-hover/collage:translate-x-2 group-hover/collage:-translate-y-1.5 group-hover/collage:rotate-[6deg] hover:!z-40 hover:!scale-105 hover:!rotate-[1deg] hover:!-translate-y-2 hover:shadow-[0_26px_55px_rgba(23,21,19,0.25)]"
               >
-                <div className="relative w-full h-full overflow-hidden bg-[#EFECE4]">
+                <div className="relative w-full h-full overflow-hidden bg-[#EAE2D6]">
                   <EditorialVisual
-                    src={getSlotImage(3, 'editorial:collage-archival-rock')}
+                    src={getSlotImage(3, 'https://cdn.onelovecafesigiriya.com/collage/1793182275393-wp11934956-cozy-cafe-4k-wallpapers.webp')}
                     alt="Archival Sigiriya Rock Fortress Lithograph"
+                    priority={true}
                     className="w-full h-full object-cover grayscale contrast-110 transition-all duration-700 group-hover/frame:grayscale-0 group-hover/frame:scale-105"
                   />
                 </div>
@@ -370,10 +372,11 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                 data-collage-frame
                 className="group/frame absolute left-[18%] top-[21%] w-[63%] aspect-[4/3] z-20 bg-[#FAF6EE] p-2.5 sm:p-4 shadow-[0_22px_50px_rgba(23,21,19,0.22)] border border-[#E2D9C8] -rotate-[0.5deg] transition-all duration-500 ease-out group-hover/collage:-translate-y-1 hover:!z-40 hover:!scale-[1.035] hover:!rotate-0 hover:!-translate-y-2 hover:shadow-[0_30px_65px_rgba(23,21,19,0.3)]"
               >
-                <div className="relative w-full h-full overflow-hidden bg-[#C7D7E2]">
+                <div className="relative w-full h-full overflow-hidden bg-[#EAE2D6]">
                   <EditorialVisual
-                    src={getSlotImage(1, 'editorial:collage-elephants-sigiriya')}
+                    src={getSlotImage(1, 'https://cdn.onelovecafesigiriya.com/collage/1793182269079-wp11877848-cozy-rain-wallpapers.webp')}
                     alt="Wild Sri Lankan Elephants with Sigiriya Lion Rock in Background"
+                    priority={true}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/frame:scale-105"
                   />
                 </div>
@@ -392,10 +395,11 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                   <div className="w-2 h-2 rounded-full bg-[#EAD6B3]/60" />
                 </div>
 
-                <div className="relative w-full h-full overflow-hidden bg-[#2C2219]">
+                <div className="relative w-full h-full overflow-hidden bg-[#EAE2D6]">
                   <EditorialVisual
-                    src={getSlotImage(4, 'editorial:collage-teak-pavilion')}
+                    src={getSlotImage(4, 'https://cdn.onelovecafesigiriya.com/collage/1793182279743-42957eec-2f66-492e-b754-eaeb2e0420af--1-.webp')}
                     alt="Reclaimed Railway Teak Pavilion"
+                    priority={true}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/frame:scale-108"
                   />
                 </div>
@@ -412,10 +416,11 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                   className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 z-30 w-12 sm:w-14 h-5 sm:h-6 bg-[#EFE6D2]/85 border border-[#DDD1B8] shadow-xs -rotate-[4deg] backdrop-blur-[1px]"
                 />
 
-                <div className="relative w-full h-full overflow-hidden bg-[#4A1E10]">
+                <div className="relative w-full h-full overflow-hidden bg-[#EAE2D6]">
                   <EditorialVisual
-                    src={getSlotImage(5, 'editorial:collage-laterite-stone')}
+                    src={getSlotImage(5, 'https://cdn.onelovecafesigiriya.com/collage/1793182284924-cozy-coffee-shop-interior--1-.webp')}
                     alt="Porous Red Laterite Earth Stone"
+                    priority={true}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover/frame:scale-108"
                   />
                 </div>
