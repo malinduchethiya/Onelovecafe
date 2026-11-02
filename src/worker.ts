@@ -477,6 +477,17 @@ export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     const pathname = url.pathname;
+    const hostLower = url.hostname.toLowerCase();
+
+    // Canonical 301 redirect from www to non-www root domain so Google Search & Google-Favicon never split indexing
+    if (
+      hostLower === 'www.onelovecafesigiriya.com' ||
+      hostLower === 'www.onelovecafe.lk'
+    ) {
+      const targetDomain = hostLower.replace(/^www\./, '');
+      return Response.redirect(`https://${targetDomain}${pathname}${url.search}`, 301);
+    }
+
     const clientIp =
       request.headers.get('cf-connecting-ip') ||
       request.headers.get('x-forwarded-for') ||
@@ -943,10 +954,10 @@ export default {
       return jsonResponse({ ok: true, success: true });
     }
 
-    // Serve project Favicon & Logo files directly with explicit Googlebot-Image headers
+    // Serve project Favicon & Logo files directly with explicit Google-Favicon & Googlebot-Image headers (GET & HEAD)
     const directProjectAssetKey = `public${pathname === '/api/seo/favicon' ? '/favicon-96x96.png' : pathname}`;
     if (
-      request.method === 'GET' &&
+      (request.method === 'GET' || request.method === 'HEAD') &&
       directProjectAssetKey in PROJECT_FAVICON_ASSETS_BASE64
     ) {
       const b64 = PROJECT_FAVICON_ASSETS_BASE64[directProjectAssetKey];
@@ -956,10 +967,11 @@ export default {
         bytes[i] = binaryStr.charCodeAt(i);
       }
       const isIco = directProjectAssetKey.endsWith('.ico');
-      return new Response(bytes.buffer, {
+      return new Response(request.method === 'HEAD' ? null : bytes.buffer, {
         status: 200,
         headers: {
           'Content-Type': isIco ? 'image/x-icon' : 'image/png',
+          'Content-Length': String(bytes.byteLength),
           'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
           'Access-Control-Allow-Origin': '*',
           'X-Robots-Tag': 'all',

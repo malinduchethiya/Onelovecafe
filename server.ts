@@ -619,6 +619,10 @@ async function startServer() {
     sendFaviconResponse(res, 'favicon-96x96.png');
   });
 
+  app.get('/favicon-144x144.png', (_req, res) => {
+    sendFaviconResponse(res, 'favicon-144x144.png');
+  });
+
   app.get('/favicon-192x192.png', (_req, res) => {
     sendFaviconResponse(res, 'favicon-192x192.png');
   });
