@@ -101,6 +101,14 @@ function buildRouteStaticHtml(baseHtml: string, pageKey: SeoPageKey | 'admin'): 
       pageSeo.ogDescription || pageSeo.metaDescription
     )}" />`
   );
+  html = html.replace(
+    /<h1\s+id="static-seo-h1">[\s\S]*?<\/h1>/i,
+    `<h1 id="static-seo-h1">${escapeHtmlAttr(pageSeo.title)}</h1>`
+  );
+  html = html.replace(
+    /<p\s+id="static-seo-desc">[\s\S]*?<\/p>/i,
+    `<p id="static-seo-desc">${escapeHtmlAttr(pageSeo.metaDescription)}</p>`
+  );
 
   const jsonLdObj = buildStructuredDataGraph(DEFAULT_GLOBAL_SEO, pageSeo);
   html = html.replace(
@@ -123,6 +131,18 @@ export default defineConfig(() => {
       {
         name: 'cloudflare-spa-and-assets-guard',
         buildStart() {
+          // Remove any legacy <48px favicons from public/
+          for (const legacyFile of ['public/favicon-16x16.png', 'public/favicon-32x32.png']) {
+            const absLegacy = path.resolve(__dirname, legacyFile);
+            if (fs.existsSync(absLegacy)) {
+              try {
+                fs.unlinkSync(absLegacy);
+              } catch {
+                // Ignore
+              }
+            }
+          }
+
           // Ensure every local favicon & logo binary in public/ matches PROJECT_FAVICON_ASSETS_BASE64 byte-for-byte
           for (const [relTarget, base64Data] of Object.entries(PROJECT_FAVICON_ASSETS_BASE64)) {
             const absTarget = path.resolve(__dirname, relTarget);
@@ -147,6 +167,18 @@ export default defineConfig(() => {
         closeBundle() {
           const distDir = path.resolve(__dirname, 'dist');
           if (!fs.existsSync(distDir)) return;
+
+          // Remove any <48px favicons if copied to dist/
+          for (const legacyDist of ['favicon-16x16.png', 'favicon-32x32.png']) {
+            const p = path.resolve(distDir, legacyDist);
+            if (fs.existsSync(p)) {
+              try {
+                fs.unlinkSync(p);
+              } catch {
+                // Ignore
+              }
+            }
+          }
 
           // 1. Write exact binary favicon & logo files directly into dist/ for Cloudflare Pages
           for (const [relTarget, base64Data] of Object.entries(PROJECT_FAVICON_ASSETS_BASE64)) {

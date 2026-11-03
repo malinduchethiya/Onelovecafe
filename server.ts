@@ -145,10 +145,14 @@ function injectServerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
 
   const activePage: PageSeoConfig =
     pageKey !== 'notfound' && pages[pageKey] ? pages[pageKey] : pages.home || DEFAULT_PAGE_SEO.home;
+  const lockedCanonicalPath =
+    pageKey !== 'notfound' && DEFAULT_PAGE_SEO[pageKey]
+      ? DEFAULT_PAGE_SEO[pageKey].canonicalPath
+      : '/';
 
   let finalTitle = activePage.title || g.defaultTitle;
   let finalDesc = activePage.metaDescription || g.defaultDescription;
-  let canonicalPath = activePage.canonicalPath || activePage.routePath || '/';
+  let canonicalPath = lockedCanonicalPath;
 
   if (isAdmin) {
     finalTitle = `SEO & Hospitality Admin Console | ${g.siteName || 'OneLove Café'}`;
@@ -281,8 +285,20 @@ function injectServerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
     }
   }
 
+  html = html.replace(
+    /<h1\s+id="static-seo-h1">[\s\S]*?<\/h1>/i,
+    `<h1 id="static-seo-h1">${escapeHtmlAttr(finalTitle)}</h1>`
+  );
+  html = html.replace(
+    /<p\s+id="static-seo-desc">[\s\S]*?<\/p>/i,
+    `<p id="static-seo-desc">${escapeHtmlAttr(finalDesc)}</p>`
+  );
+
   // Replace JSON-LD script
-  const jsonLdObj = buildStructuredDataGraph(g, activePage);
+  const jsonLdObj = buildStructuredDataGraph(g, {
+    ...activePage,
+    canonicalPath: lockedCanonicalPath,
+  });
   html = html.replace(
     /<script\s+id="onelove-jsonld"\s+type="application\/ld\+json">[\s\S]*?<\/script>/i,
     `<script id="onelove-jsonld" type="application/ld+json">\n${JSON.stringify(
@@ -1046,8 +1062,41 @@ async function startServer() {
     ).replace(/\/$/, '');
 
     const lines = [
+      'User-agent: Google-Favicon',
+      'Allow: /favicon.ico',
+      'Allow: /favicon-48x48.png',
+      'Allow: /favicon-96x96.png',
+      'Allow: /favicon-144x144.png',
+      'Allow: /favicon-192x192.png',
+      'Allow: /favicon-512x512.png',
+      'Allow: /apple-touch-icon.png',
+      'Allow: /logo.png',
+      'Allow: /site.webmanifest',
+      'Allow: /',
+      '',
+      'User-agent: Googlebot-Image',
+      'Allow: /favicon.ico',
+      'Allow: /favicon-48x48.png',
+      'Allow: /favicon-96x96.png',
+      'Allow: /favicon-144x144.png',
+      'Allow: /favicon-192x192.png',
+      'Allow: /favicon-512x512.png',
+      'Allow: /apple-touch-icon.png',
+      'Allow: /logo.png',
+      'Allow: /logo-transparent.png',
+      'Allow: /',
+      '',
       'User-agent: *',
       seoState.global.allowIndexing ? 'Allow: /' : 'Disallow: /',
+      'Allow: /favicon.ico',
+      'Allow: /favicon-48x48.png',
+      'Allow: /favicon-96x96.png',
+      'Allow: /favicon-144x144.png',
+      'Allow: /favicon-192x192.png',
+      'Allow: /favicon-512x512.png',
+      'Allow: /apple-touch-icon.png',
+      'Allow: /logo.png',
+      'Allow: /site.webmanifest',
       'Disallow: /admin',
       'Disallow: /admin/',
       'Disallow: /admin/seo',

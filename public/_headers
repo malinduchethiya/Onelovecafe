@@ -11,6 +11,7 @@
   Content-Type: application/manifest+json; charset=utf-8
   Cache-Control: public, max-age=86400
   Access-Control-Allow-Origin: *
+  X-Robots-Tag: all
 
 /favicon.ico
   Content-Type: image/x-icon
@@ -48,18 +49,6 @@
   Access-Control-Allow-Origin: *
   X-Robots-Tag: all
 
-/favicon-16x16.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/favicon-32x32.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
 /apple-touch-icon.png
   Content-Type: image/png
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
@@ -77,6 +66,27 @@
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
   Access-Control-Allow-Origin: *
   X-Robots-Tag: all
+
+/
+  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
+
+/menu
+  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
+
+/reserve
+  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
+
+/story
+  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
+
+/gallery
+  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
+
+/contact
+  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
+
+/events
+  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
 
 /admin
   X-Robots-Tag: noindex, nofollow

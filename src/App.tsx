@@ -761,35 +761,37 @@ const OneLoveRouter: React.FC = () => {
         </div>
       </header>
 
-      {/* Mobile Navigation Drawer */}
-      {mobileMenuOpen && (
-        <nav
-          aria-label="Mobile Navigation"
-          className="sticky top-[72px] z-30 md:hidden bg-[#FCF9F4] border-b border-[#DFD5C6] px-4 sm:px-6 py-4 space-y-1 shadow-lg max-h-[calc(100vh-72px)] overflow-y-auto"
-        >
-          {[
-            { label: 'Home', path: '/' },
-            { label: 'Our Menu', path: '/menu' },
-            { label: 'Our Story', path: '/story' },
-            { label: 'Gallery', path: '/gallery' },
-            { label: 'Experiences & Events', path: '/events' },
-            { label: 'Contact & Location', path: '/contact' },
-            { label: 'Reserve a Table', path: '/reserve' },
-          ].map((item) => (
-            <a
-              key={item.path}
-              href={item.path}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate(item.path);
-              }}
-              className="w-full min-h-[44px] flex items-center text-left py-2.5 text-sm font-medium border-b border-[#E7DED3]/60 text-[#110F0D]"
-            >
-              {item.label}
-            </a>
-          ))}
-        </nav>
-      )}
+      {/* Mobile Navigation Drawer — Always mounted in DOM (sr-only when closed) so Googlebot smartphone crawls all primary links */}
+      <nav
+        aria-label="Mobile Navigation"
+        className={
+          mobileMenuOpen
+            ? 'sticky top-[72px] z-30 md:hidden bg-[#FCF9F4] border-b border-[#DFD5C6] px-4 sm:px-6 py-4 space-y-1 shadow-lg max-h-[calc(100vh-72px)] overflow-y-auto'
+            : 'sr-only'
+        }
+      >
+        {[
+          { label: 'Home', path: '/' },
+          { label: 'Our Menu', path: '/menu' },
+          { label: 'Our Story', path: '/story' },
+          { label: 'Gallery', path: '/gallery' },
+          { label: 'Experiences & Events', path: '/events' },
+          { label: 'Contact & Location', path: '/contact' },
+          { label: 'Reserve a Table', path: '/reserve' },
+        ].map((item) => (
+          <a
+            key={item.path}
+            href={item.path}
+            onClick={(e) => {
+              e.preventDefault();
+              navigate(item.path);
+            }}
+            className="w-full min-h-[44px] flex items-center text-left py-2.5 text-sm font-medium border-b border-[#E7DED3]/60 text-[#110F0D]"
+          >
+            {item.label}
+          </a>
+        ))}
+      </nav>
 
       {/* MAIN PAGE CONTENT */}
       <main className="flex-1">
@@ -1332,13 +1334,16 @@ const OneLoveRouter: React.FC = () => {
                       </div>
                       <div className="px-5 sm:px-7 py-4 border-t border-[#E7DED3] flex items-center justify-between text-xs font-mono-tabular text-[#171513]/70">
                         <span>{evt.time}</span>
-                        <button
-                          type="button"
-                          onClick={handleReserveCtaClick}
+                        <a
+                          href="/reserve"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleReserveCtaClick();
+                          }}
                           className="text-[#C65B2B] hover:underline uppercase tracking-wider font-semibold cursor-pointer"
                         >
                           Book Table →
-                        </button>
+                        </a>
                       </div>
                     </div>
                   ))}
@@ -1420,13 +1425,16 @@ const OneLoveRouter: React.FC = () => {
                   orchard produce, wild east-coast seafood, and single-estate Ceylon highland coffee.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate('/reserve')}
+              <a
+                href="/reserve"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/reserve');
+                }}
                 className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center"
               >
                 Reserve a Table
-              </button>
+              </a>
             </div>
 
             {/* Interactive Filter Tabs & Search Bar */}
@@ -1581,13 +1589,16 @@ const OneLoveRouter: React.FC = () => {
                   ))}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => navigate('/reserve')}
-                  className="w-full min-h-[44px] py-3 bg-[#C65B2B] text-white text-xs uppercase tracking-widest font-medium hover:bg-[#B04E22] transition-colors"
+                <a
+                  href="/reserve"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigate('/reserve');
+                  }}
+                  className="w-full min-h-[44px] py-3 bg-[#C65B2B] text-white text-xs uppercase tracking-widest font-medium hover:bg-[#B04E22] transition-colors inline-flex items-center justify-center text-center"
                 >
                   Choose Your Zone on the Floor Plan
-                </button>
+                </a>
               </div>
             </div>
 
@@ -1769,13 +1780,16 @@ const OneLoveRouter: React.FC = () => {
                         <span className="text-xs font-mono-tabular font-semibold text-[#171513]">
                           {evt.priceInfo}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => navigate('/reserve')}
+                        <a
+                          href="/reserve"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate('/reserve');
+                          }}
                           className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors shadow-sm cursor-pointer inline-flex items-center"
                         >
                           Reserve Table for Event
-                        </button>
+                        </a>
                       </div>
                     </div>
                   </div>
@@ -2052,20 +2066,26 @@ const OneLoveRouter: React.FC = () => {
               reserve your table directly.
             </p>
             <div className="flex flex-wrap justify-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => navigate('/')}
-                className="min-h-[44px] px-6 py-2.5 bg-[#171513] text-[#F8F4EE] text-xs uppercase tracking-widest"
+              <a
+                href="/"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/');
+                }}
+                className="min-h-[44px] px-6 py-2.5 bg-[#171513] text-[#F8F4EE] text-xs uppercase tracking-widest inline-flex items-center justify-center"
               >
                 Return Home
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/reserve')}
-                className="min-h-[44px] px-6 py-2.5 bg-[#C65B2B] text-white text-xs uppercase tracking-widest"
+              </a>
+              <a
+                href="/reserve"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate('/reserve');
+                }}
+                className="min-h-[44px] px-6 py-2.5 bg-[#C65B2B] text-white text-xs uppercase tracking-widest inline-flex items-center justify-center"
               >
                 Reserve a Table
-              </button>
+              </a>
             </div>
           </div>
         )}
@@ -2131,6 +2151,18 @@ const OneLoveRouter: React.FC = () => {
                 Navigation
               </div>
               <ul className="space-y-2">
+                <li>
+                  <a
+                    href="/"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate('/');
+                    }}
+                    className="hover:text-white"
+                  >
+                    OneLove Café Home
+                  </a>
+                </li>
                 <li>
                   <a
                     href="/menu"

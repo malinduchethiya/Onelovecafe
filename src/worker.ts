@@ -338,10 +338,14 @@ function injectWorkerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
 
   const activePage: PageSeoConfig =
     pageKey !== 'notfound' && pages[pageKey] ? pages[pageKey] : pages.home || DEFAULT_PAGE_SEO.home;
+  const lockedCanonicalPath =
+    pageKey !== 'notfound' && DEFAULT_PAGE_SEO[pageKey]
+      ? DEFAULT_PAGE_SEO[pageKey].canonicalPath
+      : '/';
 
   let finalTitle = activePage.title || g.defaultTitle;
   let finalDesc = activePage.metaDescription || g.defaultDescription;
-  let canonicalPath = activePage.canonicalPath || activePage.routePath || '/';
+  let canonicalPath = lockedCanonicalPath;
 
   if (isAdmin) {
     finalTitle = `SEO & Hospitality Admin Console | ${g.siteName || 'OneLove Café'}`;
@@ -398,11 +402,11 @@ function injectWorkerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   let html = rawHtml;
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtmlAttr(finalTitle)}</title>`);
   html = html.replace(
-    /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+name="description"[\s\S]*?\/>/i,
     `<meta name="description" content="${escapeHtmlAttr(finalDesc)}" />`
   );
   html = html.replace(
-    /<meta\s+name="keywords"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+name="keywords"[\s\S]*?\/>/i,
     `<meta name="keywords" content="${escapeHtmlAttr(combinedKeywords)}" />`
   );
   html = html.replace(
@@ -418,39 +422,50 @@ function injectWorkerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   const ogDesc = activePage.ogDescription || finalDesc;
 
   html = html.replace(
-    /<meta\s+property="og:site_name"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+property="og:site_name"[\s\S]*?\/>/i,
     `<meta property="og:site_name" content="${escapeHtmlAttr(g.siteName || 'OneLove Café')}" />`
   );
   html = html.replace(
-    /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+property="og:title"[\s\S]*?\/>/i,
     `<meta property="og:title" content="${escapeHtmlAttr(ogTitle)}" />`
   );
   html = html.replace(
-    /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+property="og:description"[\s\S]*?\/>/i,
     `<meta property="og:description" content="${escapeHtmlAttr(ogDesc)}" />`
   );
   html = html.replace(
-    /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+property="og:url"[\s\S]*?\/>/i,
     `<meta property="og:url" content="${escapeHtmlAttr(canonicalUrl)}" />`
   );
   html = html.replace(
-    /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+property="og:image"[\s\S]*?\/>/i,
     `<meta property="og:image" content="${escapeHtmlAttr(ogImgUrl)}" />`
   );
   html = html.replace(
-    /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+name="twitter:title"[\s\S]*?\/>/i,
     `<meta name="twitter:title" content="${escapeHtmlAttr(ogTitle)}" />`
   );
   html = html.replace(
-    /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+name="twitter:description"[\s\S]*?\/>/i,
     `<meta name="twitter:description" content="${escapeHtmlAttr(ogDesc)}" />`
   );
   html = html.replace(
-    /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+    /<meta\s+name="twitter:image"[\s\S]*?\/>/i,
     `<meta name="twitter:image" content="${escapeHtmlAttr(ogImgUrl)}" />`
   );
+  html = html.replace(
+    /<h1\s+id="static-seo-h1">[\s\S]*?<\/h1>/i,
+    `<h1 id="static-seo-h1">${escapeHtmlAttr(finalTitle)}</h1>`
+  );
+  html = html.replace(
+    /<p\s+id="static-seo-desc">[\s\S]*?<\/p>/i,
+    `<p id="static-seo-desc">${escapeHtmlAttr(finalDesc)}</p>`
+  );
 
-  const jsonLdObj = buildStructuredDataGraph(g, activePage);
+  const jsonLdObj = buildStructuredDataGraph(g, {
+    ...activePage,
+    canonicalPath: lockedCanonicalPath,
+  });
   html = html.replace(
     /<script\s+id="onelove-jsonld"\s+type="application\/ld\+json">[\s\S]*?<\/script>/i,
     `<script id="onelove-jsonld" type="application/ld+json">\n${JSON.stringify(

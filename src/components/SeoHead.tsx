@@ -1,6 +1,10 @@
 import React, { useEffect } from 'react';
 import { useCafe } from '../context/CafeContext';
-import { buildStructuredDataGraph, DEFAULT_BRAND_FAVICON_PATH } from '../data/seoDefaults';
+import {
+  buildStructuredDataGraph,
+  DEFAULT_BRAND_FAVICON_PATH,
+  DEFAULT_PAGE_SEO,
+} from '../data/seoDefaults';
 import { SeoPageKey } from '../types/seo';
 
 interface SeoHeadProps {
@@ -44,12 +48,13 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
         ? currentPage
         : 'home';
 
-    const activePageSeo = seoPages[pageKey] || seoPages.home;
+    const activePageSeo = seoPages[pageKey] || DEFAULT_PAGE_SEO[pageKey] || seoPages.home;
+    const lockedCanonicalPath = DEFAULT_PAGE_SEO[pageKey]?.canonicalPath || '/';
 
     // Compute final title & description
     let finalTitle = activePageSeo.title || seoGlobal.defaultTitle;
     let finalDesc = activePageSeo.metaDescription || seoGlobal.defaultDescription;
-    let canonicalPath = activePageSeo.canonicalPath || activePageSeo.routePath || '/';
+    let canonicalPath = lockedCanonicalPath;
 
     if (isAdminRoute) {
       finalTitle = `SEO & Hospitality Admin Console | ${seoGlobal.siteName || 'OneLove Café'}`;
@@ -81,7 +86,9 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
         if (id) el.id = id;
         document.head.appendChild(el);
       }
-      el.setAttribute('content', content);
+      if (el.getAttribute('content') !== content) {
+        el.setAttribute('content', content);
+      }
     };
 
     const canonicalUrl = `${domain}${
@@ -170,10 +177,12 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
       canonicalEl.rel = 'canonical';
       document.head.appendChild(canonicalEl);
     }
-    canonicalEl.href = canonicalUrl;
+    if (canonicalEl.getAttribute('href') !== canonicalUrl) {
+      canonicalEl.setAttribute('href', canonicalUrl);
+    }
 
-    // Always point Favicon & Apple Touch Icon links directly to static project files
-    const updateIconLink = (
+    // Ensure Favicon & Apple Touch Icon links point directly to local static project files without mutating existing hrefs
+    const ensureIconLink = (
       id: string,
       rel: string,
       sizes: string,
@@ -185,12 +194,21 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
         link = document.createElement('link');
         link.id = id;
         link.rel = rel;
-        if (sizes) link.sizes = sizes;
+        if (sizes) link.setAttribute('sizes', sizes);
         if (type) link.type = type;
+        link.setAttribute('href', href);
         document.head.appendChild(link);
+        return;
       }
-      link.href = href;
-      if (type) link.type = type;
+      if (link.getAttribute('href') !== href) {
+        link.setAttribute('href', href);
+      }
+      if (sizes && link.getAttribute('sizes') !== sizes) {
+        link.setAttribute('sizes', sizes);
+      }
+      if (type && link.getAttribute('type') !== type) {
+        link.setAttribute('type', type);
+      }
     };
 
     // Remove any <48px icon tags that violate Google Search's minimum 48x48px requirement
@@ -199,18 +217,21 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
       if (el && el.parentNode) el.parentNode.removeChild(el);
     });
 
-    updateIconLink('favicon-ico', 'icon', '48x48', '/favicon.ico', 'image/x-icon');
-    updateIconLink('favicon-48', 'icon', '48x48', '/favicon-48x48.png', 'image/png');
-    updateIconLink('favicon-96', 'icon', '96x96', '/favicon-96x96.png', 'image/png');
-    updateIconLink('favicon-144', 'icon', '144x144', '/favicon-144x144.png', 'image/png');
-    updateIconLink('favicon-192', 'icon', '192x192', '/favicon-192x192.png', 'image/png');
-    updateIconLink('favicon-512', 'icon', '512x512', '/favicon-512x512.png', 'image/png');
-    updateIconLink('favicon-shortcut', 'shortcut icon', '', '/favicon.ico', 'image/x-icon');
-    updateIconLink('apple-touch-icon', 'apple-touch-icon', '180x180', '/apple-touch-icon.png');
+    ensureIconLink('favicon-ico', 'icon', '48x48', '/favicon.ico', 'image/x-icon');
+    ensureIconLink('favicon-48', 'icon', '48x48', '/favicon-48x48.png', 'image/png');
+    ensureIconLink('favicon-96', 'icon', '96x96', '/favicon-96x96.png', 'image/png');
+    ensureIconLink('favicon-144', 'icon', '144x144', '/favicon-144x144.png', 'image/png');
+    ensureIconLink('favicon-192', 'icon', '192x192', '/favicon-192x192.png', 'image/png');
+    ensureIconLink('favicon-512', 'icon', '512x512', '/favicon-512x512.png', 'image/png');
+    ensureIconLink('apple-touch-icon', 'apple-touch-icon', '180x180', '/apple-touch-icon.png');
+    ensureIconLink('favicon-shortcut', 'shortcut icon', '', '/favicon.ico', 'image/x-icon');
 
     // Update JSON-LD Structured Data script
     if (!isAdminRoute) {
-      const jsonLdData = buildStructuredDataGraph(seoGlobal, activePageSeo);
+      const jsonLdData = buildStructuredDataGraph(seoGlobal, {
+        ...activePageSeo,
+        canonicalPath: lockedCanonicalPath,
+      });
       let scriptEl = document.getElementById('onelove-jsonld') as HTMLScriptElement | null;
       if (!scriptEl) {
         scriptEl = document.createElement('script');
@@ -218,7 +239,10 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
         scriptEl.type = 'application/ld+json';
         document.head.appendChild(scriptEl);
       }
-      scriptEl.textContent = JSON.stringify(jsonLdData, null, 2);
+      const nextJson = JSON.stringify(jsonLdData, null, 2);
+      if (scriptEl.textContent !== nextJson) {
+        scriptEl.textContent = nextJson;
+      }
     }
   }, [currentPage, pathname, voucherCode, seoGlobal, seoPages]);
 

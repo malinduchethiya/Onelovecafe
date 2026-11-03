@@ -363,6 +363,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return {
       ...DEFAULT_GLOBAL_SEO,
       ...cached,
+      canonicalDomain: DEFAULT_GLOBAL_SEO.canonicalDomain,
+      brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
+      faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
+      favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
+      favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
+      favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
+      appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
       defaultTitle:
         !cached.defaultTitle || cached.defaultTitle.includes('Breakfast, Brunch & Coffee')
           ? DEFAULT_GLOBAL_SEO.defaultTitle
@@ -387,37 +394,45 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [seoPages, setSeoPages] = useState<Record<SeoPageKey, PageSeoConfig>>(() => {
     const cached = readLocalCache('onelove_cache_seoPages', DEFAULT_PAGE_SEO);
-    const homePage = cached.home || DEFAULT_PAGE_SEO.home;
-    return {
-      ...DEFAULT_PAGE_SEO,
-      ...cached,
-      home: {
-        ...DEFAULT_PAGE_SEO.home,
-        ...homePage,
-        title:
-          !homePage.title || homePage.title.includes('Breakfast, Brunch & Coffee')
-            ? DEFAULT_PAGE_SEO.home.title
-            : homePage.title,
-        ogTitle:
-          !homePage.ogTitle ||
-          homePage.ogTitle.includes('Breakfast, Brunch & Specialty Coffee') ||
-          homePage.ogTitle.includes('Breakfast, Brunch & Coffee')
-            ? DEFAULT_PAGE_SEO.home.ogTitle
-            : homePage.ogTitle,
-        metaDescription:
-          !homePage.metaDescription ||
-          homePage.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
-          homePage.metaDescription.includes('Explore our specialty coffee & brunch menu')
-            ? DEFAULT_PAGE_SEO.home.metaDescription
-            : homePage.metaDescription,
-        ogDescription:
-          !homePage.ogDescription ||
-          homePage.ogDescription.includes('Tropical garden café, specialty Ceylon coffee roastery') ||
-          homePage.ogDescription.includes('Explore our specialty coffee & brunch menu')
-            ? DEFAULT_PAGE_SEO.home.ogDescription
-            : homePage.ogDescription,
-      },
+    const nextPages: Record<SeoPageKey, PageSeoConfig> = { ...DEFAULT_PAGE_SEO };
+    (Object.keys(DEFAULT_PAGE_SEO) as SeoPageKey[]).forEach((key) => {
+      const defPage = DEFAULT_PAGE_SEO[key];
+      const rawPage = cached[key] || defPage;
+      nextPages[key] = {
+        ...defPage,
+        ...rawPage,
+        id: key,
+        routePath: defPage.routePath,
+        canonicalPath: defPage.canonicalPath,
+      };
+    });
+    const homePage = nextPages.home;
+    nextPages.home = {
+      ...homePage,
+      title:
+        !homePage.title || homePage.title.includes('Breakfast, Brunch & Coffee')
+          ? DEFAULT_PAGE_SEO.home.title
+          : homePage.title,
+      ogTitle:
+        !homePage.ogTitle ||
+        homePage.ogTitle.includes('Breakfast, Brunch & Specialty Coffee') ||
+        homePage.ogTitle.includes('Breakfast, Brunch & Coffee')
+          ? DEFAULT_PAGE_SEO.home.ogTitle
+          : homePage.ogTitle,
+      metaDescription:
+        !homePage.metaDescription ||
+        homePage.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
+        homePage.metaDescription.includes('Explore our specialty coffee & brunch menu')
+          ? DEFAULT_PAGE_SEO.home.metaDescription
+          : homePage.metaDescription,
+      ogDescription:
+        !homePage.ogDescription ||
+        homePage.ogDescription.includes('Tropical garden café, specialty Ceylon coffee roastery') ||
+        homePage.ogDescription.includes('Explore our specialty coffee & brunch menu')
+          ? DEFAULT_PAGE_SEO.home.ogDescription
+          : homePage.ogDescription,
     };
+    return nextPages;
   });
 
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
@@ -998,6 +1013,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   ...DEFAULT_PAGE_SEO[key],
                   ...rawPage,
                   id: key,
+                  routePath: DEFAULT_PAGE_SEO[key].routePath,
+                  canonicalPath: DEFAULT_PAGE_SEO[key].canonicalPath,
                   ogImageUrl:
                     sanitizeCdnUrl(rawPage.ogImageUrl) || DEFAULT_PAGE_SEO[key].ogImageUrl,
                 };
@@ -3074,6 +3091,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const r2PageOg = sanitizeCdnUrl(pageOgMap[key]);
       next[key] = {
         ...next[key],
+        routePath: DEFAULT_PAGE_SEO[key].routePath,
+        canonicalPath: DEFAULT_PAGE_SEO[key].canonicalPath,
         ogImageUrl: fsPageOg.startsWith('http')
           ? fsPageOg
           : r2PageOg.startsWith('http')
