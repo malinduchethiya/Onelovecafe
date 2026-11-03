@@ -460,9 +460,7 @@ export function buildStructuredDataGraph(
   const canonicalUrl = `${domain}${
     pageSeo.canonicalPath.startsWith('/') ? pageSeo.canonicalPath : `/${pageSeo.canonicalPath}`
   }`;
-  const logoUrl = globalSeo.brandLogoUrl.startsWith('http')
-    ? globalSeo.brandLogoUrl
-    : `${domain}${globalSeo.brandLogoUrl.startsWith('/') ? globalSeo.brandLogoUrl : `/${globalSeo.brandLogoUrl}`}`;
+  const logoUrl = `${domain}/logo.png`;
 
   const graph: Record<string, unknown>[] = [
     // 1. WebSite Schema (Required by Google Search for Site Name & Favicon association)

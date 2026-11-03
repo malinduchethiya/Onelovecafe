@@ -946,8 +946,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: 'main',
               defaultOgImageUrl:
                 sanitizeCdnUrl(data.defaultOgImageUrl) || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
-              brandLogoUrl:
-                sanitizeCdnUrl(data.brandLogoUrl) || DEFAULT_GLOBAL_SEO.brandLogoUrl,
+              brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
+              faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
+              favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
+              favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
+              favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
+              appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
               defaultTitle:
                 !data.defaultTitle || data.defaultTitle.includes('Breakfast, Brunch & Coffee')
                   ? DEFAULT_GLOBAL_SEO.defaultTitle
@@ -2497,7 +2501,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (config: GlobalSeoConfig) => {
       try {
         const cleanOgUrl = sanitizeCdnUrl(config.defaultOgImageUrl);
-        const cleanLogoUrl = sanitizeCdnUrl(config.brandLogoUrl);
+        const cleanLogoUrl = DEFAULT_GLOBAL_SEO.brandLogoUrl;
         const prevOgUrl = r2ManifestRef.current.seoImages?.defaultOgImageUrl || '';
         const prevLogoUrl = r2ManifestRef.current.seoImages?.brandLogoUrl || '';
 
@@ -2505,30 +2509,35 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (prevOgUrl && prevOgUrl !== cleanOgUrl && !prevOgUrl.startsWith('/assets/')) {
           urlsToDelete.push(prevOgUrl);
         }
-        if (prevLogoUrl && prevLogoUrl !== cleanLogoUrl && !prevLogoUrl.startsWith('/assets/')) {
+        if (prevLogoUrl && prevLogoUrl.startsWith('http')) {
           urlsToDelete.push(prevLogoUrl);
         }
 
-        // 1. Save SEO images to Cloudflare R2 manifest
+        // 1. Save SEO OG image to Cloudflare R2 manifest (Favicon & Brand Logo remain local project files)
         await updateR2Manifest(
           (prev) => ({
             ...prev,
             seoImages: {
               defaultOgImageUrl: cleanOgUrl,
-              brandLogoUrl: cleanLogoUrl,
+              brandLogoUrl: '',
               pageOgImages: prev.seoImages?.pageOgImages || {},
             },
           }),
           urlsToDelete
         );
 
-        // 2. Save SEO configuration + R2 CDN links to Firestore
+        // 2. Save SEO configuration to Firestore (Favicons & Brand Logo locked to local project files)
         const merged: GlobalSeoConfig = {
           ...DEFAULT_GLOBAL_SEO,
           ...config,
           id: 'main',
           defaultOgImageUrl: cleanOgUrl || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
-          brandLogoUrl: cleanLogoUrl || DEFAULT_GLOBAL_SEO.brandLogoUrl,
+          brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
+          faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
+          favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
+          favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
+          favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
+          appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
         };
         setSeoGlobal(merged);
         writeLocalCache('onelove_cache_seoGlobal', merged);
@@ -2548,12 +2557,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           language: (data.language || 'en').slice(0, 16),
           googleVerificationTag: (data.googleVerificationTag || '').slice(0, 200),
           defaultOgImageUrl: cleanOgUrl,
-          brandLogoUrl: cleanLogoUrl,
-          faviconSourceUrl: sanitizeCdnUrl(data.faviconSourceUrl),
-          favicon48Url: sanitizeCdnUrl(data.favicon48Url),
-          favicon96Url: sanitizeCdnUrl(data.favicon96Url),
-          favicon192Url: sanitizeCdnUrl(data.favicon192Url),
-          appleTouchIconUrl: sanitizeCdnUrl(data.appleTouchIconUrl),
+          brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
+          faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
+          favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
+          favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
+          favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
+          appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
           allowIndexing: Boolean(data.allowIndexing),
           noindexPreviewDomains: Boolean(data.noindexPreviewDomains),
           businessType: data.businessType === 'Restaurant' ? 'Restaurant' : 'CafeOrCoffeeShop',
@@ -3041,8 +3050,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resolvedSeoGlobal = useMemo<GlobalSeoConfig>(() => {
     const fsOg = sanitizeCdnUrl(seoGlobal.defaultOgImageUrl);
     const r2Og = sanitizeCdnUrl(r2Manifest.seoImages?.defaultOgImageUrl);
-    const fsLogo = sanitizeCdnUrl(seoGlobal.brandLogoUrl);
-    const r2Logo = sanitizeCdnUrl(r2Manifest.seoImages?.brandLogoUrl);
     return {
       ...seoGlobal,
       defaultOgImageUrl: fsOg.startsWith('http')
@@ -3050,11 +3057,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         : r2Og.startsWith('http')
         ? r2Og
         : fsOg || r2Og || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
-      brandLogoUrl: fsLogo.startsWith('http')
-        ? fsLogo
-        : r2Logo.startsWith('http')
-        ? r2Logo
-        : fsLogo || r2Logo || DEFAULT_GLOBAL_SEO.brandLogoUrl,
+      brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
+      faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
+      favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
+      favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
+      favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
+      appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
     };
   }, [seoGlobal, r2Manifest.seoImages]);
 

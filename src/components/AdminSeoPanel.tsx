@@ -218,36 +218,22 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
   };
 
   const handleApplyAndSaveFavicons = async () => {
-    if (!cropSourceImg) return;
     setGeneratingFavicons(true);
     try {
-      const [file48, file96, file180, file192] = await Promise.all([
-        renderSquareFaviconFileAtSize(48, 'favicon-48x48.png'),
-        renderSquareFaviconFileAtSize(96, 'favicon-96x96.png'),
-        renderSquareFaviconFileAtSize(180, 'apple-touch-icon.png'),
-        renderSquareFaviconFileAtSize(192, 'favicon-192x192.png'),
-      ]);
-
-      const [r2Url48, r2Url96, r2Url180, r2Url192] = await Promise.all([
-        uploadMediaFile(file48, 'seo', globalForm.favicon48Url),
-        uploadMediaFile(file96, 'seo', globalForm.favicon96Url),
-        uploadMediaFile(file180, 'seo', globalForm.appleTouchIconUrl),
-        uploadMediaFile(file192, 'seo', globalForm.favicon192Url),
-      ]);
-
       const updated: GlobalSeoConfig = {
         ...globalForm,
-        faviconSourceUrl: r2Url192,
-        favicon48Url: r2Url48,
-        favicon96Url: r2Url96,
-        favicon192Url: r2Url192,
-        appleTouchIconUrl: r2Url180,
+        brandLogoUrl: DEFAULT_BRAND_LOGO_PATH,
+        faviconSourceUrl: DEFAULT_BRAND_FAVICON_PATH,
+        favicon48Url: '/favicon-48x48.png',
+        favicon96Url: '/favicon-96x96.png',
+        favicon192Url: '/favicon-192x192.png',
+        appleTouchIconUrl: '/apple-touch-icon.png',
       };
       setGlobalForm(updated);
       await saveSeoGlobal(updated);
       setCropSourceImg(null);
       onShowToast(
-        'Uploaded 48×48, 96×96, 192×192 & 180×180 icons to Cloudflare R2 and synced CDN links to Firestore.'
+        'Verified project-file favicons (/favicon.ico, 48×48, 96×96, 144×144, 192×192, 512×512 & Apple Touch Icon) with zero R2 dependency.'
       );
     } finally {
       setGeneratingFavicons(false);
@@ -257,6 +243,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
   const handleResetFaviconToDefault = async () => {
     const updated: GlobalSeoConfig = {
       ...globalForm,
+      brandLogoUrl: DEFAULT_BRAND_LOGO_PATH,
       faviconSourceUrl: DEFAULT_BRAND_FAVICON_PATH,
       favicon48Url: '/favicon-48x48.png',
       favicon96Url: '/favicon-96x96.png',
@@ -266,7 +253,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
     setGlobalForm(updated);
     setCropSourceImg(null);
     await saveSeoGlobal(updated);
-    onShowToast('Reset website favicon to the default OneLove Café Sigiriya emblem.');
+    onShowToast('Synced website favicon to the local project OneLove Café Sigiriya emblem files.');
   };
 
   const handleSaveGlobalForm = async (e: React.FormEvent) => {
@@ -469,10 +456,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
     /\/+$/,
     ''
   );
-  const activeFaviconPreview =
-    globalForm.favicon96Url && globalForm.favicon96Url.startsWith('data:')
-      ? globalForm.favicon96Url
-      : globalForm.faviconSourceUrl || DEFAULT_BRAND_FAVICON_PATH;
+  const activeFaviconPreview = '/favicon-96x96.png';
 
   return (
     <div className="space-y-6">
@@ -1646,50 +1630,43 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
             )}
 
             {/* Active Favicon Multi-Size Matrix */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               {[
                 {
                   label: 'Google SERP (48×48)',
                   endpoint: '/favicon-48x48.png',
                   sizePx: 'w-12 h-12',
-                  src:
-                    globalForm.favicon48Url && globalForm.favicon48Url.startsWith('data:')
-                      ? globalForm.favicon48Url
-                      : DEFAULT_BRAND_FAVICON_PATH,
+                  src: '/favicon-48x48.png',
                 },
                 {
                   label: 'High-DPI SERP (96×96)',
                   endpoint: '/favicon-96x96.png',
                   sizePx: 'w-14 h-14',
-                  src:
-                    globalForm.favicon96Url && globalForm.favicon96Url.startsWith('data:')
-                      ? globalForm.favicon96Url
-                      : DEFAULT_BRAND_FAVICON_PATH,
+                  src: '/favicon-96x96.png',
+                },
+                {
+                  label: '3× SERP (144×144)',
+                  endpoint: '/favicon-144x144.png',
+                  sizePx: 'w-14 h-14',
+                  src: '/favicon-144x144.png',
                 },
                 {
                   label: 'Android / PWA (192×192)',
                   endpoint: '/favicon-192x192.png',
                   sizePx: 'w-16 h-16',
-                  src:
-                    globalForm.favicon192Url && globalForm.favicon192Url.startsWith('data:')
-                      ? globalForm.favicon192Url
-                      : DEFAULT_BRAND_FAVICON_PATH,
+                  src: '/favicon-192x192.png',
                 },
                 {
                   label: 'Apple Touch (180×180)',
                   endpoint: '/apple-touch-icon.png',
                   sizePx: 'w-16 h-16',
-                  src:
-                    globalForm.appleTouchIconUrl &&
-                    globalForm.appleTouchIconUrl.startsWith('data:')
-                      ? globalForm.appleTouchIconUrl
-                      : DEFAULT_BRAND_FAVICON_PATH,
+                  src: '/apple-touch-icon.png',
                 },
                 {
-                  label: 'Root Fallback (/favicon.ico)',
+                  label: 'Root ICO (/favicon.ico)',
                   endpoint: '/favicon.ico',
                   sizePx: 'w-12 h-12',
-                  src: activeFaviconPreview,
+                  src: '/favicon-48x48.png',
                 },
               ].map((item) => (
                 <div
@@ -1725,60 +1702,19 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
               <div className="border-b border-[#E7DED3] pb-3 flex items-center justify-between">
                 <div>
                   <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-                    Schema.org Organization Logo
+                    Schema.org Organization Logo · Local Project File
                   </div>
                   <h3 className="text-base font-editorial font-semibold">
-                    Official Brand Logo (`Organization.logo`)
+                    Official Brand Logo (`/logo.png`)
                   </h3>
                 </div>
-                <div className="flex items-center gap-2">
-                  <label className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] cursor-pointer inline-flex items-center gap-1.5">
-                    <Upload className="w-3 h-3" />
-                    <span>{uploadingLogo ? 'Uploading...' : 'Upload Logo'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setUploadingLogo(true);
-                        try {
-                          const r2Url = await uploadMediaFile(
-                            file,
-                            'seo',
-                            globalForm.brandLogoUrl
-                          );
-                          const next = { ...globalForm, brandLogoUrl: r2Url };
-                          setGlobalForm(next);
-                          await saveSeoGlobal(next);
-                          onShowToast('Uploaded Schema.org Brand Logo to Cloudflare R2.');
-                        } finally {
-                          setUploadingLogo(false);
-                          e.target.value = '';
-                        }
-                      }}
-                    />
-                  </label>
-                  {globalForm.brandLogoUrl && globalForm.brandLogoUrl.startsWith('http') && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const next = { ...globalForm, brandLogoUrl: '' };
-                        setGlobalForm(next);
-                        await saveSeoGlobal(next);
-                        onShowToast('Reset Brand Logo in Cloudflare R2.');
-                      }}
-                      className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF]"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </div>
+                <span className="px-2.5 py-1 bg-[#F4F7F2] border border-[#58644E] text-[#58644E] text-[10px] uppercase tracking-wider font-semibold">
+                  Project File Active
+                </span>
               </div>
-              <div className="h-36 bg-[#171513] border border-[#E7DED3] flex items-center justify-center p-4">
+              <div className="h-36 bg-[#F8F4EE] border border-[#E7DED3] flex items-center justify-center p-4">
                 <img
-                  src={globalForm.brandLogoUrl || DEFAULT_BRAND_LOGO_PATH}
+                  src={DEFAULT_BRAND_LOGO_PATH}
                   alt="OneLove Café Brand Logo"
                   className="max-h-28 w-auto object-contain"
                 />
