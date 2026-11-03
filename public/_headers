@@ -1,10 +1,16 @@
 /sitemap.xml
   Content-Type: application/xml; charset=utf-8
   Cache-Control: public, max-age=3600
+  X-Robots-Tag: all
 
 /robots.txt
   Content-Type: text/plain; charset=utf-8
   Cache-Control: public, max-age=3600
+
+/site.webmanifest
+  Content-Type: application/manifest+json; charset=utf-8
+  Cache-Control: public, max-age=86400
+  Access-Control-Allow-Origin: *
 
 /favicon.ico
   Content-Type: image/x-icon
@@ -12,7 +18,43 @@
   Access-Control-Allow-Origin: *
   X-Robots-Tag: all
 
-/favicon-*.png
+/favicon-48x48.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+  X-Robots-Tag: all
+
+/favicon-96x96.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+  X-Robots-Tag: all
+
+/favicon-144x144.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+  X-Robots-Tag: all
+
+/favicon-192x192.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+  X-Robots-Tag: all
+
+/favicon-512x512.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+  X-Robots-Tag: all
+
+/favicon-16x16.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+  X-Robots-Tag: all
+
+/favicon-32x32.png
   Content-Type: image/png
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
   Access-Control-Allow-Origin: *
@@ -30,5 +72,14 @@
   Access-Control-Allow-Origin: *
   X-Robots-Tag: all
 
-/admin*
+/logo-transparent.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+  Access-Control-Allow-Origin: *
+  X-Robots-Tag: all
+
+/admin
+  X-Robots-Tag: noindex, nofollow
+
+/admin/*
   X-Robots-Tag: noindex, nofollow

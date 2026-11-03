@@ -843,11 +843,6 @@ export default {
       }
     }
 
-    if (pathname === '/api/seo/favicon' && request.method === 'GET') {
-      if (env.ASSETS) {
-        return env.ASSETS.fetch(new Request(new URL('/favicon-96x96.png', request.url), request));
-      }
-    }
 
     if (pathname === '/api/reservations/validate' && request.method === 'POST') {
       if (!checkRateLimit(`res_${clientIp}`, 15, 60_000)) {
