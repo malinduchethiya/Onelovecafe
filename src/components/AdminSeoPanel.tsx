@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Globe,
   Search,
@@ -15,7 +15,6 @@ import {
   Compass,
   Sparkles,
   Check,
-  Crop,
 } from 'lucide-react';
 import { useCafe } from '../context/CafeContext';
 import {
@@ -94,167 +93,13 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
   const [newCustomKeyword, setNewCustomKeyword] = useState('');
   const [copiedKw, setCopiedKw] = useState<string | null>(null);
 
-  // 3. Favicon 1:1 Square Cropper & Multi-Size Generator State
-  const [cropSourceImg, setCropSourceImg] = useState<HTMLImageElement | null>(null);
-  const [cropSourceWarn, setCropSourceWarn] = useState<string | null>(null);
-  const [cropZoom, setCropZoom] = useState<number>(1);
-  const [cropPanX, setCropPanX] = useState<number>(0);
-  const [cropPanY, setCropPanY] = useState<number>(0);
-  const [cropBg, setCropBg] = useState<'transparent' | '#F8F4EE' | '#171513' | '#FFFFFF'>(
-    'transparent'
-  );
-  const [generatingFavicons, setGeneratingFavicons] = useState(false);
-  const cropPreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
-
   // Asset upload states
-  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingDefaultOg, setUploadingDefaultOg] = useState(false);
   const [uploadingPageOg, setUploadingPageOg] = useState(false);
 
   // Alt-text manager filter state
   const [altFilter, setAltFilter] = useState<'all' | 'missing' | 'menu' | 'gallery'>('all');
   const [editingAltMap, setEditingAltMap] = useState<Record<string, string>>({});
-
-  // Draw live 1:1 square preview whenever cropSourceImg, zoom, pan, or bg changes
-  useEffect(() => {
-    const canvas = cropPreviewCanvasRef.current;
-    if (!canvas || !cropSourceImg) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const size = 192;
-    canvas.width = size;
-    canvas.height = size;
-    ctx.clearRect(0, 0, size, size);
-
-    if (cropBg !== 'transparent') {
-      ctx.fillStyle = cropBg;
-      ctx.fillRect(0, 0, size, size);
-    }
-
-    const minDim = Math.min(cropSourceImg.width, cropSourceImg.height);
-    const baseScale = size / minDim;
-    const scale = baseScale * cropZoom;
-
-    const drawW = cropSourceImg.width * scale;
-    const drawH = cropSourceImg.height * scale;
-    const dx = (size - drawW) / 2 + (cropPanX / 100) * (drawW / 2);
-    const dy = (size - drawH) / 2 + (cropPanY / 100) * (drawH / 2);
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(cropSourceImg, dx, dy, drawW, drawH);
-  }, [cropSourceImg, cropZoom, cropPanX, cropPanY, cropBg]);
-
-  const handleSelectFaviconFile = (file: File | undefined) => {
-    if (!file) return;
-    setCropSourceWarn(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        if (img.width < 48 || img.height < 48) {
-          setCropSourceWarn(
-            `Uploaded image is ${img.width}×${img.height}px. Google Search requires favicons to be at least 48×48px (recommended 192×192px or 512×512px). Our generator will upscale it to 48×48, 96×96, and 192×192.`
-          );
-        } else if (img.width !== img.height) {
-          setCropSourceWarn(
-            `Source image is ${img.width}×${img.height}px (non-square). Use the 1:1 Square Crop controls below to frame your icon for Google Search.`
-          );
-        } else {
-          setCropSourceWarn(null);
-        }
-        setCropZoom(1);
-        setCropPanX(0);
-        setCropPanY(0);
-        setCropSourceImg(img);
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const renderSquareFaviconFileAtSize = (targetSize: number, filename: string): Promise<File> => {
-    return new Promise((resolve, reject) => {
-      if (!cropSourceImg) {
-        reject(new Error('No source image'));
-        return;
-      }
-      const offscreen = document.createElement('canvas');
-      offscreen.width = targetSize;
-      offscreen.height = targetSize;
-      const ctx = offscreen.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Canvas context unavailable'));
-        return;
-      }
-
-      if (cropBg !== 'transparent') {
-        ctx.fillStyle = cropBg;
-        ctx.fillRect(0, 0, targetSize, targetSize);
-      }
-
-      const minDim = Math.min(cropSourceImg.width, cropSourceImg.height);
-      const baseScale = targetSize / minDim;
-      const scale = baseScale * cropZoom;
-
-      const drawW = cropSourceImg.width * scale;
-      const drawH = cropSourceImg.height * scale;
-      const dx = (targetSize - drawW) / 2 + (cropPanX / 100) * (drawW / 2);
-      const dy = (targetSize - drawH) / 2 + (cropPanY / 100) * (drawH / 2);
-
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(cropSourceImg, dx, dy, drawW, drawH);
-
-      offscreen.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error('Failed to encode favicon PNG'));
-          return;
-        }
-        resolve(new File([blob], filename, { type: 'image/png' }));
-      }, 'image/png');
-    });
-  };
-
-  const handleApplyAndSaveFavicons = async () => {
-    setGeneratingFavicons(true);
-    try {
-      const updated: GlobalSeoConfig = {
-        ...globalForm,
-        brandLogoUrl: DEFAULT_BRAND_LOGO_PATH,
-        faviconSourceUrl: DEFAULT_BRAND_FAVICON_PATH,
-        favicon48Url: '/favicon-48x48.png',
-        favicon96Url: '/favicon-96x96.png',
-        favicon192Url: '/favicon-192x192.png',
-        appleTouchIconUrl: '/apple-touch-icon.png',
-      };
-      setGlobalForm(updated);
-      await saveSeoGlobal(updated);
-      setCropSourceImg(null);
-      onShowToast(
-        'Verified project-file favicons (/favicon.ico, 48×48, 96×96, 144×144, 192×192, 512×512 & Apple Touch Icon) with zero R2 dependency.'
-      );
-    } finally {
-      setGeneratingFavicons(false);
-    }
-  };
-
-  const handleResetFaviconToDefault = async () => {
-    const updated: GlobalSeoConfig = {
-      ...globalForm,
-      brandLogoUrl: DEFAULT_BRAND_LOGO_PATH,
-      faviconSourceUrl: DEFAULT_BRAND_FAVICON_PATH,
-      favicon48Url: '/favicon-48x48.png',
-      favicon96Url: '/favicon-96x96.png',
-      favicon192Url: '/favicon-192x192.png',
-      appleTouchIconUrl: '/apple-touch-icon.png',
-    };
-    setGlobalForm(updated);
-    setCropSourceImg(null);
-    await saveSeoGlobal(updated);
-    onShowToast('Synced website favicon to the local project OneLove Café Sigiriya emblem files.');
-  };
 
   const handleSaveGlobalForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -456,7 +301,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
     /\/+$/,
     ''
   );
-  const activeFaviconPreview = '/favicon-96x96.png';
+  const activeFaviconPreview = '/favicon.png';
 
   return (
     <div className="space-y-6">
@@ -472,7 +317,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
             </h1>
             <p className="text-xs text-[#171513]/65 max-w-3xl">
               Manage global &amp; per-page metadata, 10-category Sigiriya keyword targeting
-              (English, Sinhala &amp; Tamil), Google Search 1:1 favicon generation, Schema.org
+              (English, Sinhala &amp; Tamil), 96×96 website favicon (`/favicon.png`), Schema.org
               JSON-LD structured data, and Search Console readiness.
             </p>
           </div>
@@ -497,12 +342,12 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
               <ExternalLink className="w-3 h-3" />
             </a>
             <a
-              href="/favicon-96x96.png"
+              href="/favicon.png"
               target="_blank"
               rel="noreferrer"
               className="px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] text-xs font-medium hover:border-[#171513] inline-flex items-center gap-1.5"
             >
-              <span>/favicon-96x96.png</span>
+              <span>/favicon.png</span>
               <ExternalLink className="w-3 h-3" />
             </a>
             <button
@@ -533,7 +378,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
             },
             {
               id: 'assets' as SeoSubTab,
-              label: '3. Favicon Cropper, Social Cards & Alt-Text',
+              label: '3. Website Favicon, Social Cards & Alt-Text',
               icon: <ImageIcon className="w-3.5 h-3.5" />,
             },
             {
@@ -1456,230 +1301,54 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
       )}
 
       {/* =====================================================================
-          SUB-TAB 3: SEO ASSET MANAGEMENT (FAVICON CROPPER, LOGO & ALT-TEXT)
+          SUB-TAB 3: SEO ASSET MANAGEMENT (WEBSITE FAVICON, LOGO & ALT-TEXT)
          ===================================================================== */}
       {subTab === 'assets' && (
         <div className="space-y-6 text-xs">
-          {/* 1. Google Search Favicon 1:1 Cropper & Multi-Size Generator */}
+          {/* 1. Website Favicon (96x96 Local Project File) */}
           <div className="bg-white border border-[#E7DED3] p-6 space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#E7DED3] pb-4">
               <div>
                 <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-                  Google Search Favicon Specification · 1:1 Square Aspect Ratio
+                  Website Favicon · 96×96 Local Project Asset
                 </div>
                 <h2 className="text-xl font-editorial font-semibold mt-0.5">
-                  Favicon Uploader, 1:1 Square Cropper &amp; Multi-Resolution Generator
+                  Active Website Favicon (`/favicon.png` &amp; `/favicon.ico`)
                 </h2>
                 <p className="text-xs text-[#171513]/65 mt-0.5 max-w-3xl">
-                  Google Search requires a stable 1:1 square icon (minimum 48×48px; multiples of
-                  48px such as 48×48, 96×96, 192×192) served with crawlable `/favicon.ico` and PNG
-                  headers. Upload any image below to crop and generate all required sizes.
+                  Served directly from local project files at 96×96 resolution (`/favicon.png` and
+                  `/favicon.ico`).
                 </p>
               </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="px-4 py-2.5 bg-[#C65B2B] text-white uppercase tracking-wider font-semibold cursor-pointer hover:bg-[#B04E22] inline-flex items-center gap-2">
-                  <Crop className="w-3.5 h-3.5" />
-                  <span>Upload &amp; Crop New Favicon</span>
-                  <input
-                    type="file"
-                    accept="image/png,image/svg+xml,image/webp,image/jpeg,image/x-icon"
-                    className="hidden"
-                    onChange={(e) => {
-                      handleSelectFaviconFile(e.target.files?.[0]);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={handleResetFaviconToDefault}
-                  className="px-3.5 py-2.5 border border-[#E7DED3] bg-[#F8F4EE] hover:border-[#171513] font-medium"
-                >
-                  Use Default OneLove Emblem
-                </button>
-              </div>
+              <span className="px-2.5 py-1 bg-[#F4F7F2] border border-[#58644E] text-[#58644E] text-[10px] uppercase tracking-wider font-semibold">
+                96×96 Active
+              </span>
             </div>
 
-            {/* Interactive 1:1 Cropper Modal/Panel when an image is selected */}
-            {cropSourceImg && (
-              <div className="p-5 bg-[#F8F4EE] border-2 border-[#C65B2B] space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="font-semibold text-sm text-[#171513]">
-                    Interactive 1:1 Square Favicon Cropper ({cropSourceImg.width}×
-                    {cropSourceImg.height}px source)
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCropSourceImg(null)}
-                    className="text-[#171513]/60 hover:text-[#171513]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {cropSourceWarn && (
-                  <div className="p-3 bg-[#FDF3EF] border border-[#C65B2B] text-[#9E3F16] flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>{cropSourceWarn}</span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                  <div className="md:col-span-4 flex flex-col items-center space-y-2">
-                    <div className="text-[11px] uppercase tracking-wider text-[#171513]/60">
-                      Live 1:1 Output Preview (192×192)
-                    </div>
-                    <canvas
-                      ref={cropPreviewCanvasRef}
-                      className="w-36 h-36 border border-[#171513] bg-[radial-gradient(#E7DED3_1px,transparent_1px)] [background-size:12px_12px]"
-                    />
-                  </div>
-
-                  <div className="md:col-span-8 space-y-3">
-                    <div>
-                      <label className="block text-[#171513]/70 mb-1">
-                        Zoom Scale ({cropZoom.toFixed(2)}×)
-                      </label>
-                      <input
-                        type="range"
-                        min={0.5}
-                        max={2.5}
-                        step={0.05}
-                        value={cropZoom}
-                        onChange={(e) => setCropZoom(Number(e.target.value))}
-                        className="w-full accent-[#C65B2B]"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-[#171513]/70 mb-1">
-                          Horizontal Offset ({cropPanX}%)
-                        </label>
-                        <input
-                          type="range"
-                          min={-50}
-                          max={50}
-                          step={1}
-                          value={cropPanX}
-                          onChange={(e) => setCropPanX(Number(e.target.value))}
-                          className="w-full accent-[#C65B2B]"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[#171513]/70 mb-1">
-                          Vertical Offset ({cropPanY}%)
-                        </label>
-                        <input
-                          type="range"
-                          min={-50}
-                          max={50}
-                          step={1}
-                          value={cropPanY}
-                          onChange={(e) => setCropPanY(Number(e.target.value))}
-                          className="w-full accent-[#C65B2B]"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[#171513]/70 mb-1">Icon Background Fill</label>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { val: 'transparent', label: 'Transparent' },
-                          { val: '#F8F4EE', label: 'Warm Ivory (#F8F4EE)' },
-                          { val: '#171513', label: 'Obsidian (#171513)' },
-                          { val: '#FFFFFF', label: 'Pure White (#FFFFFF)' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.val}
-                            type="button"
-                            onClick={() =>
-                              setCropBg(
-                                opt.val as 'transparent' | '#F8F4EE' | '#171513' | '#FFFFFF'
-                              )
-                            }
-                            className={`px-3 py-1.5 border ${
-                              cropBg === opt.val
-                                ? 'bg-[#171513] text-white border-[#171513]'
-                                : 'bg-white border-[#E7DED3]'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        disabled={generatingFavicons}
-                        onClick={handleApplyAndSaveFavicons}
-                        className="px-6 py-2.5 bg-[#C65B2B] text-white uppercase tracking-widest font-semibold hover:bg-[#B04E22]"
-                      >
-                        {generatingFavicons
-                          ? 'Generating All Favicon Sizes...'
-                          : 'Generate & Publish 48×48, 96×96, 192×192 & Apple Touch Icons'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Active Favicon Multi-Size Matrix */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 {
-                  label: 'Google SERP (48×48)',
-                  endpoint: '/favicon-48x48.png',
-                  sizePx: 'w-12 h-12',
-                  src: '/favicon-48x48.png',
+                  label: 'PNG Favicon (96×96)',
+                  endpoint: '/favicon.png',
+                  src: '/favicon.png',
                 },
                 {
-                  label: 'High-DPI SERP (96×96)',
-                  endpoint: '/favicon-96x96.png',
-                  sizePx: 'w-14 h-14',
-                  src: '/favicon-96x96.png',
-                },
-                {
-                  label: '3× SERP (144×144)',
-                  endpoint: '/favicon-144x144.png',
-                  sizePx: 'w-14 h-14',
-                  src: '/favicon-144x144.png',
-                },
-                {
-                  label: 'Android / PWA (192×192)',
-                  endpoint: '/favicon-192x192.png',
-                  sizePx: 'w-16 h-16',
-                  src: '/favicon-192x192.png',
-                },
-                {
-                  label: 'Apple Touch (180×180)',
-                  endpoint: '/apple-touch-icon.png',
-                  sizePx: 'w-16 h-16',
-                  src: '/apple-touch-icon.png',
-                },
-                {
-                  label: 'Root ICO (/favicon.ico)',
+                  label: 'ICO Favicon (96×96)',
                   endpoint: '/favicon.ico',
-                  sizePx: 'w-12 h-12',
-                  src: '/favicon-48x48.png',
+                  src: '/favicon.ico',
                 },
               ].map((item) => (
                 <div
                   key={item.endpoint}
-                  className="p-4 bg-[#F8F4EE] border border-[#E7DED3] flex flex-col items-center justify-between text-center space-y-2"
+                  className="p-4 bg-[#F8F4EE] border border-[#E7DED3] flex items-center gap-4"
                 >
-                  <div className="h-16 flex items-center justify-center">
-                    <img
-                      src={item.src}
-                      alt={item.label}
-                      className={`${item.sizePx} object-contain border border-[#E7DED3] bg-white p-1`}
-                    />
-                  </div>
+                  <img
+                    src={item.src}
+                    alt={item.label}
+                    width={96}
+                    height={96}
+                    className="w-24 h-24 object-contain border border-[#E7DED3] bg-white p-1"
+                  />
                   <div>
                     <div className="font-semibold text-[#171513]">{item.label}</div>
                     <a
@@ -1968,12 +1637,12 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
               <div className="p-4 bg-[#F8F4EE] border border-[#E7DED3] space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-[#171513]">
-                    Google Search Favicon Endpoints
+                    Website Favicon (96×96)
                   </span>
                   <CheckCircle2 className="w-4 h-4 text-[#58644E]" />
                 </div>
                 <div className="text-[#171513]/70 font-mono-tabular">
-                  /favicon.ico · 48×48 · 96×96 · 192×192 active
+                  /favicon.png · /favicon.ico (96×96) active
                 </div>
               </div>
 
@@ -2071,7 +1740,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
                 Step-by-Step Search Console Workflow
               </div>
               <h3 className="text-lg font-editorial font-semibold">
-                Google Search Console Setup &amp; Favicon Re-Crawl Guide
+                Google Search Console Setup Guide
               </h3>
               <ol className="space-y-2.5 text-[#171513]/80 list-decimal list-inside leading-relaxed">
                 <li>
@@ -2094,13 +1763,6 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
                 <li>
                   In Search Console under <strong>Sitemaps</strong>, submit{' '}
                   <code className="font-mono">{domainClean}/sitemap.xml</code>.
-                </li>
-                <li>
-                  To refresh your <strong>Google Search Favicon &amp; Site Name</strong> after
-                  updating, use the <strong>URL Inspection Tool</strong> on{' '}
-                  <code className="font-mono">{domainClean}/</code> and click{' '}
-                  <strong>Request Indexing</strong>. (Note: Google caches favicons and may take
-                  several days to a few weeks to reflect updates in live SERPs).
                 </li>
               </ol>
             </div>

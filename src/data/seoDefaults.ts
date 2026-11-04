@@ -1,6 +1,6 @@
 import { GlobalSeoConfig, PageSeoConfig, SeoKeywordCategory, SeoPageKey } from '../types/seo';
 
-export const DEFAULT_BRAND_FAVICON_PATH = '/favicon-192x192.png';
+export const DEFAULT_BRAND_FAVICON_PATH = '/favicon.png';
 
 export const DEFAULT_BRAND_LOGO_PATH = '/logo.png';
 
@@ -26,11 +26,11 @@ export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   googleVerificationTag: '',
   defaultOgImageUrl: DEFAULT_BRAND_LOGO_PATH,
   brandLogoUrl: DEFAULT_BRAND_LOGO_PATH,
-  faviconSourceUrl: DEFAULT_BRAND_FAVICON_PATH,
-  favicon48Url: '/favicon-48x48.png',
-  favicon96Url: '/favicon-96x96.png',
-  favicon192Url: '/favicon-192x192.png',
-  appleTouchIconUrl: '/apple-touch-icon.png',
+  faviconSourceUrl: '/favicon.png',
+  favicon48Url: '/favicon.png',
+  favicon96Url: '/favicon.png',
+  favicon192Url: '/favicon.png',
+  appleTouchIconUrl: '/favicon.png',
   allowIndexing: true,
   noindexPreviewDomains: false,
   businessType: 'CafeOrCoffeeShop',
@@ -514,7 +514,7 @@ export function buildStructuredDataGraph(
       description: globalSeo.defaultDescription,
       url: `${domain}/`,
       logo: logoUrl,
-      image: [logoUrl, `${domain}/favicon-512x512.png`],
+      image: [logoUrl],
       telephone: globalSeo.telephone || '+94 66 228 6420',
       email: globalSeo.email || 'concierge@onelovecafe.lk',
       priceRange: globalSeo.priceRange || '$$',

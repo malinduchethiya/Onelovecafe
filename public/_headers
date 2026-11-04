@@ -1,7 +1,6 @@
 /sitemap.xml
   Content-Type: application/xml; charset=utf-8
   Cache-Control: public, max-age=3600
-  X-Robots-Tag: all
 
 /robots.txt
   Content-Type: text/plain; charset=utf-8
@@ -10,83 +9,14 @@
 /site.webmanifest
   Content-Type: application/manifest+json; charset=utf-8
   Cache-Control: public, max-age=86400
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
+
+/favicon.png
+  Content-Type: image/png
+  Cache-Control: public, max-age=86400
 
 /favicon.ico
   Content-Type: image/x-icon
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/favicon-48x48.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/favicon-96x96.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/favicon-144x144.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/favicon-192x192.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/favicon-512x512.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/apple-touch-icon.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/logo.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/logo-transparent.png
-  Content-Type: image/png
-  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
-  Access-Control-Allow-Origin: *
-  X-Robots-Tag: all
-
-/
-  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
-
-/menu
-  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
-
-/reserve
-  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
-
-/story
-  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
-
-/gallery
-  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
-
-/contact
-  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
-
-/events
-  X-Robots-Tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
+  Cache-Control: public, max-age=86400
 
 /admin
   X-Robots-Tag: noindex, nofollow

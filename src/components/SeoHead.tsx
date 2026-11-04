@@ -33,7 +33,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
       ''
     );
 
-    // Map route to page SEO config
     const isVoucher = Boolean(voucherCode) || pathname.toLowerCase().startsWith('/reserve/voucher/');
     const isAdminRoute = currentPage === 'admin' || pathname.toLowerCase().startsWith('/admin');
     const isNotFound = currentPage === 'notfound';
@@ -51,7 +50,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
     const activePageSeo = seoPages[pageKey] || DEFAULT_PAGE_SEO[pageKey] || seoPages.home;
     const lockedCanonicalPath = DEFAULT_PAGE_SEO[pageKey]?.canonicalPath || '/';
 
-    // Compute final title & description
     let finalTitle = activePageSeo.title || seoGlobal.defaultTitle;
     let finalDesc = activePageSeo.metaDescription || seoGlobal.defaultDescription;
     let canonicalPath = lockedCanonicalPath;
@@ -95,7 +93,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
       canonicalPath.startsWith('/') ? canonicalPath : `/${canonicalPath}`
     }`;
 
-    // Resolve Open Graph image URL
     const rawOgImg =
       activePageSeo.ogImageUrl || seoGlobal.defaultOgImageUrl || DEFAULT_BRAND_FAVICON_PATH;
     const ogImgUrl =
@@ -103,7 +100,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
         ? rawOgImg
         : `${domain}${rawOgImg.startsWith('/') ? rawOgImg : `/${rawOgImg}`}`;
 
-    // Keywords meta tag combining primary + supporting keywords
     const combinedKeywords = Array.from(
       new Set([
         activePageSeo.primaryKeyword,
@@ -119,7 +115,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
     upsertMeta('name', 'application-name', seoGlobal.siteName || 'OneLove Café');
     upsertMeta('name', 'apple-mobile-web-app-title', seoGlobal.siteName || 'OneLove Café');
 
-    // Open Graph tags
     upsertMeta('property', 'og:type', currentPage === 'menu' ? 'restaurant.menu' : 'website');
     upsertMeta('property', 'og:site_name', seoGlobal.siteName || 'OneLove Café');
     upsertMeta('property', 'og:title', activePageSeo.ogTitle || finalTitle);
@@ -128,13 +123,11 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
     upsertMeta('property', 'og:image', ogImgUrl);
     upsertMeta('property', 'og:locale', 'en_US');
 
-    // Twitter Card tags
     upsertMeta('name', 'twitter:card', 'summary_large_image');
     upsertMeta('name', 'twitter:title', activePageSeo.ogTitle || finalTitle);
     upsertMeta('name', 'twitter:description', activePageSeo.ogDescription || finalDesc);
     upsertMeta('name', 'twitter:image', ogImgUrl);
 
-    // Google Search Console verification tag
     if (seoGlobal.googleVerificationTag && seoGlobal.googleVerificationTag.trim()) {
       const cleanToken = seoGlobal.googleVerificationTag
         .replace(/<meta[^>]*content=["']?([^"'>\s]+)["']?[^>]*>/i, '$1')
@@ -142,7 +135,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
       upsertMeta('name', 'google-site-verification', cleanToken);
     }
 
-    // Robots indexing control
     const isPreviewHost =
       seoGlobal.noindexPreviewDomains &&
       typeof window !== 'undefined' &&
@@ -166,7 +158,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
       'meta-robots'
     );
 
-    // Canonical Link
     let canonicalEl = document.getElementById('canonical-link') as HTMLLinkElement | null;
     if (!canonicalEl) {
       canonicalEl = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
@@ -181,52 +172,6 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
       canonicalEl.setAttribute('href', canonicalUrl);
     }
 
-    // Ensure Favicon & Apple Touch Icon links point directly to local static project files without mutating existing hrefs
-    const ensureIconLink = (
-      id: string,
-      rel: string,
-      sizes: string,
-      href: string,
-      type?: string
-    ) => {
-      let link = document.getElementById(id) as HTMLLinkElement | null;
-      if (!link) {
-        link = document.createElement('link');
-        link.id = id;
-        link.rel = rel;
-        if (sizes) link.setAttribute('sizes', sizes);
-        if (type) link.type = type;
-        link.setAttribute('href', href);
-        document.head.appendChild(link);
-        return;
-      }
-      if (link.getAttribute('href') !== href) {
-        link.setAttribute('href', href);
-      }
-      if (sizes && link.getAttribute('sizes') !== sizes) {
-        link.setAttribute('sizes', sizes);
-      }
-      if (type && link.getAttribute('type') !== type) {
-        link.setAttribute('type', type);
-      }
-    };
-
-    // Remove any <48px icon tags that violate Google Search's minimum 48x48px requirement
-    ['favicon-16', 'favicon-32'].forEach((legacyId) => {
-      const el = document.getElementById(legacyId);
-      if (el && el.parentNode) el.parentNode.removeChild(el);
-    });
-
-    ensureIconLink('favicon-ico', 'icon', '48x48', '/favicon.ico', 'image/x-icon');
-    ensureIconLink('favicon-48', 'icon', '48x48', '/favicon-48x48.png', 'image/png');
-    ensureIconLink('favicon-96', 'icon', '96x96', '/favicon-96x96.png', 'image/png');
-    ensureIconLink('favicon-144', 'icon', '144x144', '/favicon-144x144.png', 'image/png');
-    ensureIconLink('favicon-192', 'icon', '192x192', '/favicon-192x192.png', 'image/png');
-    ensureIconLink('favicon-512', 'icon', '512x512', '/favicon-512x512.png', 'image/png');
-    ensureIconLink('apple-touch-icon', 'apple-touch-icon', '180x180', '/apple-touch-icon.png');
-    ensureIconLink('favicon-shortcut', 'shortcut icon', '', '/favicon.ico', 'image/x-icon');
-
-    // Update JSON-LD Structured Data script
     if (!isAdminRoute) {
       const jsonLdData = buildStructuredDataGraph(seoGlobal, {
         ...activePageSeo,

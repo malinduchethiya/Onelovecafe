@@ -11,7 +11,6 @@ import {
   DEFAULT_PAGE_SEO,
   buildStructuredDataGraph,
 } from './data/seoDefaults';
-import { PROJECT_FAVICON_ASSETS_BASE64 } from './data/projectFaviconAssets';
 import { GlobalSeoConfig, PageSeoConfig, SeoPageKey } from './types/seo';
 import { R2MediaManifest } from './types/cafe';
 import { DEFAULT_GALLERY, DEFAULT_SETTINGS } from './data/seedData';
@@ -962,31 +961,6 @@ export default {
 
     if (pathname.startsWith('/api/')) {
       return jsonResponse({ ok: true, success: true });
-    }
-
-    // Serve project Favicon & Logo files directly with explicit Google-Favicon & Googlebot-Image headers (GET & HEAD)
-    const directProjectAssetKey = `public${pathname === '/api/seo/favicon' ? '/favicon-96x96.png' : pathname}`;
-    if (
-      (request.method === 'GET' || request.method === 'HEAD') &&
-      directProjectAssetKey in PROJECT_FAVICON_ASSETS_BASE64
-    ) {
-      const b64 = PROJECT_FAVICON_ASSETS_BASE64[directProjectAssetKey];
-      const binaryStr = atob(b64);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) {
-        bytes[i] = binaryStr.charCodeAt(i);
-      }
-      const isIco = directProjectAssetKey.endsWith('.ico');
-      return new Response(request.method === 'HEAD' ? null : bytes.buffer, {
-        status: 200,
-        headers: {
-          'Content-Type': isIco ? 'image/x-icon' : 'image/png',
-          'Content-Length': String(bytes.byteLength),
-          'Cache-Control': 'public, max-age=86400, stale-while-revalidate=604800',
-          'Access-Control-Allow-Origin': '*',
-          'X-Robots-Tag': 'all',
-        },
-      });
     }
 
     // Delegate static assets and SPA routes to Cloudflare Workers Static Assets binding

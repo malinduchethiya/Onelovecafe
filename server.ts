@@ -311,34 +311,6 @@ function injectServerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   return html;
 }
 
-// Serve project binary favicon and logo files directly for Google Search & Googlebot-Image crawler
-function sendFaviconResponse(res: express.Response, preferredFile: string, _customUrl?: string) {
-  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('X-Robots-Tag', 'all');
-
-  const targetFile = path.join(__dirname, 'public', preferredFile);
-  if (fs.existsSync(targetFile)) {
-    const isIco = preferredFile.endsWith('.ico');
-    res.setHeader('Content-Type', isIco ? 'image/x-icon' : 'image/png');
-    res.sendFile(targetFile);
-    return;
-  }
-
-  const defaultAssetFile = path.join(
-    __dirname,
-    'public',
-    DEFAULT_BRAND_FAVICON_PATH.replace(/^\//, '')
-  );
-  if (fs.existsSync(defaultAssetFile)) {
-    res.setHeader('Content-Type', 'image/png');
-    res.sendFile(defaultAssetFile);
-    return;
-  }
-
-  res.status(404).end();
-}
-
 // In-memory sliding window rate limiter for public endpoints
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
@@ -612,55 +584,6 @@ async function startServer() {
     }
 
     next();
-  });
-
-  // Public Google Search Favicon & Logo Endpoints (Direct Project Files, 1:1 Square, Multiples of 48px)
-  app.get('/favicon.ico', (_req, res) => {
-    sendFaviconResponse(res, 'favicon.ico');
-  });
-
-  app.get('/favicon-16x16.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-16x16.png');
-  });
-
-  app.get('/favicon-32x32.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-32x32.png');
-  });
-
-  app.get('/favicon-48x48.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-48x48.png');
-  });
-
-  app.get('/favicon-96x96.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-96x96.png');
-  });
-
-  app.get('/favicon-144x144.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-144x144.png');
-  });
-
-  app.get('/favicon-192x192.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-192x192.png');
-  });
-
-  app.get('/favicon-512x512.png', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-512x512.png');
-  });
-
-  app.get('/apple-touch-icon.png', (_req, res) => {
-    sendFaviconResponse(res, 'apple-touch-icon.png');
-  });
-
-  app.get('/logo.png', (_req, res) => {
-    sendFaviconResponse(res, 'logo.png');
-  });
-
-  app.get('/logo-transparent.png', (_req, res) => {
-    sendFaviconResponse(res, 'logo-transparent.png');
-  });
-
-  app.get('/api/seo/favicon', (_req, res) => {
-    sendFaviconResponse(res, 'favicon-96x96.png');
   });
 
   // Live SEO State Sync Endpoint (Receives updates from Firestore listener / Admin SEO Panel)
@@ -1062,41 +985,8 @@ async function startServer() {
     ).replace(/\/$/, '');
 
     const lines = [
-      'User-agent: Google-Favicon',
-      'Allow: /favicon.ico',
-      'Allow: /favicon-48x48.png',
-      'Allow: /favicon-96x96.png',
-      'Allow: /favicon-144x144.png',
-      'Allow: /favicon-192x192.png',
-      'Allow: /favicon-512x512.png',
-      'Allow: /apple-touch-icon.png',
-      'Allow: /logo.png',
-      'Allow: /site.webmanifest',
-      'Allow: /',
-      '',
-      'User-agent: Googlebot-Image',
-      'Allow: /favicon.ico',
-      'Allow: /favicon-48x48.png',
-      'Allow: /favicon-96x96.png',
-      'Allow: /favicon-144x144.png',
-      'Allow: /favicon-192x192.png',
-      'Allow: /favicon-512x512.png',
-      'Allow: /apple-touch-icon.png',
-      'Allow: /logo.png',
-      'Allow: /logo-transparent.png',
-      'Allow: /',
-      '',
       'User-agent: *',
       seoState.global.allowIndexing ? 'Allow: /' : 'Disallow: /',
-      'Allow: /favicon.ico',
-      'Allow: /favicon-48x48.png',
-      'Allow: /favicon-96x96.png',
-      'Allow: /favicon-144x144.png',
-      'Allow: /favicon-192x192.png',
-      'Allow: /favicon-512x512.png',
-      'Allow: /apple-touch-icon.png',
-      'Allow: /logo.png',
-      'Allow: /site.webmanifest',
       'Disallow: /admin',
       'Disallow: /admin/',
       'Disallow: /admin/seo',
@@ -1147,15 +1037,29 @@ ${indexablePages
     fs.existsSync(path.join(__dirname, 'dist', 'index.html'));
 
   if (!isProd) {
-    const vite = await createViteServer({
+    // Bind port 3000 immediately so dev server readiness checks never time out while Vite initializes
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`OneLove Café server listening on http://0.0.0.0:${PORT}`);
+    });
+
+    const vitePromise = createViteServer({
       server: { middlewareMode: true },
       appType: 'custom',
     });
-    app.use(vite.middlewares);
+
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (e) {
+        next(e);
+      }
+    });
 
     // Server-side HTML metadata & JSON-LD injection in development
     app.use('*', async (req, res, next) => {
       try {
+        const vite = await vitePromise;
         const url = req.originalUrl;
         const templatePath = path.resolve(__dirname, 'index.html');
         let template = fs.readFileSync(templatePath, 'utf-8');
@@ -1186,9 +1090,11 @@ ${indexablePages
     });
   });
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`OneLove Café server listening on http://0.0.0.0:${PORT}`);
-  });
+  if (isProd) {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`OneLove Café server listening on http://0.0.0.0:${PORT}`);
+    });
+  }
 }
 
 startServer();
