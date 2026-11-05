@@ -1,6 +1,6 @@
 {
-  "version": 22,
-  "updatedAt": "2026-10-28T09:32:30.705Z",
+  "version": 36,
+  "updatedAt": "2026-10-28T10:12:40.452Z",
   "heroImages": [
     "https://cdn.onelovecafesigiriya.com/hero/1793179932916-coffee-latter-with-cookies-croissant-sid.webp",
     "https://cdn.onelovecafesigiriya.com/hero/1793179940265-42957eec-2f66-492e-b754-eaeb2e0420af.webp",
@@ -8,14 +8,18 @@
   ],
   "heroSlideshowSpeedSeconds": 5,
   "floorPlanImageUrl": "",
-  "menuImages": {},
+  "menuImages": {
+    "item_avocado_kalupol": "https://cdn.onelovecafesigiriya.com/menu/1793182336383-42957eec-2f66-492e-b754-eaeb2e0420af.webp",
+    "item_black_pork_banquet": "https://cdn.onelovecafesigiriya.com/menu/1793182339063-cozy-coffee-shop-interior--1-.webp",
+    "item_cacao_torte": "https://cdn.onelovecafesigiriya.com/menu/1793182342781-cozy-coffee-shop-interior.webp"
+  },
   "galleryItems": [
     {
       "id": "gal_1",
       "title": "Golden Hour Over the Canopy Verandah",
       "category": "Architecture",
       "caption": "Handcrafted teak tables overlooking wild heliconia gardens with Sigiriya Lion Rock in the warm distance.",
-      "imageUrl": "editorial:hero-sanctuary",
+      "imageUrl": "https://cdn.onelovecafesigiriya.com/gallery/1793182353441-wp11934943-cozy-cafe-4k-wallpapers.webp",
       "aspectRatio": "16:9",
       "isFeatured": true,
       "sortOrder": 1
@@ -25,7 +29,7 @@
       "title": "Morning Hopper Ritual",
       "category": "Culinary",
       "caption": "Crisp fermented red-rice hoppers served on stoneware made by Kandy ceramicists.",
-      "imageUrl": "editorial:hopper-bowl",
+      "imageUrl": "https://cdn.onelovecafesigiriya.com/gallery/1793182356132-42957eec-2f66-492e-b754-eaeb2e0420af.webp",
       "aspectRatio": "4:3",
       "isFeatured": true,
       "sortOrder": 2
@@ -65,14 +69,23 @@
       "title": "Mist Over Pidurangala & Lion Rock",
       "category": "Sigiriya Surroundings",
       "caption": "Just six minutes from the ancient rock fortress trails, designed for post-climb restoration.",
-      "imageUrl": "editorial:sigiriya-mist",
+      "imageUrl": "https://cdn.onelovecafesigiriya.com/gallery/1793182359755-cozy-coffee-shop-interior--1-.webp",
       "aspectRatio": "16:9",
       "isFeatured": false,
       "sortOrder": 6
     }
   ],
   "eventImages": {},
-  "sectionImages": {},
+  "sectionImages": {
+    "menu_gallery_bg": "https://cdn.onelovecafesigiriya.com/menu_gallery_bg/1793182244549-steaming-coffee-cup-banner-with-rustic-w.webp",
+    "story_collage_1": "https://cdn.onelovecafesigiriya.com/collage/1793182269079-wp11877848-cozy-rain-wallpapers.webp",
+    "story_collage_2": "https://cdn.onelovecafesigiriya.com/collage/1793182271989-wp2352856-coffee-shop-wallpapers.webp",
+    "story_collage_3": "https://cdn.onelovecafesigiriya.com/collage/1793182275393-wp11934956-cozy-cafe-4k-wallpapers.webp",
+    "story_collage_4": "https://cdn.onelovecafesigiriya.com/collage/1793182279743-42957eec-2f66-492e-b754-eaeb2e0420af--1-.webp",
+    "story_collage_5": "https://cdn.onelovecafesigiriya.com/collage/1793182284924-cozy-coffee-shop-interior--1-.webp",
+    "story": "https://cdn.onelovecafesigiriya.com/content/1793182321672-wp2352856-coffee-shop-wallpapers.webp",
+    "concierge": "https://cdn.onelovecafesigiriya.com/content/1793182325245-wp11934956-cozy-cafe-4k-wallpapers.webp"
+  },
   "seoImages": {
     "pageOgImages": {},
     "defaultOgImageUrl": "",

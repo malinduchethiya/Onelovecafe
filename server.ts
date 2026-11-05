@@ -1037,19 +1037,33 @@ ${indexablePages
     fs.existsSync(path.join(__dirname, 'dist', 'index.html'));
 
   if (!isProd) {
+    app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+
     // Bind port 3000 immediately so dev server readiness checks never time out while Vite initializes
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`OneLove Café server listening on http://0.0.0.0:${PORT}`);
     });
 
+    let viteReady: Awaited<ReturnType<typeof createViteServer>> | null = null;
     const vitePromise = createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false, watch: null },
       appType: 'custom',
+      optimizeDeps: { entries: ['index.html'] },
+    }).then((v) => {
+      viteReady = v;
+      return v;
     });
 
     app.use(async (req, res, next) => {
       try {
-        const vite = await vitePromise;
+        if (!viteReady && (req.path === '/' || req.path === '/index.html')) {
+          const templatePath = path.resolve(__dirname, 'index.html');
+          const rawHtml = fs.readFileSync(templatePath, 'utf-8');
+          const seoHtml = injectServerSeoIntoHtml(rawHtml, req.originalUrl, req.get('host') || '');
+          res.status(200).set({ 'Content-Type': 'text/html' }).end(seoHtml);
+          return;
+        }
+        const vite = viteReady || (await vitePromise);
         vite.middlewares(req, res, next);
       } catch (e) {
         next(e);
@@ -1059,11 +1073,12 @@ ${indexablePages
     // Server-side HTML metadata & JSON-LD injection in development
     app.use('*', async (req, res, next) => {
       try {
-        const vite = await vitePromise;
         const url = req.originalUrl;
         const templatePath = path.resolve(__dirname, 'index.html');
         let template = fs.readFileSync(templatePath, 'utf-8');
-        template = await vite.transformIndexHtml(url, template);
+        if (viteReady) {
+          template = await viteReady.transformIndexHtml(url, template);
+        }
         const seoHtml = injectServerSeoIntoHtml(template, url, req.get('host') || '');
         res.status(200).set({ 'Content-Type': 'text/html' }).end(seoHtml);
       } catch (e) {
