@@ -8,4 +8,5 @@ coverage/
 !.env.example
 .seo-runtime-cache.json
 .aistudio/
-
+bun.lock
+bun.lockb
