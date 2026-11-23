@@ -69,6 +69,7 @@ export const BOOTSTRAP_ADMIN_EMAIL = 'merlinfiverr0@gmail.com';
 export const BOOTSTRAP_ADMIN_EMAILS = [
   'merlinfiverr0@gmail.com',
   'onelovecafesigiriya@gmail.com',
+  'manojmadurangasadaruwan@gmail.com',
 ];
 
 export function isAuthorizedAdminEmail(email?: string | null): boolean {

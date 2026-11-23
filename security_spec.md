@@ -3,13 +3,14 @@
 ## 1. Data Invariants
 
 1. **Default Deny Catch-All**: Unmatched paths (`/{document=**}`) deny all reads and writes unconditionally.
-2. **Verified Admin Governance (`isAdmin()`)**: Only authenticated users with `request.auth.token.email_verified == true` whose email matches the bootstrapped owner (`merlinfiverr0@gmail.com`) or whose UID exists in `/admins/$(request.auth.uid)` may manage catalog, floor plan, settings, or view PII collections (`/reservations`, `/inquiries`, `/admins`, `/auditLogs`).
+2. **Verified Admin Governance (`isAdmin()`)**: Only authenticated users with `request.auth.token.email_verified == true` whose email matches an authorized bootstrapped admin (`merlinfiverr0@gmail.com`, `onelovecafesigiriya@gmail.com`, `manojmadurangasadaruwan@gmail.com`) or whose UID exists in `/admins/$(request.auth.uid)` may manage catalog, floor plan, settings, or view PII collections (`/inquiries`, `/admins`, `/auditLogs`).
 3. **PII Isolation (Split Collection Pattern)**:
-   - `/reservations/{reservationId}` and `/inquiries/{inquiryId}` store guest PII (`guestEmail`, `whatsapp`, `phone`, `message`). Public guests can `create` validated documents with `createdAt == request.time`, but `get` and `list` are strictly restricted to `isAdmin()`.
+   - `/reservations/{reservationId}` and `/inquiries/{inquiryId}` store guest PII (`guestEmail`, `whatsapp`, `phone`, `message`).
    - `/availability/{slotId}` stores zero PII (`date`, `time`, `tableId`, `status`, `holdExpiresAtMs`, `sessionId`, `referenceCode`, `updatedAt`) so the interactive floor plan can query table status safely without exposing guest contact details.
 4. **Path Variable Hardening (`isValidId`)**: Every single-document target operation (`get`, `create`, `update`, `delete`) validates its path ID (`id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$')`).
 5. **Strict Key & Size Enforcement (`hasAll` + `hasOnly` + `.size()`)**: Every `isValid[Entity]` helper enforces exact allowed keys, required keys, string length boundaries, numeric boundaries, and server timestamp equality (`request.time`).
 6. **Terminal State & Action-Based Updates**: Updates require `isValid[Entity](incoming())` and `incoming().updatedAt == request.time`.
+7. **Server-Verified Expired Reservation Purge (`isDateTimePassed`)**: Deleting a reservation or reserved availability slot is restricted to `isAdmin()` or strictly when the document's `date` + `time` (Sri Lanka UTC+05:30) has passed according to Firestore server `request.time`. Future/active reservations cannot be deleted by non-admins.
 
 ## 2. The "Dirty Dozen" Adversarial Payloads
 

@@ -32,9 +32,22 @@ service cloud.firestore {
         request.auth.token.email == 'merlinfiverr0@gmail.com' ||
         request.auth.token.email == 'onelovecafesigiriya@gmail.com' ||
         request.auth.token.email == 'Onelovecafesigiriya@gmail.com' ||
-        request.auth.token.email.matches('(?i)^(merlinfiverr0|onelovecafesigiriya)@gmail\\.com$') ||
+        request.auth.token.email == 'manojmadurangasadaruwan@gmail.com' ||
+        request.auth.token.email.matches('(?i)^(merlinfiverr0|onelovecafesigiriya|manojmadurangasadaruwan)@gmail\\.com$') ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
+    }
+
+    // Checks whether a reservation's YYYY-MM-DD + HH:MM (Sri Lanka UTC+05:30) has passed against server request.time
+    function isDateTimePassed(dateStr, timeStr) {
+      return dateStr is string &&
+        dateStr.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        timeStr is string &&
+        timeStr.matches('^\\d{2}:\\d{2}$') &&
+        (request.time + duration.value(330, 'm')) > (
+          timestamp.date(int(dateStr[0:4]), int(dateStr[5:7]), int(dateStr[8:10])) +
+          duration.value(int(timeStr[0:2]) * 60 + int(timeStr[3:5]), 'm')
+        );
     }
 
     // Entity Validation Blueprints (Pillar 2) — Base64 images supported up to 900KB
@@ -338,7 +351,7 @@ service cloud.firestore {
           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
         )
       );
-      allow delete: if isValidId(reservationId) && isAdmin();
+      allow delete: if isValidId(reservationId) && (isAdmin() || isDateTimePassed(existing().date, existing().time));
     }
 
     // 3. Reservation Holds Collection (Non-PII Ephemeral Holds)
@@ -370,7 +383,7 @@ service cloud.firestore {
           existing().status == 'held' ||
           incoming().status in ['available', 'held', 'reserved']
         );
-      allow delete: if isValidId(slotId) && (isAdmin() || existing().status == 'available' || existing().status == 'held');
+      allow delete: if isValidId(slotId) && (isAdmin() || existing().status == 'available' || existing().status == 'held' || isDateTimePassed(existing().date, existing().time));
     }
 
     // 5. Tables Collection

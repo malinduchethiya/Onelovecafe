@@ -61,6 +61,44 @@ import {
 import { GlobalSeoConfig, PageSeoConfig, SeoPageKey } from '../types/seo';
 import { DEFAULT_GLOBAL_SEO, DEFAULT_PAGE_SEO } from '../data/seoDefaults';
 
+const SRI_LANKA_UTC_OFFSET_MINUTES = 330; // Asia/Colombo (UTC+05:30, no DST)
+
+function isReservationDateTimePassed(
+  dateStr?: string,
+  timeStr?: string,
+  nowMs = Date.now()
+): boolean {
+  if (!dateStr || !timeStr) return false;
+  const dateMatch = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) return false;
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+
+  const timeMatch = timeStr.trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+  if (!timeMatch) return false;
+  let hours = Number(timeMatch[1]);
+  const minutes = Number(timeMatch[2]);
+  const meridiem = timeMatch[3]?.toUpperCase();
+  if (meridiem === 'PM' && hours < 12) hours += 12;
+  if (meridiem === 'AM' && hours === 12) hours = 0;
+
+  if (
+    Number.isNaN(year) ||
+    Number.isNaN(month) ||
+    Number.isNaN(day) ||
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes)
+  ) {
+    return false;
+  }
+
+  const reservationUtcMs =
+    Date.UTC(year, month - 1, day, hours, minutes, 0, 0) -
+    SRI_LANKA_UTC_OFFSET_MINUTES * 60 * 1000;
+  return nowMs > reservationUtcMs;
+}
+
 interface HoldResult {
   slotId: string;
   expiresAtMs: number;
@@ -442,6 +480,51 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const autoSeededRef = useRef(false);
   const autoMigratedLegacyRef = useRef(false);
+  const purgingReservationIdsRef = useRef<Set<string>>(new Set());
+  const purgingSlotIdsRef = useRef<Set<string>>(new Set());
+  const reservationsRef = useRef<ReservationRecord[]>([]);
+
+  useEffect(() => {
+    reservationsRef.current = reservations;
+  }, [reservations]);
+
+  const purgeExpiredReservation = useCallback(async (res: ReservationRecord) => {
+    if (!res.id || purgingReservationIdsRef.current.has(res.id)) return;
+    purgingReservationIdsRef.current.add(res.id);
+    try {
+      await deleteDoc(doc(db, 'reservations', res.id));
+      const normTime = (res.time || '').replace(/[^a-zA-Z0-9]/g, '-');
+      if (res.date && normTime && res.tableId) {
+        const slotId = `${res.date}_${normTime}_${res.tableId}`;
+        await Promise.all([
+          deleteDoc(doc(db, 'availability', slotId)).catch(() => {}),
+          deleteDoc(doc(db, 'reservationHolds', slotId)).catch(() => {}),
+        ]);
+      }
+    } catch {
+      // Allow retry on next sweep if temporarily offline or concurrent delete failed
+      purgingReservationIdsRef.current.delete(res.id);
+    }
+  }, []);
+
+  // Periodic background sweep: automatically delete reservations from Firestore once their date & time passes
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const nowMs = Date.now();
+      const expired = reservationsRef.current.filter((r) =>
+        isReservationDateTimePassed(r.date, r.time, nowMs)
+      );
+      if (expired.length === 0) return;
+
+      const expiredIds = new Set(expired.map((r) => r.id));
+      setReservations((prev) => prev.filter((r) => !expiredIds.has(r.id)));
+      expired.forEach((r) => {
+        purgeExpiredReservation(r);
+      });
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, [purgeExpiredReservation]);
 
   // 1. Auth & Admin Role Listener
   useEffect(() => {
@@ -879,26 +962,59 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'availability'),
         (snap) => {
-          const list = snap.docs.map((d) => ({
+          const nowMs = Date.now();
+          const allSlots = snap.docs.map((d) => ({
             id: d.id,
             ...(d.data() as Omit<AvailabilitySlotRecord, 'id'>),
           }));
-          setAvailability(list);
+          const activeSlots: AvailabilitySlotRecord[] = [];
+          allSlots.forEach((slot) => {
+            if (isReservationDateTimePassed(slot.date, slot.time, nowMs)) {
+              if (!purgingSlotIdsRef.current.has(slot.id)) {
+                purgingSlotIdsRef.current.add(slot.id);
+                deleteDoc(doc(db, 'availability', slot.id)).catch(() => {
+                  purgingSlotIdsRef.current.delete(slot.id);
+                });
+              }
+            } else {
+              activeSlots.push(slot);
+            }
+          });
+          setAvailability(activeSlots);
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'availability')
       )
     );
 
-    // Real-time Reservations Sync: Automatically frees tables when reservations are cancelled or rejected
+    // Real-time Reservations Sync: Automatically deletes passed reservations from Firestore
+    // and frees tables when reservations are cancelled or rejected
     const releasedReservationIds = new Set<string>();
     unsubs.push(
       onSnapshot(
         collection(db, 'reservations'),
         (snap) => {
-          const list = snap.docs
+          const nowMs = Date.now();
+          const allList = snap.docs
             .map((d) => ({ id: d.id, ...(d.data() as Omit<ReservationRecord, 'id'>) }))
             .sort((a, b) => `${b.date}_${b.time}`.localeCompare(`${a.date}_${a.time}`));
-          setReservations(list);
+
+          const activeList: ReservationRecord[] = [];
+          const expiredList: ReservationRecord[] = [];
+          allList.forEach((res) => {
+            if (isReservationDateTimePassed(res.date, res.time, nowMs)) {
+              expiredList.push(res);
+            } else {
+              activeList.push(res);
+            }
+          });
+
+          setReservations(activeList);
+
+          if (expiredList.length > 0) {
+            expiredList.forEach((expiredRes) => {
+              purgeExpiredReservation(expiredRes);
+            });
+          }
 
           snap.docChanges().forEach((change) => {
             if (change.type === 'removed') return;
@@ -906,6 +1022,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: change.doc.id,
               ...(change.doc.data() as Omit<ReservationRecord, 'id'>),
             };
+            if (isReservationDateTimePassed(res.date, res.time, nowMs)) return;
+
             if (res.status === 'cancelled' || res.status === 'rejected') {
               const releaseKey = `${res.id}_${res.status}`;
               if (releasedReservationIds.has(releaseKey)) return;
@@ -914,7 +1032,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const normTime = res.time.replace(/[^a-zA-Z0-9]/g, '-');
               const slotId = `${res.date}_${normTime}_${res.tableId}`;
 
-              const hasOtherActiveReservation = list.some(
+              const hasOtherActiveReservation = activeList.some(
                 (other) =>
                   other.id !== res.id &&
                   other.date === res.date &&
