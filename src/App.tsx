@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import Lenis from 'lenis';
 import { CafeProvider, useCafe } from './context/CafeContext';
 import { EditorialVisual } from './components/EditorialVisual';
 import { LateriteStorySection } from './components/LateriteStorySection';
@@ -185,7 +186,11 @@ const OneLoveRouter: React.FC = () => {
 
     const handlePopState = () => {
       setPathname(window.location.pathname);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (lenisRef.current) {
+        lenisRef.current.scrollTo(0, { immediate: true });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -196,7 +201,11 @@ const OneLoveRouter: React.FC = () => {
     if (to === pathname) return;
     window.history.pushState({}, '', to);
     setPathname(to);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (lenisRef.current) {
+      lenisRef.current.scrollTo(0, { immediate: true });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleReserveCtaClick = () => {
@@ -205,8 +214,12 @@ const OneLoveRouter: React.FC = () => {
       const el = document.getElementById('reserve-section');
       if (el) {
         const navHeight = 76;
-        const y = el.getBoundingClientRect().top + window.scrollY - navHeight;
-        window.scrollTo({ top: y, behavior: 'smooth' });
+        if (lenisRef.current) {
+          lenisRef.current.scrollTo(el, { offset: -navHeight, duration: 1.1 });
+        } else {
+          const y = el.getBoundingClientRect().top + window.scrollY - navHeight;
+          window.scrollTo({ top: y, behavior: 'smooth' });
+        }
         return;
       }
     }
@@ -275,83 +288,138 @@ const OneLoveRouter: React.FC = () => {
     setHeroSlideIndex((prev) => (prev + 1) % heroSlides.length);
   };
 
-  // Scroll & Mouse Movement Parallax for Hero Section + Dynamic Coffee Roast Transition for Selected Menu Gallery Section
-  const [scrollY, setScrollY] = useState(0);
-  const [coffeeProgress, setCoffeeProgress] = useState(0);
-  const [mouseParallax, setMouseParallax] = useState({ x: 0, y: 0 });
+  // Zero-Jank Smooth Scroll (Lenis + GSAP Ticker) & Ref-Driven Parallax (Zero React Re-Renders on Scroll)
+  const [isScrolledPastHeader, setIsScrolledPastHeader] = useState(false);
+  const [isMenuSectionDark, setIsMenuSectionDark] = useState(false);
   const homeMenuGalleryRef = useRef<HTMLElement | null>(null);
+  const menuAuraRef = useRef<HTMLDivElement | null>(null);
+  const heroBgRef = useRef<HTMLDivElement | null>(null);
+  const mouseParallaxRef = useRef({ x: 0, y: 0 });
+  const lenisRef = useRef<Lenis | null>(null);
   const appRootRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    let ticking = false;
-    const updateScrollState = () => {
-      setScrollY(window.scrollY);
-      const targetEl = pathname === '/' ? homeMenuGalleryRef.current : null;
+  const computeDynamicCoffeeBg = (t: number): string => {
+    if (t <= 0.005) return '#FCF9F4';
+    const lerp = (a: number, b: number, u: number) => Math.round(a + (b - a) * u);
+    if (t < 0.45) {
+      const u = t / 0.45;
+      return `rgb(${lerp(252, 148, u)}, ${lerp(249, 95, u)}, ${lerp(244, 62, u)})`;
+    }
+    const u = (t - 0.45) / 0.55;
+    return `rgb(${lerp(148, 46, u)}, ${lerp(95, 26, u)}, ${lerp(62, 16, u)})`;
+  };
 
+  const applyHeroParallaxTransform = (scrollTop: number) => {
+    const bgEl = heroBgRef.current;
+    if (!bgEl) return;
+    // Clamp hero parallax once scrolled well past the hero to save GPU work
+    const clampedScroll = Math.min(scrollTop, 1100);
+    const tx = mouseParallaxRef.current.x * 0.06;
+    const ty = clampedScroll * 0.12 + mouseParallaxRef.current.y * 0.06;
+    bgEl.style.transform = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0)`;
+  };
+
+  // Lenis Inertial Smooth Scrolling synced directly to GSAP ScrollTrigger
+  useEffect(() => {
+    if (routeInfo.page === 'admin') return;
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
+
+    const lenis = new Lenis({
+      lerp: 0.085,
+      smoothWheel: true,
+      wheelMultiplier: 0.95,
+      touchMultiplier: 1.15,
+      autoRaf: false,
+    });
+    lenisRef.current = lenis;
+
+    lenis.on('scroll', ScrollTrigger.update);
+
+    const onTick = (time: number) => {
+      lenis.raf(time * 1000);
+    };
+    gsap.ticker.add(onTick);
+    gsap.ticker.lagSmoothing(0);
+
+    return () => {
+      gsap.ticker.remove(onTick);
+      lenis.off('scroll', ScrollTrigger.update);
+      lenis.destroy();
+      lenisRef.current = null;
+    };
+  }, [routeInfo.page]);
+
+  // Lightweight Ref-Driven Scroll Updates (never triggers per-frame React state updates)
+  useEffect(() => {
+    let rafId: number | null = null;
+    const updateScrollEffects = () => {
+      rafId = null;
+      const y = window.scrollY;
+      const pastHeader = y > 48;
+      setIsScrolledPastHeader((prev) => (prev === pastHeader ? prev : pastHeader));
+      applyHeroParallaxTransform(y);
+
+      const targetEl = pathname === '/' ? homeMenuGalleryRef.current : null;
       if (!targetEl) {
-        setCoffeeProgress(0);
+        setIsMenuSectionDark((prev) => (prev ? false : prev));
+        return;
+      }
+
+      if (menuGalleryBgUrl) {
+        setIsMenuSectionDark((prev) => (prev ? prev : true));
         return;
       }
 
       const vh = window.innerHeight || 800;
       const rect = targetEl.getBoundingClientRect();
-      // Smooth entry ramp as the menu gallery section scrolls into the viewport
       const entry = (vh * 0.88 - rect.top) / (vh * 0.58);
-      // Smooth exit ramp as the bottom of the menu gallery section scrolls out of the viewport
       const exit = (rect.bottom - vh * 0.14) / (vh * 0.58);
       const raw = Math.max(0, Math.min(1, Math.min(entry, exit)));
-      // Cubic smoothstep for an organic, stimulating progression
       const eased = raw * raw * (3 - 2 * raw);
-      setCoffeeProgress(Number(eased.toFixed(3)));
+
+      targetEl.style.backgroundColor = computeDynamicCoffeeBg(eased);
+      targetEl.style.borderColor =
+        eased > 0.35
+          ? `rgba(231, 222, 211, ${Math.max(0.18, 1 - eased * 0.75).toFixed(3)})`
+          : '#E7DED3';
+      if (menuAuraRef.current) {
+        menuAuraRef.current.style.opacity = eased.toFixed(3);
+      }
+      const nextDark = eased > 0.35;
+      setIsMenuSectionDark((prev) => (prev === nextDark ? prev : nextDark));
     };
 
-    const handleScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(() => {
-          updateScrollState();
-          ticking = false;
-        });
-        ticking = true;
+    const scheduleUpdate = () => {
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(updateScrollEffects);
       }
     };
 
-    updateScrollState();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll, { passive: true });
+    updateScrollEffects();
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
+    window.addEventListener('resize', scheduleUpdate, { passive: true });
     return () => {
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('scroll', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [pathname]);
-
-  // Multi-stop color interpolation: Limestone Cream (#FCF9F4) -> Caramel Crema (#945F3E) -> Roasted Espresso Coffee (#2E1A10)
-  const dynamicCoffeeBg = useMemo(() => {
-    const t = coffeeProgress;
-    if (t <= 0.005) return '#FCF9F4';
-    const lerp = (a: number, b: number, u: number) => Math.round(a + (b - a) * u);
-    if (t < 0.45) {
-      const u = t / 0.45;
-      const r = lerp(252, 148, u);
-      const g = lerp(249, 95, u);
-      const b = lerp(244, 62, u);
-      return `rgb(${r}, ${g}, ${b})`;
-    }
-    const u = (t - 0.45) / 0.55;
-    const r = lerp(148, 46, u);
-    const g = lerp(95, 26, u);
-    const b = lerp(62, 16, u);
-    return `rgb(${r}, ${g}, ${b})`;
-  }, [coffeeProgress]);
+  }, [pathname, menuGalleryBgUrl]);
 
   const handleHeroMouseMove = (e: React.MouseEvent<HTMLElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 24;
-    const y = ((e.clientY - rect.top) / rect.height - 0.5) * 24;
-    setMouseParallax({ x, y });
+    mouseParallaxRef.current = {
+      x: ((e.clientX - rect.left) / rect.width - 0.5) * 24,
+      y: ((e.clientY - rect.top) / rect.height - 0.5) * 24,
+    };
+    applyHeroParallaxTransform(window.scrollY);
   };
 
   const handleHeroMouseLeave = () => {
-    setMouseParallax({ x: 0, y: 0 });
+    mouseParallaxRef.current = { x: 0, y: 0 };
+    applyHeroParallaxTransform(window.scrollY);
   };
 
   // 4 Columns × 4 Rows = 16 items in Signature Plates & Highland Pour-Overs
@@ -640,6 +708,56 @@ const OneLoveRouter: React.FC = () => {
           }
         );
       }
+
+      // 8. One-Way Section Flyover Lift Effect (plays only when scrolling down, never when scrolling up)
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!prefersReducedMotion) {
+        const scrollSections = gsap.utils.toArray<HTMLElement>('main section');
+        scrollSections.forEach((sectionEl, idx) => {
+          // Keep the initial hero section anchored immediately above the fold
+          if (routeInfo.page === 'home' && idx === 0) return;
+
+          // Only hide sections that are currently below the viewport fold
+          const rect = sectionEl.getBoundingClientRect();
+          if (rect.top < window.innerHeight * 0.92) return;
+
+          gsap.set(sectionEl, {
+            y: 64,
+            scale: 0.97,
+            opacity: 0,
+            transformOrigin: 'center top',
+            force3D: true,
+          });
+
+          ScrollTrigger.create({
+            trigger: sectionEl,
+            start: 'top 90%',
+            once: true,
+            onEnter: () => {
+              gsap.to(sectionEl, {
+                y: 0,
+                scale: 1,
+                opacity: 1,
+                duration: 0.85,
+                ease: 'power3.out',
+                force3D: true,
+                clearProps: 'transform,opacity',
+              });
+            },
+            onEnterBack: () => {
+              // Never play flyover animation when scrolling up — snap cleanly to visible
+              gsap.set(sectionEl, {
+                y: 0,
+                scale: 1,
+                opacity: 1,
+                clearProps: 'transform,opacity',
+              });
+            },
+          });
+        });
+      }
     }, rootEl);
 
     return () => ctx.revert();
@@ -670,7 +788,7 @@ const OneLoveRouter: React.FC = () => {
     );
   }
 
-  const isHeaderScrolledOrSubpage = routeInfo.page !== 'home' || scrollY > 48;
+  const isHeaderScrolledOrSubpage = routeInfo.page !== 'home' || isScrolledPastHeader;
 
   return (
     <div ref={appRootRef} className="min-h-screen flex flex-col bg-[#FCF9F4] text-[#110F0D]">
@@ -805,11 +923,12 @@ const OneLoveRouter: React.FC = () => {
                 onMouseLeave={handleHeroMouseLeave}
                 className="relative -mt-[72px] pt-[72px] min-h-[74vh] sm:min-h-[78vh] lg:min-h-[82vh] flex items-center justify-center bg-[#3A2E25] text-white overflow-hidden"
               >
-                {/* Background Slideshow Layer with Wide Field of View & Natural Framing */}
+                {/* Background Slideshow Layer with Wide Field of View & Zero-Jank Ref Parallax */}
                 <div
-                  className="absolute inset-0 transition-transform duration-300 ease-out pointer-events-none"
+                  ref={heroBgRef}
+                  className="absolute inset-0 pointer-events-none"
                   style={{
-                    transform: `translate3d(${mouseParallax.x * 0.06}px, ${scrollY * 0.12 + mouseParallax.y * 0.06}px, 0) scale(1)`,
+                    transform: 'translate3d(0px, 0px, 0)',
                     willChange: 'transform',
                   }}
                 >
@@ -1111,11 +1230,8 @@ const OneLoveRouter: React.FC = () => {
             <section
               ref={homeMenuGalleryRef}
               style={{
-                backgroundColor: menuGalleryBgUrl ? '#3A2B20' : dynamicCoffeeBg,
-                borderColor:
-                  menuGalleryBgUrl || coffeeProgress > 0.35
-                    ? `rgba(231, 222, 211, ${Math.max(0.18, 1 - coffeeProgress * 0.75)})`
-                    : '#E7DED3',
+                backgroundColor: menuGalleryBgUrl ? '#3A2B20' : '#FCF9F4',
+                borderColor: menuGalleryBgUrl ? 'rgba(231, 222, 211, 0.25)' : '#E7DED3',
               }}
               className="relative overflow-hidden w-full py-14 sm:py-24 lg:py-28 border-b"
             >
@@ -1146,8 +1262,9 @@ const OneLoveRouter: React.FC = () => {
 
               {/* Section-Scoped Stimulating Roasted Coffee Aura Overlay */}
               <div
+                ref={menuAuraRef}
                 aria-hidden="true"
-                style={{ opacity: menuGalleryBgUrl ? 0.35 : coffeeProgress }}
+                style={{ opacity: menuGalleryBgUrl ? 0.35 : 0 }}
                 className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_25%,rgba(217,114,54,0.24),transparent_55%),radial-gradient(circle_at_80%_75%,rgba(138,76,38,0.32),transparent_60%)]"
               />
 
@@ -1157,7 +1274,7 @@ const OneLoveRouter: React.FC = () => {
                     <div
                       style={{
                         color:
-                          menuGalleryBgUrl || coffeeProgress > 0.35 ? '#F3A871' : '#C65B2B',
+                          menuGalleryBgUrl || isMenuSectionDark ? '#F3A871' : '#C65B2B',
                       }}
                       className="text-[11px] uppercase tracking-[0.2em] font-semibold transition-colors duration-300 ease-out"
                     >
@@ -1166,7 +1283,7 @@ const OneLoveRouter: React.FC = () => {
                     <h2
                       style={{
                         color:
-                          menuGalleryBgUrl || coffeeProgress > 0.35 ? '#FCF6EE' : '#171513',
+                          menuGalleryBgUrl || isMenuSectionDark ? '#FCF6EE' : '#171513',
                       }}
                       className="text-3xl sm:text-5xl font-editorial font-semibold transition-colors duration-300 ease-out"
                     >
@@ -1181,7 +1298,7 @@ const OneLoveRouter: React.FC = () => {
                       navigate('/menu');
                     }}
                     className={`w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all duration-500 whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center ${
-                      menuGalleryBgUrl || coffeeProgress > 0.35
+                      menuGalleryBgUrl || isMenuSectionDark
                         ? 'bg-[#D9622B] text-[#FFFDF9] hover:bg-[#BF5220] shadow-[0_8px_24px_rgba(0,0,0,0.35)]'
                         : 'bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B]'
                     }`}
