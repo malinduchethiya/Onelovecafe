@@ -83,7 +83,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
           <div className="lg:col-span-6 space-y-6">
             <div data-story-reveal>
               <span className="inline-flex items-center px-3.5 py-1 rounded-full bg-white border border-[#14110E]/10 text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#C65B2B] font-medium">
-                Our Story
+                {storyContent?.kicker || 'Our Story'}
               </span>
             </div>
 
@@ -105,9 +105,8 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                   'OneLove Café began with a simple dream along the forested road beneath Sigiriya Lion Rock—building an open-air refuge around existing Banyan and Frangipani trees using porous red laterite stone, reclaimed teak, and hand-troweled lime plaster.'}
               </p>
               <p>
-                Whether you arrive straight after a sunrise climb for single-estate highland coffee
-                or gather beneath candlelit palms for wood-fired coastal plates, every visit is made
-                for unhurried moments.
+                {storyContent?.subheading ||
+                  'Whether you arrive straight after a sunrise climb for single-estate highland coffee or gather beneath candlelit palms for wood-fired coastal plates, every visit is made for unhurried moments.'}
               </p>
             </div>
 
@@ -155,7 +154,7 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
                   }}
                   className="inline-flex items-center justify-center min-h-[44px] px-7 py-3 rounded-full bg-[#C65B2B] hover:bg-[#B04E22] text-white text-[11px] font-semibold uppercase tracking-[0.16em] transition-colors cursor-pointer"
                 >
-                  Read Our Story
+                  {storyContent?.ctaLabel || 'Read Our Story'}
                 </a>
               </div>
             )}

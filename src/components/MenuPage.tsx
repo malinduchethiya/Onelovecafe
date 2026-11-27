@@ -162,42 +162,71 @@ export const MenuPage: React.FC<MenuPageProps> = ({
 
     const q = searchQuery.trim().toLowerCase();
 
-    return sectionCats
-      .map((category) => {
-        const items = menuItems.filter((item) => {
-          if (item.categoryId !== category.id) return false;
+    const matchesItemFilters = (item: MenuItem): boolean => {
+      if (q) {
+        const matchesText =
+          item.name.toLowerCase().includes(q) ||
+          item.description.toLowerCase().includes(q) ||
+          item.categoryName.toLowerCase().includes(q) ||
+          (item.dietaryTags || []).some((t) => t.toLowerCase().includes(q));
+        if (!matchesText) return false;
+      }
 
-          if (q) {
-            const matchesText =
-              item.name.toLowerCase().includes(q) ||
-              item.description.toLowerCase().includes(q) ||
-              item.categoryName.toLowerCase().includes(q) ||
-              (item.dietaryTags || []).some((t) => t.toLowerCase().includes(q));
-            if (!matchesText) return false;
-          }
+      const flags = extractDietaryFlags(item);
+      if (activeSection === 'food') {
+        if (foodFilter === 'vegetarian' && !flags.isVegetarian) return false;
+        if (foodFilter === 'vegan' && !flags.isVegan) return false;
+        if (foodFilter === 'gluten-free' && !flags.isGlutenFree) return false;
+        if (foodFilter === 'seafood' && !flags.isSeafood) return false;
+        if (foodFilter === 'chef-choice' && !flags.isChefSignature) return false;
+        if (foodFilter === 'featured' && !item.isFeatured) return false;
+      } else {
+        if (drinksFilter === 'single-origin' && !flags.isSingleOrigin) return false;
+        if (drinksFilter === 'vegan' && !flags.isVegan) return false;
+        if (drinksFilter === 'dairy-free' && !flags.isDairyFree) return false;
+        if (drinksFilter === 'zero-proof' && !flags.isZeroProof) return false;
+        if (drinksFilter === 'signature' && !flags.isSignature) return false;
+      }
 
-          const flags = extractDietaryFlags(item);
-          if (activeSection === 'food') {
-            if (foodFilter === 'vegetarian' && !flags.isVegetarian) return false;
-            if (foodFilter === 'vegan' && !flags.isVegan) return false;
-            if (foodFilter === 'gluten-free' && !flags.isGlutenFree) return false;
-            if (foodFilter === 'seafood' && !flags.isSeafood) return false;
-            if (foodFilter === 'chef-choice' && !flags.isChefSignature) return false;
-            if (foodFilter === 'featured' && !item.isFeatured) return false;
-          } else {
-            if (drinksFilter === 'single-origin' && !flags.isSingleOrigin) return false;
-            if (drinksFilter === 'vegan' && !flags.isVegan) return false;
-            if (drinksFilter === 'dairy-free' && !flags.isDairyFree) return false;
-            if (drinksFilter === 'zero-proof' && !flags.isZeroProof) return false;
-            if (drinksFilter === 'signature' && !flags.isSignature) return false;
-          }
+      return true;
+    };
 
-          return true;
-        });
-
-        return { category, items };
-      })
+    const grouped = sectionCats
+      .map((category) => ({
+        category,
+        items: menuItems.filter(
+          (item) => item.categoryId === category.id && matchesItemFilters(item)
+        ),
+      }))
       .filter((group) => group.items.length > 0);
+
+    // Fallback: include any item whose category belongs to activeSection even if its categoryId was renamed/removed
+    const matchedCatIds = new Set(activeCats.map((c) => c.id));
+    const orphanedItems = menuItems.filter((item) => {
+      if (matchedCatIds.has(item.categoryId)) return false;
+      const inferredSection = resolveMenuCategorySection({
+        id: item.categoryId,
+        name: item.categoryName,
+      });
+      return inferredSection === activeSection && matchesItemFilters(item);
+    });
+
+    if (orphanedItems.length > 0) {
+      grouped.push({
+        category: {
+          id: `cat_other_${activeSection}`,
+          name: activeSection === 'drinks' ? 'House Beverages' : 'House Specialties',
+          slug: `other-${activeSection}`,
+          subtitle: 'Newly added selections from the sanctuary kitchen.',
+          section: activeSection,
+          sortOrder: 999,
+          isActive: true,
+        },
+        items: orphanedItems,
+      });
+    }
+
+    return grouped;
   }, [menuCategories, menuItems, activeSection, searchQuery, foodFilter, drinksFilter]);
 
   // Keep activeCategoryId synced with visible section on scroll

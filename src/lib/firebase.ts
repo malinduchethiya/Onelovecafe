@@ -79,6 +79,26 @@ export function isAuthorizedAdminEmail(email?: string | null): boolean {
   return BOOTSTRAP_ADMIN_EMAILS.some((adminEmail) => adminEmail.toLowerCase() === normalized);
 }
 
+export function getPrimaryUserEmail(
+  user?: { email?: string | null; providerData?: Array<{ email?: string | null } | null> } | null
+): string {
+  if (!user) return '';
+  if (user.email && user.email.trim()) return user.email.trim().toLowerCase();
+  const providerEmail = user.providerData?.find((p) => p?.email && p.email.trim())?.email;
+  return providerEmail ? providerEmail.trim().toLowerCase() : '';
+}
+
+export function isAuthorizedAdminUser(
+  user?: { email?: string | null; providerData?: Array<{ email?: string | null } | null> } | null
+): boolean {
+  if (!user) return false;
+  if (isAuthorizedAdminEmail(user.email)) return true;
+  if (Array.isArray(user.providerData)) {
+    return user.providerData.some((provider) => isAuthorizedAdminEmail(provider?.email));
+  }
+  return false;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

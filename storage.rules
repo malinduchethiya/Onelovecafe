@@ -5,12 +5,13 @@ service firebase.storage {
       return request.auth != null && request.auth.token.email_verified == true;
     }
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == 'merlinfiverr0@gmail.com' ||
-        request.auth.token.email == 'onelovecafesigiriya@gmail.com' ||
-        request.auth.token.email == 'manojmadurangasadaruwan@gmail.com' ||
-        request.auth.token.email.matches('(?i)^(merlinfiverr0|onelovecafesigiriya|manojmadurangasadaruwan)@gmail\\.com$')
-      );
+      return isSignedIn() &&
+        request.auth.token.email is string &&
+        request.auth.token.email.lower() in [
+          'merlinfiverr0@gmail.com',
+          'onelovecafesigiriya@gmail.com',
+          'manojmadurangasadaruwan@gmail.com'
+        ];
     }
     match /onelove/{allPaths=**} {
       allow read: if true;

@@ -24,7 +24,6 @@ import { EditorialVisual } from './components/EditorialVisual';
 import { LateriteStorySection } from './components/LateriteStorySection';
 import { ReservationEngine } from './components/ReservationEngine';
 import { SanctuaryMap } from './components/SanctuaryMap';
-import { GoogleMapsRatingCard } from './components/GoogleMapsRatingCard';
 import { MenuPage } from './components/MenuPage';
 import { OFFICIAL_ONELOVE_MAPS_PLACE_URL } from './lib/mapUtils';
 import { extractDietaryFlags, resolveMenuItemSection } from './lib/menuSections';
@@ -244,6 +243,22 @@ const OneLoveRouter: React.FC = () => {
     () => siteContent.find((s) => s.sectionKey === 'footer'),
     [siteContent]
   );
+  const goldenHourContent = useMemo(
+    () => siteContent.find((s) => s.sectionKey === 'golden_hour'),
+    [siteContent]
+  );
+  const atmosphereContent = useMemo(
+    () => siteContent.find((s) => s.sectionKey === 'atmosphere'),
+    [siteContent]
+  );
+  const homeReserveContent = useMemo(
+    () => siteContent.find((s) => s.sectionKey === 'home_reserve'),
+    [siteContent]
+  );
+  const findUsContent = useMemo(
+    () => siteContent.find((s) => s.sectionKey === 'find_us'),
+    [siteContent]
+  );
 
   const [homeMenuDetailItem, setHomeMenuDetailItem] = useState<MenuItem | null>(null);
   const [homeReserveTime, setHomeReserveTime] = useState<string>('19:30');
@@ -376,12 +391,20 @@ const OneLoveRouter: React.FC = () => {
   };
 
   // Featured Food & Drinks items separated for the Home Page Menu Section (4 in a row)
+  const sortNewestCustomFirst = <T extends { id: string }>(items: T[]): T[] => {
+    const extractTimestamp = (id: string): number => {
+      const m = id.match(/_(\d{10,})/);
+      return m ? Number(m[1]) : 0;
+    };
+    return [...items].sort((a, b) => extractTimestamp(b.id) - extractTimestamp(a.id));
+  };
+
   const featuredFoodItems = useMemo(() => {
     const available = menuItems.filter(
       (m) => m.isAvailable && resolveMenuItemSection(m, menuCategories) === 'food'
     );
-    const featured = available.filter((m) => m.isFeatured);
-    const nonFeatured = available.filter((m) => !m.isFeatured);
+    const featured = sortNewestCustomFirst(available.filter((m) => m.isFeatured));
+    const nonFeatured = sortNewestCustomFirst(available.filter((m) => !m.isFeatured));
     return [...featured, ...nonFeatured].slice(0, 8);
   }, [menuItems, menuCategories]);
 
@@ -389,12 +412,24 @@ const OneLoveRouter: React.FC = () => {
     const available = menuItems.filter(
       (m) => m.isAvailable && resolveMenuItemSection(m, menuCategories) === 'drinks'
     );
-    const featured = available.filter((m) => m.isFeatured);
-    const nonFeatured = available.filter((m) => !m.isFeatured);
+    const featured = sortNewestCustomFirst(available.filter((m) => m.isFeatured));
+    const nonFeatured = sortNewestCustomFirst(available.filter((m) => !m.isFeatured));
     return [...featured, ...nonFeatured].slice(0, 8);
   }, [menuItems, menuCategories]);
 
   const featuredDishesCount = featuredFoodItems.length + featuredDrinkItems.length;
+
+  const homeGalleryItems = useMemo(() => {
+    const extractTs = (id: string): number => {
+      const m = id.match(/_(\d{10,})/);
+      return m ? Number(m[1]) : 0;
+    };
+    const byOrderThenNewest = (a: { id: string; sortOrder: number }, b: { id: string; sortOrder: number }) =>
+      a.sortOrder !== b.sortOrder ? a.sortOrder - b.sortOrder : extractTs(b.id) - extractTs(a.id);
+    const featured = [...gallery.filter((g) => g.isFeatured)].sort(byOrderThenNewest);
+    const rest = [...gallery.filter((g) => !g.isFeatured)].sort(byOrderThenNewest);
+    return [...featured, ...rest].slice(0, 6);
+  }, [gallery]);
 
   const filteredGallery = useMemo(() => {
     if (selectedGalleryCat === 'All') return gallery;
@@ -887,7 +922,7 @@ const OneLoveRouter: React.FC = () => {
                       data-gsap-hero
                       className="inline-flex items-center px-4 py-1.5 rounded-full bg-black/35 border border-white/15 backdrop-blur-xs text-[10px] sm:text-[11px] font-mono-tabular uppercase tracking-[0.22em] text-white/90"
                     >
-                      Sigiriya · Sri Lanka · Lion Rock Sanctuary
+                      {heroContent?.kicker || 'Sigiriya · Sri Lanka · Lion Rock Sanctuary'}
                     </div>
 
                     {/* Hero Headline — 50% Reduced Size, Clean Balanced Proportions */}
@@ -954,7 +989,7 @@ const OneLoveRouter: React.FC = () => {
                       className="w-full max-w-2xl mx-auto pt-4 mt-6 sm:mt-8 border-t border-white/15 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-[10px] sm:text-[11px] text-white/75"
                     >
                       <span className="font-mono-tabular uppercase tracking-[0.16em]">
-                        Open Daily 7:30 AM – 10:30 PM · Sigiriya
+                        {heroContent?.body || 'Open Daily 7:30 AM – 10:30 PM · Sigiriya'}
                       </span>
                       <nav
                         aria-label="Quick sanctuary navigation"
@@ -1297,18 +1332,19 @@ const OneLoveRouter: React.FC = () => {
               )}
             </section>
 
-            {/* 4. The Golden Hour Culinary Feature (Replaces Experiences Under the Sigiriya Palms) */}
+            {/* 4. The Golden Hour Culinary Feature (Admin-Editable via siteContent: golden_hour) */}
             <section className="w-full bg-[#120E0B] text-white py-20 sm:py-28 lg:py-32">
               <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-center">
                 <div className="lg:col-span-6">
                   <div className="rounded-[24px] overflow-hidden border border-white/10 bg-[#1C1612] aspect-[4/3] shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
                     <EditorialVisual
                       src={
+                        goldenHourContent?.imageUrl ||
                         gallery.find((g) => g.category === 'Culinary')?.imageUrl ||
                         events[0]?.imageUrl ||
                         'https://cdn.onelovecafesigiriya.com/gallery/1793182356132-42957eec-2f66-492e-b754-eaeb2e0420af.webp'
                       }
-                      alt="OneLove Café Sigiriya culinary showcase"
+                      alt={goldenHourContent?.heading || 'OneLove Café Sigiriya culinary showcase'}
                       className="w-full h-full object-cover"
                     />
                   </div>
@@ -1316,45 +1352,44 @@ const OneLoveRouter: React.FC = () => {
 
                 <div className="lg:col-span-6 space-y-6">
                   <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white/[0.06] border border-white/15 text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#E6DDD3]">
-                    The Golden Hour
+                    {goldenHourContent?.kicker || 'The Golden Hour'}
                   </div>
                   <h2 className="font-outfit text-4xl sm:text-5xl lg:text-[54px] font-normal text-white leading-[1.06] tracking-[-0.02em]">
-                    Fresh from the Sigiriya valley.
+                    {goldenHourContent?.heading || 'Fresh from the Sigiriya valley.'}
                   </h2>
                   <p className="text-sm sm:text-[15px] text-[#CFC5B9] leading-relaxed font-light max-w-md">
-                    Harvested daily from Dry Zone gardens and highland roasters, prepared with care
-                    and served beneath the palms on our open-air verandah.
+                    {goldenHourContent?.body ||
+                      'Harvested daily from Dry Zone gardens and highland roasters, prepared with care and served beneath the palms on our open-air verandah.'}
                   </p>
                   <div className="pt-2">
                     <a
-                      href="/menu"
+                      href={goldenHourContent?.ctaLink || '/menu'}
                       onClick={(e) => {
                         e.preventDefault();
-                        navigate('/menu');
+                        navigate(goldenHourContent?.ctaLink || '/menu');
                       }}
                       className="inline-flex items-center justify-center min-h-[44px] px-7 py-3 rounded-full bg-[#C65B2B] hover:bg-[#B04E22] text-white text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.16em] transition-colors cursor-pointer"
                     >
-                      Explore Evening Menu
+                      {goldenHourContent?.ctaLabel || 'Explore Evening Menu'}
                     </a>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* 5. Atmosphere & Spaces Section */}
+            {/* 5. Atmosphere & Spaces Section (Admin-Editable via siteContent: atmosphere) */}
             <section className="w-full bg-[#F5F1EB] text-[#14110E] py-20 sm:py-28 lg:py-32">
               <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-center">
                 <div className="lg:col-span-5 space-y-5">
                   <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white border border-[#E7DED3] text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#C65B2B]">
-                    Atmosphere &amp; Spaces
+                    {atmosphereContent?.kicker || 'Atmosphere & Spaces'}
                   </div>
                   <h2 className="font-outfit text-4xl sm:text-5xl lg:text-[48px] font-normal text-[#14110E] leading-[1.08] tracking-[-0.02em]">
-                    Teak, Woven Textures, and Tropical Light
+                    {atmosphereContent?.heading || 'Teak, Woven Textures, and Tropical Light'}
                   </h2>
                   <p className="text-sm sm:text-[15px] text-[#5C544D] leading-[1.75] font-light max-w-md">
-                    Natural woven lamps, warm reclaimed teak details, candlelit corners, and an open
-                    Sigiriya breeze create a relaxed setting where mornings and evenings unfold
-                    naturally.
+                    {atmosphereContent?.body ||
+                      'Natural woven lamps, warm reclaimed teak details, candlelit corners, and an open Sigiriya breeze create a relaxed setting where mornings and evenings unfold naturally.'}
                   </p>
                 </div>
 
@@ -1362,11 +1397,15 @@ const OneLoveRouter: React.FC = () => {
                   <div className="rounded-[24px] border-[4px] border-white shadow-[0_20px_50px_rgba(20,16,12,0.09)] overflow-hidden aspect-[16/10] bg-[#EAE2D6]">
                     <EditorialVisual
                       src={
+                        atmosphereContent?.imageUrl ||
                         conciergeContent?.imageUrl ||
                         gallery.find((g) => g.category === 'Architecture')?.imageUrl ||
                         'https://cdn.onelovecafesigiriya.com/gallery/1793182353441-wp11934943-cozy-cafe-4k-wallpapers.webp'
                       }
-                      alt="OneLove Café Sigiriya warm teak and tropical light atmosphere"
+                      alt={
+                        atmosphereContent?.heading ||
+                        'OneLove Café Sigiriya warm teak and tropical light atmosphere'
+                      }
                       className="w-full h-full object-cover"
                     />
                   </div>
@@ -1374,7 +1413,7 @@ const OneLoveRouter: React.FC = () => {
               </div>
             </section>
 
-            {/* 6. Gallery Section — Life Beneath the Rock */}
+            {/* 6. Gallery Section — Life Beneath the Rock (Admin-Editable via Gallery Tab) */}
             <section className="w-full bg-[#FAF8F5] text-[#14110E] py-20 sm:py-28 lg:py-32 border-t border-[#EAE2D6]">
               <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12 space-y-10 sm:space-y-12">
                 <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
@@ -1401,7 +1440,7 @@ const OneLoveRouter: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7">
-                  {gallery.slice(0, 6).map((item) => (
+                  {homeGalleryItems.map((item) => (
                     <button
                       key={item.id}
                       type="button"
@@ -1420,7 +1459,7 @@ const OneLoveRouter: React.FC = () => {
               </div>
             </section>
 
-            {/* 7. Home Page Reservation Section (#reserve-section) — Clean 2-Column Concierge Card */}
+            {/* 7. Home Page Reservation Section (#reserve-section — Admin-Editable via siteContent: home_reserve) */}
             <section
               id="reserve-section"
               className="scroll-mt-20 w-full bg-[#14100C] text-[#F8F4EE] py-20 sm:py-28 lg:py-32"
@@ -1429,14 +1468,14 @@ const OneLoveRouter: React.FC = () => {
                 {/* Left Editorial Column */}
                 <div data-gsap-reserve className="lg:col-span-7 space-y-6">
                   <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/15 text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#D89A78]">
-                    Effortless Dining
+                    {homeReserveContent?.kicker || 'Effortless Dining'}
                   </div>
                   <h2 className="font-outfit text-4xl sm:text-5xl lg:text-[56px] font-normal text-white leading-[1.06] tracking-[-0.02em] max-w-lg">
-                    Make the evening feel effortless.
+                    {homeReserveContent?.heading || 'Make the evening feel effortless.'}
                   </h2>
                   <p className="text-sm sm:text-[15px] text-[#BFAEA0] leading-relaxed font-light max-w-xl">
-                    Reserve your table online in seconds. Choose your preferred dining area—from
-                    leafy garden shade to candlelit verandah tables beneath the Sigiriya palms.
+                    {homeReserveContent?.body ||
+                      'Reserve your table online in seconds. Choose your preferred dining area—from leafy garden shade to candlelit verandah tables beneath the Sigiriya palms.'}
                   </p>
 
                   {/* Three Clean Ritual Timing Cards */}
@@ -1485,7 +1524,7 @@ const OneLoveRouter: React.FC = () => {
                       }}
                       className="inline-flex items-center justify-center gap-2 min-h-[46px] px-7 py-3 rounded-full bg-[#C65B2B] hover:bg-[#B04E22] text-white text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.16em] transition-colors cursor-pointer"
                     >
-                      <span>Select Table on Floor Plan</span>
+                      <span>{homeReserveContent?.ctaLabel || 'Select Table on Floor Plan'}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </a>
                     <a
@@ -1510,7 +1549,7 @@ const OneLoveRouter: React.FC = () => {
                           Direct Concierge
                         </div>
                         <h3 className="font-outfit text-2xl sm:text-[26px] font-normal text-[#171310] leading-snug tracking-tight">
-                          Reserve Your Sanctuary Table
+                          {homeReserveContent?.subheading || 'Reserve Your Sanctuary Table'}
                         </h3>
                         <p className="text-xs text-[#171310]/55 font-light">
                           Direct table assignment · Zero reservation fees
@@ -1639,54 +1678,145 @@ const OneLoveRouter: React.FC = () => {
             {/* Clean Google Maps Location Window (Admin-editable, strictly no controls/clutter in window) */}
             <SanctuaryMap settings={settings} />
 
-            {/* 6. Attributable Traveler & Partner Voices */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-14 sm:py-24 space-y-8 sm:space-y-10">
-              <div data-gsap-voice className="text-center max-w-2xl mx-auto space-y-2">
-                <div className="text-[11px] uppercase tracking-[0.2em] text-[#58644E] font-semibold">
-                  Field Notes &amp; Guest Reflections
+            {/* 8. Find Us in Sigiriya — Two-Card Location & Sanctuary Proximity Section (Admin-Editable via siteContent: find_us) */}
+            <section className="w-full bg-[#FAF7F2] text-[#14110E] py-20 sm:py-28 lg:py-32">
+              <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12">
+                {/* Centered Section Header */}
+                <div data-gsap-voice className="text-center max-w-2xl mx-auto space-y-3">
+                  <div className="text-[10px] font-mono-tabular uppercase tracking-[0.26em] text-[#C65B2B] font-medium">
+                    {findUsContent?.kicker || 'Find Us in Sigiriya'}
+                  </div>
+                  <h2 className="font-outfit text-4xl sm:text-5xl lg:text-[52px] font-normal text-[#14110E] tracking-[-0.02em] leading-[1.08]">
+                    {findUsContent?.heading || 'Lion Rock Road, Sigiriya'}
+                  </h2>
+                  <p className="text-sm sm:text-[15px] text-[#665E57] font-light leading-relaxed max-w-xl mx-auto pt-1">
+                    {findUsContent?.body ||
+                      'Located in Kimbissa along Lion Rock Sanctuary Road, just minutes from Sigiriya Lion Rock Fortress. An easy-to-find spot for specialty coffee, island plates, and unhurried evenings.'}
+                  </p>
                 </div>
-                <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#171513]">
-                  What Travelers &amp; Collaborators Say
-                </h2>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
-                <blockquote
-                  data-gsap-voice
-                  className="bg-white border border-[#E7DED3] p-6 sm:p-8 space-y-4 shadow-[0_10px_28px_rgba(23,21,19,0.05)] hover:-translate-y-1 transition-transform duration-300"
-                >
-                  <p className="font-editorial italic text-lg sm:text-xl leading-relaxed text-[#171513]">
-                    “After guiding guests up Pidurangala Rock at 5:30 AM, bringing them to OneLove
-                    Café’s Jungle Verandah for red-rice egg hoppers and Kotmale pour-over coffee has
-                    become the highlight of our Cultural Triangle itineraries.”
-                  </p>
-                  <footer className="pt-3 border-t border-[#E7DED3] flex items-center justify-between text-xs">
-                    <span className="font-semibold text-[#171513]">
-                      Kasun Jayawardena · Founder, Sigiriya Heritage Trails
-                    </span>
-                  </footer>
-                </blockquote>
+                {/* Two Equal Side-by-Side Rounded Cards */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 mt-12 sm:mt-16 max-w-5xl mx-auto">
+                  {/* Left Card: Pure White Elevated Location & Hours Card */}
+                  <div
+                    data-gsap-voice
+                    className="bg-white rounded-[28px] border border-[#EAE2D6] shadow-[0_14px_38px_rgba(20,16,12,0.05)] p-8 sm:p-10 flex flex-col justify-between space-y-8"
+                  >
+                    <div className="space-y-6">
+                      <div className="space-y-3">
+                        <div className="text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#C65B2B] font-medium">
+                          Sanctuary Location &amp; Hours
+                        </div>
+                        <h3 className="font-outfit text-2xl sm:text-[30px] font-normal text-[#14110E] tracking-[-0.015em] leading-snug">
+                          {settings.cafeName || 'OneLove Café'} Sigiriya
+                        </h3>
+                        <p className="text-sm text-[#665E57] font-light leading-relaxed">
+                          Easy to reach by road along Lion Rock Sanctuary Road in Kimbissa, just 1.5
+                          km west of Sigiriya Lion Rock Fortress.
+                        </p>
+                      </div>
 
-                <blockquote
-                  data-gsap-voice
-                  className="bg-white border border-[#E7DED3] p-6 sm:p-8 space-y-4 shadow-[0_10px_28px_rgba(23,21,19,0.05)] hover:-translate-y-1 transition-transform duration-300"
-                >
-                  <p className="font-editorial italic text-lg sm:text-xl leading-relaxed text-[#171513]">
-                    “We reserved Table 06 beside the lotus pool using the interactive floor plan
-                    before flying from Zurich. The wood-fired Trincomalee tiger prawns and candlelit
-                    acoustic guitar made it our most memorable evening in Sri Lanka.”
-                  </p>
-                  <footer className="pt-3 border-t border-[#E7DED3] flex items-center justify-between text-xs">
-                    <span className="font-semibold text-[#171513]">
-                      Elena &amp; Marc Vogel · Architectural Photographers, Zurich
-                    </span>
-                  </footer>
-                </blockquote>
-              </div>
+                      <div className="pt-6 border-t border-[#EAE2D6] space-y-3.5 text-sm text-[#4A433D] font-light">
+                        <div className="flex items-start gap-3">
+                          <Clock className="w-4 h-4 text-[#C65B2B] shrink-0 mt-0.5" />
+                          <span>Daily Service: 7:30 AM – 10:30 PM</span>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <MapPin className="w-4 h-4 text-[#C65B2B] shrink-0 mt-0.5" />
+                          <span>
+                            {settings.address ||
+                              'Lion Rock Sanctuary Road, Kimbissa, Sigiriya, Sri Lanka'}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-3">
+                          <Phone className="w-4 h-4 text-[#C65B2B] shrink-0 mt-0.5" />
+                          <span className="font-mono-tabular">
+                            Concierge: {settings.phone || settings.whatsapp || '+94 66 228 6420'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-              {/* Google Maps 5-Star Rating & Review Featuring Card at the lower part of What Travelers & Collaborators Say */}
-              <div className="pt-2 sm:pt-4">
-                <GoogleMapsRatingCard />
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                      <a
+                        href={OFFICIAL_ONELOVE_MAPS_PLACE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] hover:bg-[#B04E22] text-white text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.15em] transition-colors cursor-pointer"
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>Open in Google Maps</span>
+                      </a>
+                      <a
+                        href={`tel:${(settings.phone || settings.whatsapp || '+94662286420').replace(/[^0-9+]/g, '')}`}
+                        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-full bg-white border border-[#E5DDD2] hover:border-[#14110E] text-[#14110E] text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.15em] transition-colors cursor-pointer"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-[#14110E]/75" />
+                        <span>Call Desk</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Right Card: Warm Sand Sanctuary Trail Proximity Card */}
+                  <div
+                    data-gsap-voice
+                    className="bg-[#F3EEE6] rounded-[28px] border border-[#E7DFD3] shadow-[0_14px_38px_rgba(20,16,12,0.04)] p-8 sm:p-10 flex flex-col justify-between space-y-8"
+                  >
+                    <div className="space-y-6">
+                      <div className="space-y-3">
+                        <div className="text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#665E57] font-medium">
+                          Sanctuary Trail Proximity
+                        </div>
+                        <h3 className="font-outfit text-2xl sm:text-[30px] font-normal text-[#14110E] tracking-[-0.015em] leading-snug">
+                          {findUsContent?.subheading || 'Two Landmarks. One Island Spirit.'}
+                        </h3>
+                        <p className="text-sm text-[#665E57] font-light leading-relaxed">
+                          Unwind after your sunrise climb up Pidurangala Rock or an afternoon at
+                          Sigiriya Lion Rock Fortress with single-estate Ceylon coffee, wood-fired
+                          plates, and shaded garden tables.
+                        </p>
+                      </div>
+
+                      <div className="bg-white rounded-2xl border border-[#EAE2D6] p-5 space-y-2">
+                        <div className="flex items-center justify-between gap-3 text-[10px] font-mono-tabular uppercase tracking-[0.18em]">
+                          <span className="text-[#14110E] font-semibold">
+                            Distance From Lion Rock:
+                          </span>
+                          <span className="text-[#C65B2B] font-semibold">
+                            {findUsContent?.ctaLabel || '1.5 Kilometers'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#665E57] font-light leading-relaxed">
+                          A gentle 4-minute tuk-tuk ride or scenic 15-minute stroll along Kimbissa
+                          Road connects both ancient rock trails to our garden tables.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                      <a
+                        href={findUsContent?.ctaLink || '/story'}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate(findUsContent?.ctaLink || '/story');
+                        }}
+                        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-6 py-2.5 rounded-full bg-transparent border border-[#14110E] hover:bg-[#14110E] hover:text-white text-[#14110E] text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.15em] transition-colors cursor-pointer"
+                      >
+                        <span>Explore Our Story</span>
+                        <span aria-hidden="true">↗</span>
+                      </a>
+                      <a
+                        href={OFFICIAL_ONELOVE_MAPS_PLACE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-full bg-white border border-[#E5DDD2] hover:border-[#14110E] text-[#14110E] text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.15em] transition-colors cursor-pointer"
+                      >
+                        <span>Directions Link</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
           </div>

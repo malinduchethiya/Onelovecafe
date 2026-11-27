@@ -28,6 +28,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { useCafe } from '../context/CafeContext';
+import { getPrimaryUserEmail } from '../lib/firebase';
 import { InteractiveFloorPlan } from './InteractiveFloorPlan';
 import { EditorialVisual } from './EditorialVisual';
 import { AdminSeoPanel } from './AdminSeoPanel';
@@ -126,6 +127,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const [seeding, setSeeding] = useState(false);
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const lastAdminUidRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (initialTab) {
@@ -153,8 +155,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [customDietaryTag, setCustomDietaryTag] = useState<string>('');
   const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
   const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadingRowItemId, setUploadingRowItemId] = useState<string | null>(null);
   const menuEditorRef = useRef<HTMLDivElement | null>(null);
 
   const foodCategories = useMemo(
@@ -213,7 +213,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Hero Slideshow upload state
   const [uploadingHeroSlides, setUploadingHeroSlides] = useState(false);
-  const [uploadingMenuGalleryBg, setUploadingMenuGalleryBg] = useState(false);
 
   // Content section drafts & Master Image Audit state
   const [contentDrafts, setContentDrafts] = useState<Record<string, SiteContentSection>>({});
@@ -399,6 +398,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setSelectedEditTable(tables[0]);
     }
   }, [tables]);
+
+  // Reset dashboard tab & open drafts whenever signing out or switching administrator accounts
+  useEffect(() => {
+    const nextUid = user?.uid ?? null;
+    if (lastAdminUidRef.current !== nextUid) {
+      lastAdminUidRef.current = nextUid;
+      setActiveTab(initialTab || 'overview');
+      setEditingCategory(null);
+      setEditingMenuItem(null);
+      setEditingGalleryItem(null);
+      setEditingEvent(null);
+      setEditingZone(null);
+      setStatusBanner(null);
+      if (
+        !nextUid &&
+        typeof window !== 'undefined' &&
+        window.location.pathname.startsWith('/admin/')
+      ) {
+        window.history.replaceState({}, '', '/admin');
+      }
+    }
+  }, [user?.uid, initialTab]);
 
   const showToast = (msg: string) => {
     setStatusBanner(msg);
@@ -605,130 +626,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     </div>
   );
 
-  const menuGalleryBgSection = siteContent.find((s) => s.sectionKey === 'menu_gallery_bg');
-  const currentMenuGalleryBgUrl = menuGalleryBgSection?.imageUrl?.trim() || '';
-
-  const handleUploadMenuGalleryBg = async (file: File | undefined) => {
-    if (!file) return;
-    setUploadingMenuGalleryBg(true);
-    try {
-      const r2Url = await uploadMediaFile(file, 'menu_gallery_bg', currentMenuGalleryBgUrl);
-      const payload: SiteContentSection = {
-        id: menuGalleryBgSection?.id || 'sec_menu_gallery_bg',
-        sectionKey: 'menu_gallery_bg',
-        kicker: 'Menu Gallery Background',
-        heading: 'Signature Plates & Highland Pour-Overs Background',
-        subheading: '20% Blurred Atmospheric Background Image',
-        body: 'Custom background image for the Menu Gallery section.',
-        ctaLabel: 'View Menu',
-        ctaLink: '/menu',
-        imageUrl: r2Url,
-      };
-      await saveSiteContent(payload);
-      showToast('Uploaded Menu Gallery background image (20% blurred) to Cloudflare R2!');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Failed to upload Menu Gallery background image to R2.'
-      );
-    } finally {
-      setUploadingMenuGalleryBg(false);
-    }
-  };
-
-  const handleRemoveMenuGalleryBg = async () => {
-    const payload: SiteContentSection = {
-      id: menuGalleryBgSection?.id || 'sec_menu_gallery_bg',
-      sectionKey: 'menu_gallery_bg',
-      kicker: 'Menu Gallery Background',
-      heading: 'Signature Plates & Highland Pour-Overs Background',
-      subheading: '20% Blurred Atmospheric Background Image',
-      body: 'Custom background image for the Menu Gallery section.',
-      ctaLabel: 'View Menu',
-      ctaLink: '/menu',
-      imageUrl: '',
-    };
-    await saveSiteContent(payload);
-    showToast('Removed custom Menu Gallery background image from Cloudflare R2.');
-  };
-
-  const renderMenuGalleryBgManager = () => (
-    <div className="bg-white border border-[#E7DED3] p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          {currentMenuGalleryBgUrl ? (
-            <div className="relative w-28 h-18 border border-[#E7DED3] overflow-hidden shrink-0 bg-[#171513]">
-              <div
-                className="w-full h-full"
-                style={{ filter: 'blur(4px)', transform: 'scale(1.06)' }}
-              >
-                <EditorialVisual
-                  src={currentMenuGalleryBgUrl}
-                  alt="Menu Gallery 20% blurred background preview"
-                />
-              </div>
-              <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
-                <span className="text-[9px] font-mono-tabular uppercase tracking-wider text-white bg-black/60 px-1.5 py-0.5">
-                  20% Blur
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="w-28 h-18 bg-[#2E1A10] border border-[#E7DED3] flex items-center justify-center text-[10px] font-mono-tabular text-[#FCF9F4]/80 shrink-0 text-center px-2">
-              Default Roast Backdrop
-            </div>
-          )}
-
-          <div className="space-y-1 max-w-xl">
-            <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-              Menu Gallery Section Background · 20% Blurred Image
-            </div>
-            <h2 className="text-xl font-editorial font-semibold text-[#171513]">
-              {currentMenuGalleryBgUrl
-                ? 'Custom 20% Blurred Menu Gallery Background Active'
-                : 'Add Background Image to Menu Gallery (20% Blurred)'}
-            </h2>
-            <p className="text-xs text-[#171513]/65">
-              Upload a photograph from your device for the “Signature Plates &amp; Highland Pour-Overs”
-              Menu Gallery background. It renders automatically with a soft 20% blur behind your menu cards.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <label className="px-4 py-2.5 bg-[#C65B2B] text-white text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-[#B04E22] inline-flex items-center gap-2">
-            <Upload className="w-3.5 h-3.5" />
-            <span>
-              {uploadingMenuGalleryBg
-                ? 'Encoding & Saving...'
-                : currentMenuGalleryBgUrl
-                ? 'Replace Background Image'
-                : 'Upload Background Image'}
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                handleUploadMenuGalleryBg(e.target.files?.[0]);
-                e.target.value = '';
-              }}
-            />
-          </label>
-
-          {currentMenuGalleryBgUrl && (
-            <button
-              type="button"
-              onClick={handleRemoveMenuGalleryBg}
-              className="px-3.5 py-2.5 border border-[#E7DED3] bg-[#F8F4EE] text-[#9E3F16] text-xs font-medium hover:bg-[#FDF3EF] inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> Remove Background
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
   if (!authReady) {
     return (
       <div className="min-h-screen bg-[#F8F4EE] flex items-center justify-center p-8">
@@ -760,8 +657,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="p-4 bg-[#FDF3EF] border border-[#C65B2B] text-xs text-[#9E3F16] space-y-1">
               <div className="font-semibold">Access Restricted</div>
               <div>
-                Signed in as <span className="font-mono-tabular">{user.email}</span>, which is not
-                registered in the `/admins` collection.
+                Signed in as{' '}
+                <span className="font-mono-tabular">
+                  {getPrimaryUserEmail(user) || user.email || 'Unknown account'}
+                </span>
+                {!user.emailVerified
+                  ? ', whose email address is not yet verified by Google.'
+                  : ', which is not registered in the `/admins` collection.'}
               </div>
             </div>
           )}
@@ -882,7 +784,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         <div className="hidden lg:block p-4 border-t border-[#2C2622] space-y-3">
-          <div className="text-xs truncate text-[#F8F4EE]/70 font-mono-tabular">{user.email}</div>
+          <div className="text-xs truncate text-[#F8F4EE]/70 font-mono-tabular">
+            {getPrimaryUserEmail(user) || user.email}
+          </div>
           <button
             type="button"
             onClick={signOutAdmin}
@@ -1000,7 +904,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {currentHeroImages.length} Slides · {currentSlideshowSpeed}s Interval
                     </div>
                     <p className="text-xs text-[#171513]/60 mt-1">
-                      Upload multiple hero photos from device (saved as Base64 in Firestore) and adjust slideshow speed.
+                      Upload high-resolution hero photos directly to Cloudflare R2 and adjust slideshow transition speed.
                     </p>
                   </div>
                   <button
@@ -1041,10 +945,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Culinary &amp; Roastery Menu
                     </div>
                     <div className="text-base font-editorial font-semibold mt-0.5">
-                      {menuItems.length} Dishes &amp; Pour-Overs
+                      {foodItemsCount} Food · {drinkItemsCount} Drinks
                     </div>
                     <p className="text-xs text-[#171513]/60 mt-1">
-                      Add, edit, or delete menu items and upload dish photography directly from your device.
+                      Manage Food Selections &amp; Drinks categories, LKR/USD pricing, dietary tags, and Home Page featured items.
                     </p>
                   </div>
                   <button
@@ -1763,9 +1667,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 5: MENU & CATEGORY MANAGER */}
           {activeTab === 'menu' && (
             <div className="space-y-8">
-              {/* Menu Gallery Section Background Image (20% Blurred) Manager */}
-              {renderMenuGalleryBgManager()}
-
               {/* Menu Price Currency Display Control (Global + Per-Item Sync) */}
               <div className="bg-white border border-[#E7DED3] p-6 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1954,25 +1855,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onSubmit={async (e) => {
                       e.preventDefault();
                       if (!editingCategory.name.trim()) return;
-                      const generatedSlug =
-                        editingCategory.slug.trim() ||
-                        editingCategory.name
-                          .toLowerCase()
-                          .replace(/[^a-z0-9]+/g, '-')
-                          .replace(/^-|-$/g, '') ||
-                        'category';
-                      const section: MenuSection = resolveMenuCategorySection(editingCategory);
-                      await saveMenuCategory({
-                        ...editingCategory,
-                        slug: generatedSlug,
-                        section,
-                      });
-                      showToast(
-                        `Saved ${section === 'drinks' ? 'Drinks' : 'Food'} category "${
+                      try {
+                        const generatedSlug =
+                          editingCategory.slug.trim() ||
                           editingCategory.name
-                        }" to Firestore.`
-                      );
-                      setEditingCategory(null);
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '-')
+                            .replace(/^-|-$/g, '') ||
+                          'category';
+                        const section: MenuSection = resolveMenuCategorySection(editingCategory);
+                        await saveMenuCategory({
+                          ...editingCategory,
+                          slug: generatedSlug,
+                          section,
+                        });
+                        showToast(
+                          `Saved ${section === 'drinks' ? 'Drinks' : 'Food'} category "${
+                            editingCategory.name
+                          }" to Firestore.`
+                        );
+                        setEditingCategory(null);
+                      } catch (err) {
+                        console.error('Save category failed:', err);
+                        showToast('Could not save category to Firestore. Please verify your admin sign-in and try again.');
+                      }
                     }}
                     className="bg-[#F8F4EE] border border-[#C65B2B] p-5 space-y-4 text-xs"
                   >
@@ -2205,8 +2111,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           : `All Menu Items (${visibleAdminMenuItems.length})`}
                       </h2>
                       <p className="text-xs text-[#171513]/60">
-                        First 16 featured/available items populate the 4×4 homepage grid. Upload a
-                        photo directly on any row or click Edit for full details and dietary tags.
+                        Up to 8 featured Food items and 8 featured Drinks items appear in 4-in-a-row
+                        square cards on the Home Page. Menu items display clean text-only cards
+                        across Home and /menu.
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -2323,10 +2230,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 : ''
                             }`}
                           >
-                            <div className="flex items-center gap-3.5 max-w-md">
-                              <div className="w-14 h-14 border border-[#E7DED3] overflow-hidden shrink-0 bg-[#F8F4EE]">
-                                <EditorialVisual src={item.imageUrl} alt={item.name} />
-                              </div>
+                            <div className="flex items-start gap-3.5 max-w-md">
                               <div className="space-y-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-semibold text-sm text-[#171513]">
@@ -2402,60 +2306,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <option value="usd">Show USD Only</option>
                               </select>
 
-                              {/* Direct 1-Click Photo Upload on Row */}
-                              <label className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] hover:border-[#171513] cursor-pointer inline-flex items-center gap-1 font-medium">
-                                <Upload className="w-3 h-3 text-[#C65B2B]" />
-                                <span>
-                                  {uploadingRowItemId === item.id
-                                    ? 'Uploading...'
-                                    : 'Replace Photo'}
-                                </span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    setUploadingRowItemId(item.id);
-                                    try {
-                                      const r2Url = await uploadMediaFile(
-                                        file,
-                                        'menu',
-                                        item.imageUrl
-                                      );
-                                      const updated = { ...item, imageUrl: r2Url };
-                                      await saveMenuItem(updated);
-                                      if (editingMenuItem?.id === item.id) {
-                                        setEditingMenuItem(updated);
-                                      }
-                                      showToast(
-                                        `Uploaded & saved photo for "${item.name}" to Cloudflare R2.`
-                                      );
-                                    } finally {
-                                      setUploadingRowItemId(null);
-                                      e.target.value = '';
-                                    }
-                                  }}
-                                />
-                              </label>
-
-                              {item.imageUrl && item.imageUrl.startsWith('http') && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const updated = { ...item, imageUrl: '' };
-                                    await saveMenuItem(updated);
-                                    if (editingMenuItem?.id === item.id) {
-                                      setEditingMenuItem(updated);
-                                    }
-                                    showToast(`Reset photo for "${item.name}" in Cloudflare R2.`);
-                                  }}
-                                  className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 font-medium cursor-pointer"
-                                >
-                                  <RefreshCw className="w-3 h-3" /> Reset Photo
-                                </button>
-                              )}
+                              {/* 1-Click Featured on Home Toggle */}
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const nextFeatured = !item.isFeatured;
+                                  await saveMenuItem({ ...item, isFeatured: nextFeatured });
+                                  if (editingMenuItem?.id === item.id) {
+                                    setEditingMenuItem({
+                                      ...editingMenuItem,
+                                      isFeatured: nextFeatured,
+                                    });
+                                  }
+                                  showToast(
+                                    `${nextFeatured ? 'Featured' : 'Unfeatured'} "${item.name}" on Home Page.`
+                                  );
+                                }}
+                                className={`px-2.5 py-1.5 border font-medium cursor-pointer ${
+                                  item.isFeatured
+                                    ? 'border-[#C65B2B] text-[#C65B2B] bg-[#FDF3EF]'
+                                    : 'border-[#E7DED3] text-[#171513]/60 bg-white hover:border-[#171513]'
+                                }`}
+                              >
+                                {item.isFeatured ? '★ Featured' : 'Standard'}
+                              </button>
 
                               <button
                                 type="button"
@@ -2547,9 +2421,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {!editingMenuItem ? (
                     <div className="py-6 text-xs text-[#171513]/60 space-y-3">
                       <p>
-                        Select <strong>Edit</strong> next to any food or drink item on the left to
-                        modify its details, category, dietary tags, price, or photograph, or create
-                        a new item below.
+                        Select <strong>Edit Price &amp; Details</strong> next to any food or drink
+                        item on the left to modify its details, category, dietary tags, or price, or
+                        create a new item below.
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -2566,7 +2440,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               priceUsd: 8.0,
                               imageUrl: '',
                               dietaryTags: ['Signature'],
-                              isFeatured: false,
+                              isFeatured: true,
                               isAvailable: true,
                             });
                           }}
@@ -2589,7 +2463,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               priceUsd: 4.8,
                               imageUrl: '',
                               dietaryTags: ['Signature'],
-                              isFeatured: false,
+                              isFeatured: true,
                               isAvailable: true,
                             });
                           }}
@@ -2603,9 +2477,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
-                        await saveMenuItem(editingMenuItem);
-                        showToast(`Saved "${editingMenuItem.name}" to Firestore.`);
-                        setEditingMenuItem(null);
+                        try {
+                          await saveMenuItem(editingMenuItem);
+                          showToast(`Saved "${editingMenuItem.name}" to live site.`);
+                          setEditingMenuItem(null);
+                        } catch (err) {
+                          console.error('Save menu item failed:', err);
+                          showToast('Could not save menu item to Firestore. Please verify your admin sign-in and try again.');
+                        }
                       }}
                       className="space-y-3.5 text-xs"
                     >
@@ -2867,84 +2746,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         )}
                       </div>
 
-                      {/* Dish Image Preview + Device Upload (Cloudflare R2) + Remove */}
-                      <div className="space-y-2 border border-[#E7DED3] p-3 bg-[#F8F4EE]/60">
-                        <label className="block font-semibold text-[#171513]">
-                          Dish / Drink Image (Saved directly in Cloudflare R2)
-                        </label>
-                        <div className="aspect-[4/3] w-full border border-[#E7DED3] overflow-hidden bg-white">
-                          <EditorialVisual
-                            src={editingMenuItem.imageUrl}
-                            alt={editingMenuItem.name || 'Dish preview'}
-                          />
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#171513] text-[#F8F4EE] cursor-pointer hover:bg-[#C65B2B] transition-colors font-medium">
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>
-                              {uploadingImage
-                                ? 'Uploading to R2...'
-                                : editingMenuItem.imageUrl.startsWith('http')
-                                ? 'Replace R2 Photo'
-                                : 'Upload Photo to R2'}
-                            </span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                setUploadingImage(true);
-                                try {
-                                  const r2Url = await uploadMediaFile(
-                                    file,
-                                    'menu',
-                                    editingMenuItem.imageUrl
-                                  );
-                                  const updatedItem = { ...editingMenuItem, imageUrl: r2Url };
-                                  setEditingMenuItem(updatedItem);
-                                  if (
-                                    menuItems.some((m) => m.id === updatedItem.id) ||
-                                    updatedItem.name.trim().length > 0
-                                  ) {
-                                    await saveMenuItem(updatedItem);
-                                    showToast(
-                                      `Uploaded & saved photo for "${
-                                        updatedItem.name || 'Dish'
-                                      }" directly to Cloudflare R2.`
-                                    );
-                                  } else {
-                                    showToast(
-                                      'Photo uploaded to Cloudflare R2. Enter name and click Save.'
-                                    );
-                                  }
-                                } finally {
-                                  setUploadingImage(false);
-                                  e.target.value = '';
-                                }
-                              }}
-                            />
-                          </label>
-
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const updatedItem = { ...editingMenuItem, imageUrl: '' };
-                              setEditingMenuItem(updatedItem);
-                              if (menuItems.some((m) => m.id === updatedItem.id)) {
-                                await saveMenuItem(updatedItem);
-                                showToast('Removed custom photo from Cloudflare R2.');
-                              } else {
-                                showToast('Cleared custom photo.');
-                              }
-                            }}
-                            className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> Remove Image
-                          </button>
-                        </div>
+                      {/* Text-only Menu Card Note */}
+                      <div className="px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] text-[11px] text-[#171513]/65">
+                        Menu cards are displayed in the clean text-only 4-in-a-row layout across
+                        Home and /menu.
                       </div>
 
                       <div className="flex items-center gap-5 pt-1">
@@ -3001,8 +2806,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       Gallery Curations ({gallery.length})
                     </h2>
                     <p className="text-xs text-[#171513]/60">
-                      Edit, replace, or delete any gallery photograph directly in your Cloudflare R2
-                      bucket (cdn.onelovecafesigiriya.com). Zero Firestore gallery reads or writes.
+                      First 6 featured photos populate the Home Page “Life Beneath the Rock” 3×2
+                      gallery grid; all photos appear on /gallery. Stored directly in Cloudflare R2
+                      (cdn.onelovecafesigiriya.com).
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -3039,13 +2845,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 imageUrl: r2Url,
                                 aspectRatio: '4:3',
                                 isFeatured: true,
-                                sortOrder: gallery.length + i + 1,
+                                sortOrder: 0,
                               });
                               addedCount++;
                             }
                             showToast(
-                              `Uploaded & added ${addedCount} gallery photo(s) directly to Cloudflare R2.`
+                              `Uploaded & added ${addedCount} gallery photo(s) to live site.`
                             );
+                          } catch (err) {
+                            console.error('Batch gallery upload failed:', err);
+                            showToast('Could not upload gallery photos. Please verify your admin sign-in and try again.');
                           } finally {
                             setUploadingBatchGallery(false);
                             e.target.value = '';
@@ -3064,7 +2873,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           imageUrl: 'editorial:hero-sanctuary',
                           aspectRatio: '4:3',
                           isFeatured: true,
-                          sortOrder: gallery.length + 1,
+                          sortOrder: 0,
                         });
                         galleryEditorRef.current?.scrollIntoView({
                           behavior: 'smooth',
@@ -3202,7 +3011,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           imageUrl: 'editorial:hero-sanctuary',
                           aspectRatio: '4:3',
                           isFeatured: true,
-                          sortOrder: gallery.length + 1,
+                          sortOrder: 0,
                         })
                       }
                       className="px-4 py-2 bg-[#C65B2B] text-white uppercase tracking-wider font-medium inline-flex items-center gap-1.5"
@@ -3214,9 +3023,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
-                      await saveGalleryItem(editingGalleryItem);
-                      showToast(`Saved "${editingGalleryItem.title}" to Firestore.`);
-                      setEditingGalleryItem(null);
+                      try {
+                        await saveGalleryItem(editingGalleryItem);
+                        showToast(`Saved "${editingGalleryItem.title}" to live site.`);
+                        setEditingGalleryItem(null);
+                      } catch (err) {
+                        console.error('Save gallery item failed:', err);
+                        showToast('Could not save gallery photo to Firestore. Please verify your admin sign-in and try again.');
+                      }
                     }}
                     className="space-y-3 text-xs"
                   >
@@ -3513,9 +3327,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
-                      await saveEvent(editingEvent);
-                      setEditingEvent(null);
-                      showToast('Event saved to Firestore.');
+                      try {
+                        await saveEvent(editingEvent);
+                        setEditingEvent(null);
+                        showToast('Event saved to live site.');
+                      } catch (err) {
+                        console.error('Save event failed:', err);
+                        showToast('Could not save event to Firestore. Please verify your admin sign-in and try again.');
+                      }
                     }}
                     className="space-y-3 text-xs"
                   >
@@ -3673,61 +3492,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Hero Background Slideshow Manager */}
               {renderHeroSlideshowManager()}
 
-              {/* Menu Gallery Section Background Image (20% Blurred) Manager */}
-              {renderMenuGalleryBgManager()}
-
-              {/* Laterite Earth, Teak & Monsoon Light — 5-Photo Collage Manager */}
+              {/* Our Story Section — 2 Overlapping Rounded Photos Manager */}
               <div className="bg-white border border-[#E7DED3] p-6 space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7DED3] pb-4">
                   <div>
                     <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-                      Story Section · 5-Photo Scrapbook Collage
+                      Our Story Section · 2 Overlapping Rounded Photos
                     </div>
                     <h2 className="text-xl font-editorial font-semibold text-[#171513] mt-0.5">
-                      “Crafted from Laterite Earth, Teak &amp; Monsoon Light” Collage Photos
+                      Our Story Photography (Home Page &amp; /story)
                     </h2>
                     <p className="text-xs text-[#171513]/65">
-                      Upload custom photographs from your device or restore default archival artwork for each of the 5 hover-animated collage frames.
+                      Upload custom photographs for the primary right-side vertical frame and the
+                      overlapping bottom-left inset photo in the Our Story section.
                     </p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl">
                   {[
                     {
                       index: 1,
                       key: 'story_collage_1',
-                      label: '01 · Center Main Print',
-                      title: 'Wild Elephants & Sigiriya Horizon',
-                      defaultSrc: 'editorial:collage-elephants-sigiriya',
+                      label: '01 · Main Right Feature Photo (4:5 Vertical)',
+                      title: 'Open-Air Pavilion & Teak Dining Sanctuary',
+                      defaultSrc:
+                        'https://cdn.onelovecafesigiriya.com/collage/1793182269079-wp11877848-cozy-rain-wallpapers.webp',
                     },
                     {
                       index: 2,
                       key: 'story_collage_2',
-                      label: '02 · Top-Left Canopy Print',
-                      title: 'Monsoon Sunbeams Through Canopy',
-                      defaultSrc: 'editorial:collage-jungle-sunbeams',
-                    },
-                    {
-                      index: 3,
-                      key: 'story_collage_3',
-                      label: '03 · Top-Right Archival Print',
-                      title: 'Archival Sigiriya Lithograph',
-                      defaultSrc: 'editorial:collage-archival-rock',
-                    },
-                    {
-                      index: 4,
-                      key: 'story_collage_4',
-                      label: '04 · Bottom-Left Pinned Print',
-                      title: 'Reclaimed Railway Teak Pavilion',
-                      defaultSrc: 'editorial:collage-teak-pavilion',
-                    },
-                    {
-                      index: 5,
-                      key: 'story_collage_5',
-                      label: '05 · Right Taped Print',
-                      title: 'Porous Red Laterite Earth Stone',
-                      defaultSrc: 'editorial:collage-laterite-stone',
+                      label: '02 · Overlapping Inset Photo (1:1 Square)',
+                      title: 'Sanctuary Interior & Natural Light',
+                      defaultSrc:
+                        'https://cdn.onelovecafesigiriya.com/collage/1793182271989-wp2352856-coffee-shop-wallpapers.webp',
                     },
                   ].map((slot) => {
                     const sec = siteContent.find((s) => s.sectionKey === slot.key);
@@ -3741,7 +3539,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     return (
                       <div
                         key={slot.index}
-                        className="bg-[#F8F4EE] border border-[#E7DED3] p-3.5 flex flex-col justify-between space-y-3"
+                        className="bg-[#F8F4EE] border border-[#E7DED3] p-4 flex flex-col justify-between space-y-3"
                       >
                         <div className="space-y-1.5">
                           <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
@@ -3770,7 +3568,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 setUploadingCollageSlot(slot.index);
                                 try {
                                   await updateCollageImageFromDevice(slot.index, file);
-                                  showToast(`Updated collage slot #${slot.index} (${slot.title}).`);
+                                  showToast(`Updated Our Story photo #${slot.index} (${slot.title}).`);
                                 } finally {
                                   setUploadingCollageSlot(null);
                                 }
@@ -3784,7 +3582,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               title="Reset to default artwork"
                               onClick={async () => {
                                 await resetCollageImage(slot.index);
-                                showToast(`Reset collage slot #${slot.index} to default artwork.`);
+                                showToast(`Reset Our Story photo #${slot.index} to default.`);
                               }}
                               className="px-2.5 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] transition-colors cursor-pointer"
                             >
@@ -3798,10 +3596,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Editorial Website Content Sections (Hero, Story, Concierge, Footer) */}
+              {/* Editorial Website Content Sections (Hero, Story, Golden Hour, Atmosphere, Reservation, Find Us, Concierge, Footer) */}
               <div className="space-y-6">
                 <h2 className="text-xl font-editorial font-semibold">
-                  Editorial Section Copy, Footer Copy &amp; Section Photography
+                  Home Page &amp; Editorial Section Copy, Footer Copy &amp; Section Photography
                 </h2>
                 {siteContent
                   .filter(
@@ -3814,7 +3612,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   const draft = contentDrafts[sec.id] || sec;
                   const isFooterSec = sec.sectionKey === 'footer';
                   const isHeroSec = sec.sectionKey === 'hero';
-                  const hasImageUpload = !isFooterSec && !isHeroSec;
+                  const hasImageUpload =
+                    sec.sectionKey === 'story' ||
+                    sec.sectionKey === 'golden_hour' ||
+                    sec.sectionKey === 'atmosphere' ||
+                    sec.sectionKey === 'concierge';
 
                   return (
                     <div key={sec.id} className="bg-white border border-[#E7DED3] p-6 space-y-5">
@@ -3827,11 +3629,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {isHeroSec &&
                               'Controls Homepage Hero headline, subheading & body copy. (Hero background photos are managed in the Hero Slideshow above.)'}
                             {sec.sectionKey === 'story' &&
-                              'Controls Homepage Story section + /story Page primary architectural photograph & copy'}
+                              'Controls Homepage Our Story heading & narrative + /story Page primary photograph'}
+                            {sec.sectionKey === 'golden_hour' &&
+                              'Controls Homepage dark "The Golden Hour" culinary feature section copy & left-side photograph'}
+                            {sec.sectionKey === 'atmosphere' &&
+                              'Controls Homepage warm sand "Atmosphere & Spaces" section copy & right-side framed photograph'}
+                            {sec.sectionKey === 'home_reserve' &&
+                              'Controls Homepage dark Reservation concierge headline, description & quick-booking card title'}
+                            {sec.sectionKey === 'find_us' &&
+                              'Controls Homepage "Find Us in Sigiriya" two-card header, trail proximity title & Lion Rock distance'}
                             {sec.sectionKey === 'concierge' &&
                               'Controls /story Page secondary hospitality showcase photograph & copy'}
-                            {sec.sectionKey.startsWith('story_collage_') &&
-                              'Controls one of the 5 hover-animated collage frames in the "Crafted from Laterite Earth, Teak & Monsoon Light" section'}
                             {isFooterSec &&
                               'Controls Footer banner headline, CTA button labels, copyright notice & bottom links'}
                           </div>
@@ -3839,8 +3647,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <button
                           type="button"
                           onClick={async () => {
-                            await saveSiteContent(draft);
-                            showToast(`Saved "${sec.sectionKey}" section changes to Firestore.`);
+                            try {
+                              await saveSiteContent(draft);
+                              setContentDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[sec.id];
+                                delete next[sec.sectionKey];
+                                return next;
+                              });
+                              showToast(`Saved "${sec.sectionKey}" section changes to live site.`);
+                            } catch (err) {
+                              console.error('Save site content failed:', err);
+                              showToast('Could not save section changes to Firestore. Please verify your admin sign-in and try again.');
+                            }
                           }}
                           className="px-4 py-2 bg-[#C65B2B] text-white text-xs uppercase tracking-wider font-medium"
                         >
@@ -3960,9 +3779,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
                             </>
                           )}
+                          {(sec.sectionKey === 'golden_hour' ||
+                            sec.sectionKey === 'home_reserve' ||
+                            sec.sectionKey === 'find_us') && (
+                            <div className="sm:col-span-2">
+                              <label className="block text-[#171513]/60 mb-1">
+                                {sec.sectionKey === 'find_us'
+                                  ? 'Distance Highlight Badge (e.g. 1.5 Kilometers)'
+                                  : 'Primary Button Label'}
+                              </label>
+                              <input
+                                type="text"
+                                value={draft.ctaLabel}
+                                onChange={(e) =>
+                                  setContentDrafts({
+                                    ...contentDrafts,
+                                    [sec.id]: { ...draft, ctaLabel: e.target.value },
+                                  })
+                                }
+                                className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
+                              />
+                            </div>
+                          )}
                         </div>
 
-                        {/* Section Image Upload / Replace / Remove for Story & Concierge only */}
+                        {/* Section Image Upload / Replace / Remove for Story, Golden Hour, Atmosphere & Concierge */}
                         {hasImageUpload && (
                           <div className="bg-[#F8F4EE] border border-[#E7DED3] p-4 space-y-3 flex flex-col justify-between">
                             <div className="space-y-2">
@@ -4054,10 +3895,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </p>
                 </div>
 
-                {/* 1. Core Page & Floor Plan Visuals */}
+                {/* 1. Core Page, Home Showcase & Floor Plan Visuals */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-[#58644E]">
-                    1. Core Page &amp; Floor Plan Images
+                    1. Core Page, Home Showcase &amp; Floor Plan Images
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
                     {/* Floor Plan Drone Shot */}
@@ -4067,7 +3908,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           Interactive Floor Plan Background (Drone Shot)
                         </div>
                         <div className="text-[11px] text-[#171513]/60">
-                          Shown on Home (#reserve-section) &amp; /reserve Page
+                          Shown on /reserve Interactive Floor Plan Page
                         </div>
                         <div className="aspect-[16/10] bg-white border border-[#E7DED3] overflow-hidden">
                           <EditorialVisual
@@ -4120,9 +3961,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
-                    {/* Story & Concierge Images */}
+                    {/* Story, Golden Hour, Atmosphere & Concierge Images */}
                     {siteContent
-                      .filter((s) => s.sectionKey === 'story' || s.sectionKey === 'concierge')
+                      .filter(
+                        (s) =>
+                          s.sectionKey === 'story' ||
+                          s.sectionKey === 'golden_hour' ||
+                          s.sectionKey === 'atmosphere' ||
+                          s.sectionKey === 'concierge'
+                      )
                       .map((sec) => (
                         <div
                           key={sec.id}
@@ -4131,7 +3978,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div className="space-y-1.5">
                             <div className="font-semibold text-[#171513]">
                               {sec.sectionKey === 'story'
-                                ? 'Our Story Primary Image (Home & /story)'
+                                ? 'Our Story Primary Image (/story)'
+                                : sec.sectionKey === 'golden_hour'
+                                ? 'The Golden Hour Culinary Feature (Home)'
+                                : sec.sectionKey === 'atmosphere'
+                                ? 'Atmosphere & Spaces Feature (Home)'
                                 : 'Our Story Secondary Showcase (/story)'}
                             </div>
                             <div className="text-[11px] text-[#171513]/60 truncate">
@@ -4190,80 +4041,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* 2. All Menu Item Images (Home 4x4 Grid & /menu) */}
+                {/* 2. All Gallery & Event Images */}
                 <div className="space-y-3 pt-2 border-t border-[#E7DED3]">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-[#58644E]">
-                    2. All Menu Item Images ({menuItems.length} Dishes — Shown on Home 4×4 Grid &amp;
-                    /menu)
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
-                    {menuItems.map((dish) => (
-                      <div
-                        key={dish.id}
-                        className="border border-[#E7DED3] bg-[#F8F4EE] p-2.5 flex flex-col justify-between space-y-2"
-                      >
-                        <div className="space-y-1">
-                          <div className="aspect-[4/3] bg-white border border-[#E7DED3] overflow-hidden">
-                            <EditorialVisual src={dish.imageUrl} alt={dish.name} />
-                          </div>
-                          <div className="font-semibold text-[#171513] truncate">{dish.name}</div>
-                          <div className="text-[10px] text-[#171513]/60 truncate">
-                            {dish.categoryName}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <label className="flex-1 py-1.5 px-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
-                            <Upload className="w-3 h-3" />
-                            <span>
-                              {uploadingAuditKey === `dish_${dish.id}`
-                                ? 'Uploading...'
-                                : 'Replace Photo'}
-                            </span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (!file) return;
-                                setUploadingAuditKey(`dish_${dish.id}`);
-                                try {
-                                  const r2Url = await uploadMediaFile(
-                                    file,
-                                    'menu',
-                                    dish.imageUrl
-                                  );
-                                  await saveMenuItem({ ...dish, imageUrl: r2Url });
-                                  showToast(`Updated photo for "${dish.name}" in Cloudflare R2.`);
-                                } finally {
-                                  setUploadingAuditKey(null);
-                                  e.target.value = '';
-                                }
-                              }}
-                            />
-                          </label>
-                          {dish.imageUrl && dish.imageUrl.startsWith('http') && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await saveMenuItem({ ...dish, imageUrl: '' });
-                                showToast(`Reset photo for "${dish.name}" in Cloudflare R2.`);
-                              }}
-                              className="px-2 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16]"
-                            >
-                              Reset
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 3. All Gallery & Event Images */}
-                <div className="space-y-3 pt-2 border-t border-[#E7DED3]">
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-[#58644E]">
-                    3. All Gallery ({gallery.length}) &amp; Event ({events.length}) Images
+                    2. All Gallery ({gallery.length}) &amp; Event ({events.length}) Images
                   </h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-xs">
                     {gallery.map((g) => (
@@ -4436,20 +4217,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <form
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    await saveSettings({
-                      ...settings,
-                      ...settingsForm,
-                      heroImages: settings.heroImages,
-                      heroSlideshowSpeedSeconds: settings.heroSlideshowSpeedSeconds,
-                      floorPlanImageUrl: settings.floorPlanImageUrl,
-                    });
-                    const footerDraft =
-                      contentDrafts['footer'] ||
-                      siteContent.find((s) => s.sectionKey === 'footer');
-                    if (footerDraft) {
-                      await saveSiteContent(footerDraft);
+                    try {
+                      await saveSettings({
+                        ...settings,
+                        ...settingsForm,
+                        heroImages: settings.heroImages,
+                        heroSlideshowSpeedSeconds: settings.heroSlideshowSpeedSeconds,
+                        floorPlanImageUrl: settings.floorPlanImageUrl,
+                      });
+                      const footerDraft =
+                        contentDrafts['footer'] ||
+                        siteContent.find((s) => s.sectionKey === 'footer');
+                      if (footerDraft) {
+                        await saveSiteContent(footerDraft);
+                        setContentDrafts((prev) => {
+                          const next = { ...prev };
+                          delete next['footer'];
+                          delete next[footerDraft.id];
+                          return next;
+                        });
+                      }
+                      showToast('Global café settings & all Footer details saved to live site.');
+                    } catch (err) {
+                      console.error('Save settings failed:', err);
+                      showToast('Could not save settings to Firestore. Please verify your admin sign-in and try again.');
                     }
-                    showToast('Global café settings & all Footer details saved to Firestore.');
                   }}
                   className="bg-white border border-[#E7DED3] p-6 space-y-5 text-xs"
                 >
