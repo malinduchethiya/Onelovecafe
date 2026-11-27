@@ -64,6 +64,7 @@ export const db = initDb();
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const BOOTSTRAP_ADMIN_EMAIL = 'merlinfiverr0@gmail.com';
 export const BOOTSTRAP_ADMIN_EMAILS = [
