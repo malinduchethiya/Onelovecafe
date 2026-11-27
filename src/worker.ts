@@ -17,37 +17,50 @@ import { DEFAULT_GALLERY, DEFAULT_SETTINGS } from './data/seedData';
 
 const R2_MANIFEST_OBJECT_KEY = 'manifest/site-media.json';
 
+export interface WorkerR2Bucket {
+  get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
+  put: (
+    key: string,
+    value: ArrayBuffer | ArrayBufferView | ReadableStream | string | Blob,
+    options?: {
+      httpMetadata?: {
+        contentType?: string;
+        cacheControl?: string;
+      };
+    }
+  ) => Promise<unknown>;
+  delete: (key: string | string[]) => Promise<void>;
+}
+
 export interface WorkerEnv {
   ASSETS?: {
     fetch: (request: Request | string | URL) => Promise<Response>;
   };
-  R2_BUCKET?: {
-    get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
-    put: (
-      key: string,
-      value: ArrayBuffer | ArrayBufferView | ReadableStream | string | Blob,
-      options?: {
-        httpMetadata?: {
-          contentType?: string;
-          cacheControl?: string;
-        };
-      }
-    ) => Promise<unknown>;
-    delete: (key: string | string[]) => Promise<void>;
-  };
+  R2_BUCKET?: WorkerR2Bucket;
   R2_PUBLIC_URL?: string;
   APP_URL?: string;
   R2_ACCOUNT_ID?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
+  CF_ACCOUNT_ID?: string;
   R2_ACCESS_KEY_ID?: string;
   R2_SECRET_ACCESS_KEY?: string;
   R2_BUCKET_NAME?: string;
+  R2_ENDPOINT?: string;
+  CLOUDFLARE_R2_ACCESS_KEY_ID?: string;
+  CLOUDFLARE_R2_SECRET_ACCESS_KEY?: string;
   S3_ENDPOINT?: string;
   S3_ACCESS_KEY_ID?: string;
   S3_SECRET_ACCESS_KEY?: string;
   S3_BUCKET_NAME?: string;
   S3_PUBLIC_URL?: string;
   S3_REGION?: string;
+  AWS_ENDPOINT?: string;
+  AWS_ACCESS_KEY_ID?: string;
+  AWS_SECRET_ACCESS_KEY?: string;
+  AWS_S3_BUCKET?: string;
+  AWS_S3_PUBLIC_URL?: string;
+  AWS_REGION?: string;
+  [key: string]: unknown;
 }
 
 interface SeoRuntimeState {
@@ -123,24 +136,78 @@ function extractWorkerR2Key(url: string | undefined, publicUrl: string): string 
   return null;
 }
 
-function getWorkerS3Client(env: WorkerEnv): { s3: S3Client; bucket: string; publicUrl: string } | null {
-  const accountId = env.R2_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID;
-  const accessKeyId = env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID;
-  const secretAccessKey = env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY;
-  if (!accessKeyId || !secretAccessKey) return null;
-  const bucket = env.R2_BUCKET_NAME || env.S3_BUCKET_NAME || 'onelove-assets';
-  const publicUrl = (
-    env.R2_PUBLIC_URL ||
-    env.S3_PUBLIC_URL ||
+function readEnvString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isR2BucketLike(value: unknown): value is WorkerR2Bucket {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.get === 'function' &&
+    typeof candidate.put === 'function' &&
+    typeof candidate.delete === 'function'
+  );
+}
+
+function resolveWorkerR2Bucket(env: WorkerEnv): WorkerR2Bucket | null {
+  if (isR2BucketLike(env.R2_BUCKET)) return env.R2_BUCKET;
+  const preferredKeys = ['ONELOVE_ASSETS', 'ASSETS_BUCKET', 'MEDIA_BUCKET', 'BUCKET', 'R2'];
+  for (const key of preferredKeys) {
+    if (isR2BucketLike(env[key])) return env[key] as WorkerR2Bucket;
+  }
+  for (const [key, value] of Object.entries(env)) {
+    if (key === 'ASSETS') continue;
+    if (isR2BucketLike(value)) return value;
+  }
+  return null;
+}
+
+function getWorkerPublicUrl(env: WorkerEnv): string {
+  return (
+    readEnvString(env.R2_PUBLIC_URL) ||
+    readEnvString(env.S3_PUBLIC_URL) ||
+    readEnvString(env.AWS_S3_PUBLIC_URL) ||
     'https://cdn.onelovecafesigiriya.com'
   ).replace(/\/$/, '');
-  let endpoint = env.S3_ENDPOINT;
+}
+
+function getWorkerS3Client(env: WorkerEnv): { s3: S3Client; bucket: string; publicUrl: string } | null {
+  const accountId =
+    readEnvString(env.R2_ACCOUNT_ID) ||
+    readEnvString(env.CLOUDFLARE_ACCOUNT_ID) ||
+    readEnvString(env.CF_ACCOUNT_ID);
+  const accessKeyId =
+    readEnvString(env.R2_ACCESS_KEY_ID) ||
+    readEnvString(env.S3_ACCESS_KEY_ID) ||
+    readEnvString(env.AWS_ACCESS_KEY_ID) ||
+    readEnvString(env.CLOUDFLARE_R2_ACCESS_KEY_ID);
+  const secretAccessKey =
+    readEnvString(env.R2_SECRET_ACCESS_KEY) ||
+    readEnvString(env.S3_SECRET_ACCESS_KEY) ||
+    readEnvString(env.AWS_SECRET_ACCESS_KEY) ||
+    readEnvString(env.CLOUDFLARE_R2_SECRET_ACCESS_KEY);
+  if (!accessKeyId || !secretAccessKey) return null;
+  const bucket =
+    readEnvString(env.R2_BUCKET_NAME) ||
+    readEnvString(env.S3_BUCKET_NAME) ||
+    readEnvString(env.AWS_S3_BUCKET) ||
+    'onelove-assets';
+  const publicUrl = getWorkerPublicUrl(env);
+  let endpoint =
+    readEnvString(env.R2_ENDPOINT) ||
+    readEnvString(env.S3_ENDPOINT) ||
+    readEnvString(env.AWS_ENDPOINT);
   if (!endpoint && accountId) {
     endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
   }
+  if (!endpoint) return null;
   const s3 = new S3Client({
-    region: env.S3_REGION || 'auto',
-    ...(endpoint ? { endpoint } : {}),
+    region: readEnvString(env.S3_REGION) || readEnvString(env.AWS_REGION) || 'auto',
+    endpoint,
+    forcePathStyle: true,
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: { accessKeyId, secretAccessKey },
   });
   return { s3, bucket, publicUrl };
@@ -149,8 +216,9 @@ function getWorkerS3Client(env: WorkerEnv): { s3: S3Client; bucket: string; publ
 async function readWorkerManifest(env: WorkerEnv, force = false): Promise<R2MediaManifest> {
   if (workerManifestLoaded && !force) return workerR2Manifest;
   try {
-    if (env.R2_BUCKET) {
-      const obj = await env.R2_BUCKET.get(R2_MANIFEST_OBJECT_KEY);
+    const r2Bucket = resolveWorkerR2Bucket(env);
+    if (r2Bucket) {
+      const obj = await r2Bucket.get(R2_MANIFEST_OBJECT_KEY);
       if (obj) {
         const text = await obj.text();
         workerR2Manifest = normalizeWorkerR2Manifest(JSON.parse(text) as Partial<R2MediaManifest>);
@@ -176,11 +244,7 @@ async function readWorkerManifest(env: WorkerEnv, force = false): Promise<R2Medi
     }
 
     // Edge HTTP fallback to public R2 CDN domain (bypasses browser CORS and works even without Worker S3 secrets)
-    const publicUrl = (
-      env.R2_PUBLIC_URL ||
-      env.S3_PUBLIC_URL ||
-      'https://cdn.onelovecafesigiriya.com'
-    ).replace(/\/$/, '');
+    const publicUrl = getWorkerPublicUrl(env);
     const cdnResp = await fetch(`${publicUrl}/${R2_MANIFEST_OBJECT_KEY}?t=${Date.now()}`, {
       headers: { Accept: 'application/json' },
     });
@@ -201,14 +265,11 @@ async function writeWorkerManifest(env: WorkerEnv, manifest: R2MediaManifest): P
   workerR2Manifest = normalized;
   workerManifestLoaded = true;
   const jsonStr = JSON.stringify(normalized, null, 2);
-  const publicBase = (
-    env.R2_PUBLIC_URL ||
-    env.S3_PUBLIC_URL ||
-    'https://cdn.onelovecafesigiriya.com'
-  ).replace(/\/$/, '');
+  const publicBase = getWorkerPublicUrl(env);
 
-  if (env.R2_BUCKET) {
-    await env.R2_BUCKET.put(R2_MANIFEST_OBJECT_KEY, jsonStr, {
+  const r2Bucket = resolveWorkerR2Bucket(env);
+  if (r2Bucket) {
+    await r2Bucket.put(R2_MANIFEST_OBJECT_KEY, jsonStr, {
       httpMetadata: {
         contentType: 'application/json; charset=utf-8',
         cacheControl: 'public, max-age=5, must-revalidate',
@@ -235,19 +296,16 @@ async function writeWorkerManifest(env: WorkerEnv, manifest: R2MediaManifest): P
 
 async function deleteWorkerR2Object(env: WorkerEnv, keyOrUrl: string): Promise<string | null> {
   if (!keyOrUrl) return null;
-  const publicBase = (
-    env.R2_PUBLIC_URL ||
-    env.S3_PUBLIC_URL ||
-    'https://cdn.onelovecafesigiriya.com'
-  ).replace(/\/$/, '');
+  const publicBase = getWorkerPublicUrl(env);
   const extractedKey =
     keyOrUrl.startsWith('http://') || keyOrUrl.startsWith('https://')
       ? extractWorkerR2Key(keyOrUrl, publicBase)
       : keyOrUrl.replace(/^\/+/, '');
   if (!extractedKey || extractedKey === R2_MANIFEST_OBJECT_KEY) return null;
 
-  if (env.R2_BUCKET) {
-    await env.R2_BUCKET.delete(extractedKey);
+  const r2Bucket = resolveWorkerR2Bucket(env);
+  if (r2Bucket) {
+    await r2Bucket.delete(extractedKey);
     return extractedKey;
   }
 
@@ -524,20 +582,16 @@ export default {
     }
 
     if (pathname === '/api/storage/status' && request.method === 'GET') {
-      const hasR2Binding = Boolean(env.R2_BUCKET);
-      const hasS3Creds = Boolean(
-        (env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID) &&
-          (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)
-      );
+      const r2Bucket = resolveWorkerR2Bucket(env);
+      const s3Info = r2Bucket ? null : getWorkerS3Client(env);
+      const hasR2Binding = Boolean(r2Bucket);
+      const hasS3Creds = Boolean(s3Info);
       const isConfigured = hasR2Binding || hasS3Creds;
-      const publicUrl = (
-        env.R2_PUBLIC_URL ||
-        env.S3_PUBLIC_URL ||
-        (isConfigured ? 'https://cdn.onelovecafesigiriya.com' : '')
-      ).replace(/\/$/, '') || null;
+      const publicUrl = isConfigured ? getWorkerPublicUrl(env) : null;
       const bucketName =
-        env.R2_BUCKET_NAME ||
-        env.S3_BUCKET_NAME ||
+        readEnvString(env.R2_BUCKET_NAME) ||
+        readEnvString(env.S3_BUCKET_NAME) ||
+        readEnvString(env.AWS_S3_BUCKET) ||
         (hasR2Binding ? 'onelove-assets' : null);
 
       return jsonResponse({
@@ -558,17 +612,10 @@ export default {
     if (pathname === '/api/storage/manifest' && request.method === 'GET') {
       const force = url.searchParams.get('refresh') === '1';
       const manifest = await readWorkerManifest(env, force);
-      const hasR2Binding = Boolean(env.R2_BUCKET);
-      const hasS3Creds = Boolean(
-        (env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID) &&
-          (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)
-      );
-      const isConfigured = hasR2Binding || hasS3Creds;
-      const publicUrl = (
-        env.R2_PUBLIC_URL ||
-        env.S3_PUBLIC_URL ||
-        'https://cdn.onelovecafesigiriya.com'
-      ).replace(/\/$/, '');
+      const r2Bucket = resolveWorkerR2Bucket(env);
+      const s3Info = r2Bucket ? null : getWorkerS3Client(env);
+      const isConfigured = Boolean(r2Bucket || s3Info);
+      const publicUrl = getWorkerPublicUrl(env);
       return jsonResponse({
         ok: true,
         success: true,
@@ -733,20 +780,17 @@ export default {
           return jsonResponse({ ok: false, success: false, error: 'dataUrl is required.' }, 400);
         }
 
-        const hasR2Binding = Boolean(env.R2_BUCKET);
-        const hasS3Creds = Boolean(
-          (env.R2_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID) &&
-            (env.R2_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY)
-        );
+        const r2Bucket = resolveWorkerR2Bucket(env);
+        const s3Info = r2Bucket ? null : getWorkerS3Client(env);
 
-        if (!hasR2Binding && !hasS3Creds) {
+        if (!r2Bucket && !s3Info) {
           return jsonResponse(
             {
               ok: false,
               success: false,
               configured: false,
               error:
-                'Cloudflare R2 storage is required for image uploads. Images are never stored in Firestore.',
+                'Cloudflare R2 is not bound to this deployment. Bind R2_BUCKET (bucket: onelove-assets) or set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY.',
             },
             503
           );
@@ -773,33 +817,26 @@ export default {
           .slice(0, 40);
         const key = `${safeFolder}/${Date.now()}-${rawName}.${ext}`;
 
-        const publicBase = (
-          env.R2_PUBLIC_URL ||
-          env.S3_PUBLIC_URL ||
-          'https://cdn.onelovecafesigiriya.com'
-        ).replace(/\/$/, '');
+        const publicBase = getWorkerPublicUrl(env);
         const publicUrl = `${publicBase}/${key}`;
 
-        if (hasR2Binding && env.R2_BUCKET) {
-          await env.R2_BUCKET.put(key, bytes, {
+        if (r2Bucket) {
+          await r2Bucket.put(key, bytes, {
             httpMetadata: {
               contentType: mimeType,
               cacheControl: 'public, max-age=31536000, immutable',
             },
           });
-        } else if (hasS3Creds) {
-          const s3Info = getWorkerS3Client(env);
-          if (s3Info) {
-            await s3Info.s3.send(
-              new PutObjectCommand({
-                Bucket: s3Info.bucket,
-                Key: key,
-                Body: bytes,
-                ContentType: mimeType,
-                CacheControl: 'public, max-age=31536000, immutable',
-              })
-            );
-          }
+        } else if (s3Info) {
+          await s3Info.s3.send(
+            new PutObjectCommand({
+              Bucket: s3Info.bucket,
+              Key: key,
+              Body: bytes,
+              ContentType: mimeType,
+              CacheControl: 'public, max-age=31536000, immutable',
+            })
+          );
         }
 
         let deletedPreviousKey: string | null = null;

@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { z } from 'zod';
 import {
@@ -22,6 +23,10 @@ import { DEFAULT_GALLERY, DEFAULT_SETTINGS } from './src/data/seedData';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load local .env files when running under Node / Express (non-overwriting)
+dotenv.config({ path: path.join(__dirname, '.env.local') });
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const SEO_CACHE_FILE = path.join(__dirname, '.seo-runtime-cache.json');
 const R2_MANIFEST_CACHE_FILE = path.join(__dirname, '.r2-manifest-cache.json');
@@ -359,40 +364,61 @@ const InquiryPayloadSchema = z.object({
 
 // Cloudflare R2 / S3-Compatible Object Storage Client
 function getR2Client(): { s3: S3Client; bucket: string; publicUrl: string } | null {
-  const accountId = process.env.R2_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
-  const accessKeyId =
+  const accountId = (
+    process.env.R2_ACCOUNT_ID ||
+    process.env.CLOUDFLARE_ACCOUNT_ID ||
+    process.env.CF_ACCOUNT_ID ||
+    ''
+  ).trim();
+  const accessKeyId = (
     process.env.R2_ACCESS_KEY_ID ||
     process.env.S3_ACCESS_KEY_ID ||
-    process.env.AWS_ACCESS_KEY_ID;
-  const secretAccessKey =
+    process.env.AWS_ACCESS_KEY_ID ||
+    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
+    ''
+  ).trim();
+  const secretAccessKey = (
     process.env.R2_SECRET_ACCESS_KEY ||
     process.env.S3_SECRET_ACCESS_KEY ||
-    process.env.AWS_SECRET_ACCESS_KEY;
-  const bucket =
+    process.env.AWS_SECRET_ACCESS_KEY ||
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
+    ''
+  ).trim();
+  const bucket = (
     process.env.R2_BUCKET_NAME ||
     process.env.S3_BUCKET_NAME ||
     process.env.AWS_S3_BUCKET ||
-    'onelove-assets';
-  const publicUrl =
+    'onelove-assets'
+  ).trim();
+  const publicUrl = (
     process.env.R2_PUBLIC_URL ||
     process.env.S3_PUBLIC_URL ||
     process.env.AWS_S3_PUBLIC_URL ||
-    'https://cdn.onelovecafesigiriya.com';
-  const region = process.env.S3_REGION || process.env.AWS_REGION || 'auto';
+    'https://cdn.onelovecafesigiriya.com'
+  ).trim();
+  const region = (process.env.S3_REGION || process.env.AWS_REGION || 'auto').trim();
 
   // Endpoint can be directly passed (e.g., https://<account_id>.r2.cloudflarestorage.com) or inferred
-  let endpoint = process.env.S3_ENDPOINT || process.env.AWS_ENDPOINT;
+  let endpoint = (
+    process.env.R2_ENDPOINT ||
+    process.env.S3_ENDPOINT ||
+    process.env.AWS_ENDPOINT ||
+    ''
+  ).trim();
   if (!endpoint && accountId) {
     endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
   }
 
-  if (!accessKeyId || !secretAccessKey) {
+  if (!accessKeyId || !secretAccessKey || !endpoint) {
     return null;
   }
 
   const s3 = new S3Client({
     region,
-    ...(endpoint ? { endpoint } : {}),
+    endpoint,
+    forcePathStyle: true,
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: {
       accessKeyId,
       secretAccessKey,
@@ -828,7 +854,7 @@ async function startServer() {
           success: false,
           configured: false,
           error:
-            'Cloudflare R2 credentials are required for image uploads. Images are never stored in Firestore.',
+            'Cloudflare R2 credentials are missing on this server. Set R2_ACCOUNT_ID (or S3_ENDPOINT), R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY in your environment.',
         });
         return;
       }

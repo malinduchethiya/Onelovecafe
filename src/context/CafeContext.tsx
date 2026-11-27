@@ -2553,7 +2553,20 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (!res.ok) {
-        throw new Error(`Cloudflare R2 upload failed (${res.status})`);
+        let serverError = '';
+        try {
+          const errPayload = await res.json();
+          if (errPayload && typeof errPayload.error === 'string') {
+            serverError = errPayload.error;
+          }
+        } catch {
+          // Non-JSON response body
+        }
+        throw new Error(
+          serverError
+            ? `Cloudflare R2 upload failed (${res.status}): ${serverError}`
+            : `Cloudflare R2 upload failed (${res.status})`
+        );
       }
 
       const data = await res.json();
