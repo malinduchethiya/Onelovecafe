@@ -803,13 +803,13 @@ const OneLoveRouter: React.FC = () => {
               <section
                 onMouseMove={handleHeroMouseMove}
                 onMouseLeave={handleHeroMouseLeave}
-                className="relative -mt-[72px] pt-[72px] min-h-screen flex items-center justify-center bg-[#3A2E25] text-white overflow-hidden"
+                className="relative -mt-[72px] pt-[72px] min-h-[74vh] sm:min-h-[78vh] lg:min-h-[82vh] flex items-center justify-center bg-[#3A2E25] text-white overflow-hidden"
               >
-                {/* Background Slideshow Layer with Elevated Luminance & Contrast */}
+                {/* Background Slideshow Layer with Wide Field of View & Natural Framing */}
                 <div
                   className="absolute inset-0 transition-transform duration-300 ease-out pointer-events-none"
                   style={{
-                    transform: `translate3d(${mouseParallax.x * 0.15}px, ${scrollY * 0.2 + mouseParallax.y * 0.15}px, 0) scale(1.01)`,
+                    transform: `translate3d(${mouseParallax.x * 0.06}px, ${scrollY * 0.12 + mouseParallax.y * 0.06}px, 0) scale(1)`,
                     willChange: 'transform',
                   }}
                 >
@@ -824,13 +824,13 @@ const OneLoveRouter: React.FC = () => {
                         src={slideSrc}
                         alt={`OneLove Café Sigiriya, Sri Lanka hero slide ${idx + 1}`}
                         priority={true}
-                        className="h-full w-full object-cover contrast-[1.18] saturate-[1.24] brightness-[1.06]"
+                        className="h-full w-full object-cover object-center contrast-[1.12] saturate-[1.18] brightness-[1.04]"
                       />
                     </div>
                   ))}
-                  {/* Sunlit Chiaroscuro Lighting Overlay: Golden-Emerald Midtone Glow + Warm Vignette */}
-                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_55%_42%,rgba(255,248,214,0.14)_0%,rgba(24,18,14,0.18)_52%,rgba(18,14,10,0.58)_100%)]" />
-                  <div className="absolute inset-0 bg-gradient-to-b from-[#1E1712]/40 via-transparent to-[#18120E]/65" />
+                  {/* Balanced Wide-Angle Lighting Overlay: Clear Edges + Readable Center */}
+                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_48%,rgba(18,14,10,0.28)_0%,rgba(18,14,10,0.16)_58%,rgba(18,14,10,0.34)_100%)]" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-[#1E1712]/35 via-transparent to-[#18120E]/50" />
                 </div>
 
                 {/* Slider Navigation Arrows (Left & Right) matching reference screenshot */}
@@ -856,13 +856,13 @@ const OneLoveRouter: React.FC = () => {
                 )}
 
                 {/* Foreground Content Layer - Centered, Big Main Text Widespread & High-Contrast Secondary Text */}
-                <div className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-12 py-16 sm:py-24 flex flex-col items-center justify-center text-center subpixel-antialiased">
+                <div className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-12 pt-10 pb-16 sm:pt-12 sm:pb-20 flex flex-col items-center justify-center text-center subpixel-antialiased">
                   <div className="space-y-5 sm:space-y-7 flex flex-col items-center justify-center text-center w-full">
                     {/* Big Main Text Widespread matching screenshot with luminous contrast + crawlable brand H1 prefix */}
                     <h1
                       data-gsap-hero
                       style={{ textWrap: 'balance' }}
-                      className="font-outfit text-3xl sm:text-6xl md:text-7xl lg:text-[90px] xl:text-[102px] font-light leading-[1.06] sm:leading-[1.04] tracking-tight text-[#FFFFFF] max-w-6xl mx-auto [text-shadow:0_6px_28px_rgba(0,0,0,0.68)]"
+                      className="font-hero-display text-5xl sm:text-7xl md:text-[84px] lg:text-[104px] xl:text-[124px] font-extrabold leading-[1.04] sm:leading-[1.02] tracking-[-0.025em] text-[#FFFFFF] max-w-6xl mx-auto [text-shadow:0_6px_28px_rgba(0,0,0,0.68)]"
                     >
                       <span className="sr-only">
                         OneLove Café Sigiriya — Café &amp; Restaurant in Sigiriya, Central Province, Sri Lanka:{' '}
@@ -873,7 +873,7 @@ const OneLoveRouter: React.FC = () => {
                     {/* Crisp High-Contrast Secondary Text */}
                     <p
                       data-gsap-hero
-                      className="text-xs sm:text-sm md:text-base text-white/95 max-w-2xl mx-auto leading-relaxed font-normal [text-shadow:0_2px_12px_rgba(0,0,0,0.75)] px-1 sm:px-2"
+                      className="text-sm sm:text-base md:text-lg text-[#FFFFFF] max-w-2xl mx-auto leading-relaxed font-medium [text-shadow:0_2px_16px_rgba(0,0,0,0.92),0_1px_3px_rgba(0,0,0,0.85)] px-1 sm:px-2"
                     >
                       {heroContent?.subheading ||
                         'Nestled in the emerald canopy beneath Sigiriya Lion Rock in Central Province, Sri Lanka, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
@@ -882,7 +882,7 @@ const OneLoveRouter: React.FC = () => {
                     {/* High-Contrast Action Buttons matching reference screenshot */}
                     <div
                       data-gsap-hero
-                      className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5 pt-2 w-full"
+                      className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 pt-3 w-full"
                     >
                       <a
                         href="/menu"
@@ -900,7 +900,7 @@ const OneLoveRouter: React.FC = () => {
                           e.preventDefault();
                           handleReserveCtaClick();
                         }}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#FFFDF9] text-[#110F0D] text-xs font-semibold uppercase tracking-wider hover:bg-[#F3ECE0] hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.38)] cursor-pointer inline-flex items-center justify-center"
+                        className="min-h-[54px] px-7 sm:px-9 py-3.5 sm:py-4 rounded-full bg-[#FFFDF9] text-[#110F0D] text-[14.5px] font-bold uppercase tracking-wider hover:bg-[#F3ECE0] hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap shrink-0 shadow-[0_10px_28px_rgba(0,0,0,0.42)] cursor-pointer inline-flex items-center justify-center leading-none"
                       >
                         Reserve a Table
                       </a>
@@ -914,6 +914,171 @@ const OneLoveRouter: React.FC = () => {
                       >
                         Discover More
                       </a>
+                    </div>
+
+                    {/* Glassmorphic Continuous Horizontal Traveler Ratings Strip Underneath Hero Buttons */}
+                    <div
+                      data-gsap-hero
+                      aria-label="Traveler ratings across platforms"
+                      className="relative z-20 mt-4 sm:mt-6 w-full max-w-4xl mx-auto rounded-full bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.28)] overflow-hidden select-none py-3 sm:py-3.5"
+                    >
+                      <div
+                        className="overflow-hidden w-full"
+                        style={{
+                          WebkitMaskImage:
+                            'linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)',
+                          maskImage:
+                            'linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)',
+                        }}
+                      >
+                        {/* Seamless Horizontal Sliding Track */}
+                        <div className="animate-ratings-slider items-center">
+                        {[0, 1].map((halfIdx) => (
+                          <div
+                            key={halfIdx}
+                            aria-hidden={halfIdx === 1}
+                            className="flex items-center shrink-0"
+                          >
+                            {[0, 1].map((repeatIdx) => (
+                              <React.Fragment key={`${halfIdx}-${repeatIdx}`}>
+                                {[
+                                  {
+                                    id: 'tripadvisor',
+                                    score: '4.3',
+                                    outOf: '/ 5.0',
+                                    hasHalf: true,
+                                    logo: (
+                                      <span
+                                        aria-label="Tripadvisor"
+                                        title="Tripadvisor"
+                                        className="inline-flex items-center gap-2 text-white whitespace-nowrap"
+                                      >
+                                        <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#34E0A1] flex items-center justify-center shrink-0 shadow-2xs">
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-[#000000]"
+                                            fill="currentColor"
+                                            aria-hidden="true"
+                                          >
+                                            <path d="M12 6.2c-2.6 0-4.9.8-6.6 2.1L2.5 8v1.8c.5.4 1 .9 1.2 1.6-.5.8-.7 1.7-.7 2.6 0 2.9 2.3 5.2 5.2 5.2 1.6 0 3.1-.7 4-1.9l-.2-.2 1.9-1.9-1.9 1.9c.9 1.2 2.4 1.9 4 1.9 2.9 0 5.2-2.3 5.2-5.2 0-.9-.2-1.8-.7-2.6.2-.7.7-1.2 1.2-1.6V8l-2.9.3C16.9 7 14.6 6.2 12 6.2zm-3.8 4.4c1.9 0 3.4 1.5 3.4 3.4s-1.5 3.4-3.4 3.4-3.4-1.5-3.4-3.4 1.5-3.4 3.4-3.4zm7.6 0c1.9 0 3.4 1.5 3.4 3.4s-1.5 3.4-3.4 3.4-3.4-1.5-3.4-3.4 1.5-3.4 3.4-3.4zm-7.6 1.7c-.9 0-1.7.8-1.7 1.7s.8 1.7 1.7 1.7 1.7-.8 1.7-1.7-.8-1.7-1.7-1.7zm7.6 0c-.9 0-1.7.8-1.7 1.7s.8 1.7 1.7 1.7 1.7-.8 1.7-1.7-.8-1.7-1.7-1.7z" />
+                                          </svg>
+                                        </span>
+                                        <span className="font-sans text-xs sm:text-sm font-bold tracking-tight text-white">
+                                          Tripadvisor
+                                        </span>
+                                      </span>
+                                    ),
+                                  },
+                                  {
+                                    id: 'google-maps',
+                                    score: '4.9',
+                                    outOf: '/ 5.0',
+                                    hasHalf: false,
+                                    logo: (
+                                      <span
+                                        aria-label="Google Maps"
+                                        title="Google Maps"
+                                        className="inline-flex items-center gap-2 text-white whitespace-nowrap"
+                                      >
+                                        <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white flex items-center justify-center shrink-0 shadow-2xs">
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0"
+                                            aria-hidden="true"
+                                          >
+                                            <path
+                                              fill="#4285F4"
+                                              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                                            />
+                                            <path
+                                              fill="#34A853"
+                                              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                                            />
+                                            <path
+                                              fill="#FBBC05"
+                                              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                                            />
+                                            <path
+                                              fill="#EA4335"
+                                              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                                            />
+                                          </svg>
+                                        </span>
+                                        <span className="font-sans text-xs sm:text-sm font-semibold tracking-tight text-white">
+                                          Google <span className="font-normal text-white/85">Maps</span>
+                                        </span>
+                                      </span>
+                                    ),
+                                  },
+                                  {
+                                    id: 'addagio',
+                                    score: '4.9',
+                                    outOf: '/ 5.0',
+                                    hasHalf: false,
+                                    logo: (
+                                      <span
+                                        aria-label="Addagio"
+                                        title="Addagio"
+                                        className="inline-flex items-center gap-2 text-white whitespace-nowrap"
+                                      >
+                                        <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/15 border border-white/30 text-white flex items-center justify-center shrink-0">
+                                          <svg
+                                            viewBox="0 0 24 24"
+                                            className="w-3.5 h-3.5 sm:w-4 sm:h-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            aria-hidden="true"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              d="M12 3L4.5 20.5h3.2l1.6-4h5.4l1.6 4h3.2L12 3zm-1.6 10L12 8.6l1.6 4.4h-3.2z"
+                                            />
+                                          </svg>
+                                        </span>
+                                        <span className="font-editorial text-sm sm:text-base font-semibold tracking-[0.1em] uppercase text-white">
+                                          Addagio
+                                        </span>
+                                      </span>
+                                    ),
+                                  },
+                                ].map((item) => (
+                                  <div
+                                    key={`${halfIdx}-${repeatIdx}-${item.id}`}
+                                    className="flex items-center gap-3 sm:gap-4 px-7 sm:px-10 border-r border-white/20 shrink-0"
+                                  >
+                                    {item.logo}
+                                    <span
+                                      className="w-3 sm:w-4 h-[1px] bg-white/35 shrink-0"
+                                      aria-hidden="true"
+                                    />
+                                    <div className="inline-flex items-center gap-1.5 sm:gap-2 shrink-0">
+                                      <span className="font-editorial text-lg sm:text-2xl font-semibold tracking-tight text-white font-mono-tabular">
+                                        {item.score}
+                                      </span>
+                                      <span className="text-[10px] sm:text-xs font-mono-tabular text-white/75">
+                                        {item.outOf}
+                                      </span>
+                                      <span
+                                        aria-hidden="true"
+                                        className="inline-flex items-center gap-0.5 text-[#F7B955] text-xs sm:text-sm leading-none ml-0.5"
+                                      >
+                                        <span>★</span>
+                                        <span>★</span>
+                                        <span>★</span>
+                                        <span>★</span>
+                                        <span className={item.hasHalf ? 'opacity-45' : ''}>★</span>
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -937,170 +1102,6 @@ const OneLoveRouter: React.FC = () => {
                   </div>
                 )}
               </section>
-            </div>
-
-            {/* Minimalist Continuous Horizontal Slider Strap Between Hero & Story Sections */}
-            <div
-              aria-label="Traveler ratings across platforms"
-              className="relative z-20 bg-[#F7F2E9] border-b border-[#DFD5C6] overflow-hidden select-none py-3.5 sm:py-4"
-            >
-              {/* Soft Left & Right Edge Fade Masks */}
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-0 w-10 sm:w-24 bg-gradient-to-r from-[#F7F2E9] to-transparent z-10"
-              />
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 right-0 w-10 sm:w-24 bg-gradient-to-l from-[#F7F2E9] to-transparent z-10"
-              />
-
-              {/* Seamless Horizontal Sliding Track */}
-              <div className="animate-ratings-slider items-center">
-                {[0, 1].map((halfIdx) => (
-                  <div
-                    key={halfIdx}
-                    aria-hidden={halfIdx === 1}
-                    className="flex items-center shrink-0"
-                  >
-                    {[0, 1].map((repeatIdx) => (
-                      <React.Fragment key={`${halfIdx}-${repeatIdx}`}>
-                        {[
-                          {
-                            id: 'tripadvisor',
-                            score: '4.3',
-                            outOf: '/ 5.0',
-                            hasHalf: true,
-                            logo: (
-                              <span
-                                aria-label="Tripadvisor"
-                                title="Tripadvisor"
-                                className="inline-flex items-center gap-2 text-[#110F0D] whitespace-nowrap"
-                              >
-                                <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#34E0A1] flex items-center justify-center shrink-0 shadow-2xs">
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-[#000000]"
-                                    fill="currentColor"
-                                    aria-hidden="true"
-                                  >
-                                    <path d="M12 6.2c-2.6 0-4.9.8-6.6 2.1L2.5 8v1.8c.5.4 1 .9 1.2 1.6-.5.8-.7 1.7-.7 2.6 0 2.9 2.3 5.2 5.2 5.2 1.6 0 3.1-.7 4-1.9l-.2-.2 1.9-1.9-1.9 1.9c.9 1.2 2.4 1.9 4 1.9 2.9 0 5.2-2.3 5.2-5.2 0-.9-.2-1.8-.7-2.6.2-.7.7-1.2 1.2-1.6V8l-2.9.3C16.9 7 14.6 6.2 12 6.2zm-3.8 4.4c1.9 0 3.4 1.5 3.4 3.4s-1.5 3.4-3.4 3.4-3.4-1.5-3.4-3.4 1.5-3.4 3.4-3.4zm7.6 0c1.9 0 3.4 1.5 3.4 3.4s-1.5 3.4-3.4 3.4-3.4-1.5-3.4-3.4 1.5-3.4 3.4-3.4zm-7.6 1.7c-.9 0-1.7.8-1.7 1.7s.8 1.7 1.7 1.7 1.7-.8 1.7-1.7-.8-1.7-1.7-1.7zm7.6 0c-.9 0-1.7.8-1.7 1.7s.8 1.7 1.7 1.7 1.7-.8 1.7-1.7-.8-1.7-1.7-1.7z" />
-                                  </svg>
-                                </span>
-                                <span className="font-sans text-xs sm:text-sm font-bold tracking-tight text-[#110F0D]">
-                                  Tripadvisor
-                                </span>
-                              </span>
-                            ),
-                          },
-                          {
-                            id: 'google-maps',
-                            score: '4.9',
-                            outOf: '/ 5.0',
-                            hasHalf: false,
-                            logo: (
-                              <span
-                                aria-label="Google Maps"
-                                title="Google Maps"
-                                className="inline-flex items-center gap-2 text-[#110F0D] whitespace-nowrap"
-                              >
-                                <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white border border-[#E2D9CC] flex items-center justify-center shrink-0 shadow-2xs">
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0"
-                                    aria-hidden="true"
-                                  >
-                                    <path
-                                      fill="#4285F4"
-                                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                                    />
-                                    <path
-                                      fill="#34A853"
-                                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                                    />
-                                    <path
-                                      fill="#FBBC05"
-                                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                                    />
-                                    <path
-                                      fill="#EA4335"
-                                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                                    />
-                                  </svg>
-                                </span>
-                                <span className="font-sans text-xs sm:text-sm font-semibold tracking-tight text-[#110F0D]">
-                                  Google <span className="font-normal text-[#5F6368]">Maps</span>
-                                </span>
-                              </span>
-                            ),
-                          },
-                          {
-                            id: 'addagio',
-                            score: '4.9',
-                            outOf: '/ 5.0',
-                            hasHalf: false,
-                            logo: (
-                              <span
-                                aria-label="Addagio"
-                                title="Addagio"
-                                className="inline-flex items-center gap-2 text-[#110F0D] whitespace-nowrap"
-                              >
-                                <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#110F0D] text-[#F7F2E9] flex items-center justify-center shrink-0 shadow-2xs">
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    className="w-3.5 h-3.5 sm:w-4 sm:h-4"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    aria-hidden="true"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M12 3L4.5 20.5h3.2l1.6-4h5.4l1.6 4h3.2L12 3zm-1.6 10L12 8.6l1.6 4.4h-3.2z"
-                                    />
-                                  </svg>
-                                </span>
-                                <span className="font-editorial text-sm sm:text-base font-semibold tracking-[0.1em] uppercase text-[#110F0D]">
-                                  Addagio
-                                </span>
-                              </span>
-                            ),
-                          },
-                        ].map((item) => (
-                          <div
-                            key={`${halfIdx}-${repeatIdx}-${item.id}`}
-                            className="flex items-center gap-3 sm:gap-4 px-7 sm:px-12 border-r border-[#DFD5C6]/80 shrink-0"
-                          >
-                            {item.logo}
-                            <span
-                              className="w-3 sm:w-4 h-[1px] bg-[#D5C8B6] shrink-0"
-                              aria-hidden="true"
-                            />
-                            <div className="inline-flex items-center gap-1.5 sm:gap-2 shrink-0">
-                              <span className="font-editorial text-lg sm:text-2xl font-semibold tracking-tight text-[#110F0D] font-mono-tabular">
-                                {item.score}
-                              </span>
-                              <span className="text-[10px] sm:text-xs font-mono-tabular text-[#110F0D]/50">
-                                {item.outOf}
-                              </span>
-                              <span
-                                aria-hidden="true"
-                                className="inline-flex items-center gap-0.5 text-[#C65B2B] text-xs sm:text-sm leading-none ml-0.5"
-                              >
-                                <span>★</span>
-                                <span>★</span>
-                                <span>★</span>
-                                <span>★</span>
-                                <span className={item.hasHalf ? 'opacity-45' : ''}>★</span>
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                ))}
-              </div>
             </div>
 
             {/* 2. Crafted from Laterite Earth, Teak & Monsoon Light — 5-Photo Hover-Animated Collage */}

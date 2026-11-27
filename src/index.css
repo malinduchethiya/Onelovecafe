@@ -8,6 +8,7 @@
     --font-rubik: 'Rubik', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-work-sans: 'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-outfit: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-hero-display: 'Playfair Display', Georgia, serif;
   }
 
   body {
@@ -32,6 +33,10 @@
 
   .font-outfit {
     font-family: var(--font-outfit);
+  }
+
+  .font-hero-display {
+    font-family: var(--font-hero-display);
   }
 
   .font-mono-tabular {
