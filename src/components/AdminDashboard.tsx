@@ -33,10 +33,16 @@ import { EditorialVisual } from './EditorialVisual';
 import { AdminSeoPanel } from './AdminSeoPanel';
 import { resolveGoogleMapsEmbedUrl } from '../lib/mapUtils';
 import {
+  COMMON_DIETARY_TAGS,
+  resolveMenuCategorySection,
+  resolveMenuItemSection,
+} from '../lib/menuSections';
+import {
   CafeTable,
   SeatingZone,
   MenuCategory,
   MenuItem,
+  MenuSection,
   MenuCurrencyDisplay,
   MenuItemCurrencyOption,
   GalleryItem,
@@ -141,11 +147,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newBlockedReason, setNewBlockedReason] = useState('');
 
   // Menu Category & Item editor state
+  const [menuSectionFilter, setMenuSectionFilter] = useState<'all' | MenuSection>('all');
+  const [menuCategoryFilter, setMenuCategoryFilter] = useState<string>('all');
+  const [menuItemSearch, setMenuItemSearch] = useState<string>('');
+  const [customDietaryTag, setCustomDietaryTag] = useState<string>('');
   const [editingCategory, setEditingCategory] = useState<MenuCategory | null>(null);
   const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingRowItemId, setUploadingRowItemId] = useState<string | null>(null);
   const menuEditorRef = useRef<HTMLDivElement | null>(null);
+
+  const foodCategories = useMemo(
+    () => menuCategories.filter((c) => resolveMenuCategorySection(c) === 'food'),
+    [menuCategories]
+  );
+  const drinkCategories = useMemo(
+    () => menuCategories.filter((c) => resolveMenuCategorySection(c) === 'drinks'),
+    [menuCategories]
+  );
+  const visibleAdminCategories = useMemo(() => {
+    if (menuSectionFilter === 'all') return menuCategories;
+    return menuCategories.filter((c) => resolveMenuCategorySection(c) === menuSectionFilter);
+  }, [menuCategories, menuSectionFilter]);
+
+  const foodItemsCount = useMemo(
+    () => menuItems.filter((item) => resolveMenuItemSection(item, menuCategories) === 'food').length,
+    [menuItems, menuCategories]
+  );
+  const drinkItemsCount = useMemo(
+    () =>
+      menuItems.filter((item) => resolveMenuItemSection(item, menuCategories) === 'drinks').length,
+    [menuItems, menuCategories]
+  );
+
+  const visibleAdminMenuItems = useMemo(() => {
+    const q = menuItemSearch.trim().toLowerCase();
+    return menuItems.filter((item) => {
+      const itemSection = resolveMenuItemSection(item, menuCategories);
+      if (menuSectionFilter !== 'all' && itemSection !== menuSectionFilter) return false;
+      if (menuCategoryFilter !== 'all' && item.categoryId !== menuCategoryFilter) return false;
+      if (q) {
+        const matches =
+          item.name.toLowerCase().includes(q) ||
+          item.categoryName.toLowerCase().includes(q) ||
+          item.description.toLowerCase().includes(q) ||
+          (item.dietaryTags || []).some((t) => t.toLowerCase().includes(q));
+        if (!matches) return false;
+      }
+      return true;
+    });
+  }, [menuItems, menuCategories, menuSectionFilter, menuCategoryFilter, menuItemSearch]);
 
   // Gallery Item editor state (supports both creating & editing existing items)
   const [editingGalleryItem, setEditingGalleryItem] = useState<GalleryItem | null>(null);
@@ -1786,37 +1837,116 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Menu Categories Manager (Add, Edit, Delete) */}
+              {/* Menu Section Switcher (Food Selections vs Drinks & Coffee) */}
+              <div className="bg-white border border-[#E7DED3] p-6 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
+                      Menu Structure · Food &amp; Drinks Sections
+                    </div>
+                    <h2 className="text-xl font-editorial font-semibold text-[#171513]">
+                      Food Selections &amp; Drinks Manager
+                    </h2>
+                    <p className="text-xs text-[#171513]/65">
+                      Assign each category to <strong>Food Selections</strong> or{' '}
+                      <strong>Drinks &amp; Coffee</strong> to control how chapters appear on the
+                      public `/menu` page.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 bg-[#F8F4EE] p-1 border border-[#E7DED3]">
+                    {(
+                      [
+                        {
+                          id: 'all',
+                          label: `All (${menuItems.length})`,
+                        },
+                        {
+                          id: 'food',
+                          label: `Food Selections (${foodItemsCount})`,
+                        },
+                        {
+                          id: 'drinks',
+                          label: `Drinks & Coffee (${drinkItemsCount})`,
+                        },
+                      ] as { id: 'all' | MenuSection; label: string }[]
+                    ).map((tab) => {
+                      const isActive = menuSectionFilter === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => {
+                            setMenuSectionFilter(tab.id);
+                            setMenuCategoryFilter('all');
+                          }}
+                          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer ${
+                            isActive
+                              ? 'bg-[#171513] text-[#F8F4EE]'
+                              : 'bg-white text-[#171513]/75 hover:text-[#171513] border border-[#E7DED3]'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Menu Categories Manager (Add, Edit, Delete, Assign Food/Drinks) */}
               <div className="bg-white border border-[#E7DED3] p-6 space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7DED3] pb-4">
                   <div>
                     <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-                      Category Architecture · Add, Edit &amp; Delete
+                      Category Architecture · {foodCategories.length} Food · {drinkCategories.length}{' '}
+                      Drinks
                     </div>
                     <h2 className="text-xl font-editorial font-semibold">
-                      Menu Categories ({menuCategories.length})
+                      Menu Categories ({visibleAdminCategories.length}
+                      {menuSectionFilter !== 'all' ? ` of ${menuCategories.length}` : ''})
                     </h2>
                     <p className="text-xs text-[#171513]/60">
-                      Manage the categories shown on the public `/menu` filter bar and in the Dish /
-                      Drink editor.
+                      Each category appears as a chapter under either Food Selections or Drinks
+                      &amp; Coffee on `/menu`.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditingCategory({
-                        id: `cat_${Date.now()}`,
-                        name: '',
-                        slug: '',
-                        subtitle: '',
-                        sortOrder: menuCategories.length + 1,
-                        isActive: true,
-                      })
-                    }
-                    className="px-4 py-2 bg-[#C65B2B] text-white text-xs font-medium uppercase tracking-wider inline-flex items-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add New Category
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingCategory({
+                          id: `cat_${Date.now()}`,
+                          name: '',
+                          slug: '',
+                          subtitle: '',
+                          section: 'food',
+                          sortOrder: menuCategories.length + 1,
+                          isActive: true,
+                        })
+                      }
+                      className="px-4 py-2 bg-[#C65B2B] text-white text-xs font-medium uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Food Category
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingCategory({
+                          id: `cat_${Date.now()}`,
+                          name: '',
+                          slug: '',
+                          subtitle: '',
+                          section: 'drinks',
+                          sortOrder: menuCategories.length + 1,
+                          isActive: true,
+                        })
+                      }
+                      className="px-4 py-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#2F2A26] text-xs font-medium uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Drinks Category
+                    </button>
+                  </div>
                 </div>
 
                 {editingCategory && (
@@ -1831,11 +1961,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           .replace(/[^a-z0-9]+/g, '-')
                           .replace(/^-|-$/g, '') ||
                         'category';
+                      const section: MenuSection = resolveMenuCategorySection(editingCategory);
                       await saveMenuCategory({
                         ...editingCategory,
                         slug: generatedSlug,
+                        section,
                       });
-                      showToast(`Saved category "${editingCategory.name}" to Firestore.`);
+                      showToast(
+                        `Saved ${section === 'drinks' ? 'Drinks' : 'Food'} category "${
+                          editingCategory.name
+                        }" to Firestore.`
+                      );
                       setEditingCategory(null);
                     }}
                     className="bg-[#F8F4EE] border border-[#C65B2B] p-5 space-y-4 text-xs"
@@ -1855,19 +1991,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
                       <div className="sm:col-span-2">
                         <label className="block text-[#171513]/60 mb-1">Category Name *</label>
                         <input
                           type="text"
                           required
-                          placeholder="e.g. Artisanal Gelato & Sorbet"
+                          placeholder="e.g. Wood-Fired Mains or Cold Brews"
                           value={editingCategory.name}
                           onChange={(e) =>
                             setEditingCategory({ ...editingCategory, name: e.target.value })
                           }
                           className="w-full px-3 py-2 bg-white border border-[#E7DED3]"
                         />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[#171513]/60 mb-1">Menu Section *</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {(
+                            [
+                              { id: 'food', label: 'Food Selections' },
+                              { id: 'drinks', label: 'Drinks & Coffee' },
+                            ] as { id: MenuSection; label: string }[]
+                          ).map((opt) => {
+                            const currentSec = resolveMenuCategorySection(editingCategory);
+                            const active = currentSec === opt.id;
+                            return (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() =>
+                                  setEditingCategory({ ...editingCategory, section: opt.id })
+                                }
+                                className={`px-3 py-2 text-xs font-medium border transition-colors cursor-pointer ${
+                                  active
+                                    ? 'bg-[#171513] text-[#F8F4EE] border-[#171513]'
+                                    : 'bg-white text-[#171513]/75 border-[#E7DED3] hover:border-[#171513]'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                       <div>
                         <label className="block text-[#171513]/60 mb-1">Display Order</label>
@@ -1900,13 +2066,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span>Active on Menu</span>
                         </label>
                       </div>
-                      <div className="sm:col-span-4">
+                      <div className="sm:col-span-6">
                         <label className="block text-[#171513]/60 mb-1">
-                          Editorial Subtitle / Description
+                          Editorial Subtitle / Chapter Note
                         </label>
                         <input
                           type="text"
-                          placeholder="e.g. Small-batch tropical fruit sorbets & single-estate espresso affogatos"
+                          placeholder="e.g. Small-batch tropical coolers & single-estate highland pour-overs"
                           value={editingCategory.subtitle}
                           onChange={(e) =>
                             setEditingCategory({ ...editingCategory, subtitle: e.target.value })
@@ -1919,14 +2085,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="flex items-center gap-3">
                       <button
                         type="submit"
-                        className="px-5 py-2 bg-[#171513] text-[#F8F4EE] uppercase tracking-wider font-medium hover:bg-[#C65B2B]"
+                        className="px-5 py-2 bg-[#171513] text-[#F8F4EE] uppercase tracking-wider font-medium hover:bg-[#C65B2B] cursor-pointer"
                       >
                         Save Category to Firestore
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingCategory(null)}
-                        className="px-4 py-2 border border-[#E7DED3] bg-white"
+                        className="px-4 py-2 border border-[#E7DED3] bg-white cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -1935,27 +2101,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-                  {menuCategories.map((cat) => {
+                  {visibleAdminCategories.map((cat) => {
                     const itemCount = menuItems.filter((m) => m.categoryId === cat.id).length;
+                    const catSection = resolveMenuCategorySection(cat);
                     return (
                       <div
                         key={cat.id}
                         className="border border-[#E7DED3] bg-[#F8F4EE]/60 p-4 flex flex-col justify-between space-y-3"
                       >
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-mono-tabular text-[11px] text-[#C65B2B] font-semibold">
                               Order #{cat.sortOrder} · {itemCount} items
                             </span>
-                            <span
-                              className={`text-[10px] uppercase tracking-wider px-2 py-0.5 border ${
-                                cat.isActive
-                                  ? 'border-[#58644E] text-[#58644E] bg-white'
-                                  : 'border-[#E7DED3] text-[#171513]/40 bg-white'
-                              }`}
-                            >
-                              {cat.isActive ? 'Active' : 'Hidden'}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`text-[10px] uppercase tracking-wider px-2 py-0.5 border font-semibold ${
+                                  catSection === 'drinks'
+                                    ? 'border-[#171513]/30 text-[#171513] bg-white'
+                                    : 'border-[#C65B2B]/40 text-[#C65B2B] bg-white'
+                                }`}
+                              >
+                                {catSection === 'drinks' ? 'Drinks' : 'Food'}
+                              </span>
+                              <span
+                                className={`text-[10px] uppercase tracking-wider px-2 py-0.5 border ${
+                                  cat.isActive
+                                    ? 'border-[#58644E] text-[#58644E] bg-white'
+                                    : 'border-[#E7DED3] text-[#171513]/40 bg-white'
+                                }`}
+                              >
+                                {cat.isActive ? 'Active' : 'Hidden'}
+                              </span>
+                            </div>
                           </div>
                           <div className="font-editorial text-base font-semibold text-[#171513]">
                             {cat.name}
@@ -1965,14 +2143,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                         </div>
 
-                        <div className="pt-2 border-t border-[#E7DED3] flex items-center justify-between gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setEditingCategory({ ...cat })}
-                            className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] inline-flex items-center gap-1 font-medium"
-                          >
-                            <Edit3 className="w-3 h-3" /> Edit Category
-                          </button>
+                        <div className="pt-2 border-t border-[#E7DED3] flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingCategory({ ...cat, section: catSection })
+                              }
+                              className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] inline-flex items-center gap-1 font-medium cursor-pointer"
+                            >
+                              <Edit3 className="w-3 h-3" /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const nextSection: MenuSection =
+                                  catSection === 'food' ? 'drinks' : 'food';
+                                await saveMenuCategory({ ...cat, section: nextSection });
+                                showToast(
+                                  `Moved "${cat.name}" to ${
+                                    nextSection === 'drinks'
+                                      ? 'Drinks & Coffee'
+                                      : 'Food Selections'
+                                  }.`
+                                );
+                              }}
+                              className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#171513]/80 hover:border-[#171513] font-medium cursor-pointer"
+                            >
+                              Move to {catSection === 'food' ? 'Drinks' : 'Food'}
+                            </button>
+                          </div>
                           <button
                             type="button"
                             onClick={async () => {
@@ -1982,7 +2182,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               await deleteMenuCategory(cat.id);
                               showToast(`Deleted category "${cat.name}".`);
                             }}
-                            className="px-3 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 font-medium"
+                            className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 font-medium cursor-pointer"
                           >
                             <Trash2 className="w-3 h-3" /> Delete
                           </button>
@@ -1998,219 +2198,325 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h2 className="text-xl font-editorial font-semibold">
-                        Culinary &amp; Roastery Menu Items ({menuItems.length})
+                        {menuSectionFilter === 'food'
+                          ? `Food Items (${visibleAdminMenuItems.length})`
+                          : menuSectionFilter === 'drinks'
+                          ? `Drinks & Coffee Items (${visibleAdminMenuItems.length})`
+                          : `All Menu Items (${visibleAdminMenuItems.length})`}
                       </h2>
                       <p className="text-xs text-[#171513]/60">
                         First 16 featured/available items populate the 4×4 homepage grid. Upload a
-                        photo directly on any row or click Edit for full details.
+                        photo directly on any row or click Edit for full details and dietary tags.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingMenuItem({
-                          id: `item_${Date.now()}`,
-                          name: '',
-                          categoryId: menuCategories[0]?.id || 'cat_coffee',
-                          categoryName: menuCategories[0]?.name || 'Specialty Coffee & Botanicals',
-                          description: '',
-                          priceLkr: 1800,
-                          priceUsd: 6.0,
-                          imageUrl: 'editorial:hopper-bowl',
-                          dietaryTags: ['Signature'],
-                          isFeatured: true,
-                          isAvailable: true,
-                        });
-                        menuEditorRef.current?.scrollIntoView({
-                          behavior: 'smooth',
-                          block: 'nearest',
-                        });
-                      }}
-                      className="px-3.5 py-2 bg-[#C65B2B] text-white text-xs font-medium inline-flex items-center gap-1.5"
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defaultFoodCat = foodCategories[0] || menuCategories[0];
+                          setEditingMenuItem({
+                            id: `item_${Date.now()}`,
+                            name: '',
+                            categoryId: defaultFoodCat?.id || 'cat_mains',
+                            categoryName: defaultFoodCat?.name || 'Hearth & Earth Plates',
+                            description: '',
+                            priceLkr: 2400,
+                            priceUsd: 8.0,
+                            imageUrl: '',
+                            dietaryTags: ['Signature'],
+                            isFeatured: true,
+                            isAvailable: true,
+                          });
+                          menuEditorRef.current?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'nearest',
+                          });
+                        }}
+                        className="px-3.5 py-2 bg-[#C65B2B] text-white text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> New Food Dish
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defaultDrinkCat = drinkCategories[0] || menuCategories[0];
+                          setEditingMenuItem({
+                            id: `item_${Date.now()}`,
+                            name: '',
+                            categoryId: defaultDrinkCat?.id || 'cat_coffee',
+                            categoryName:
+                              defaultDrinkCat?.name || 'Specialty Coffee & Botanicals',
+                            description: '',
+                            priceLkr: 1450,
+                            priceUsd: 4.8,
+                            imageUrl: '',
+                            dietaryTags: ['Signature'],
+                            isFeatured: true,
+                            isAvailable: true,
+                          });
+                          menuEditorRef.current?.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'nearest',
+                          });
+                        }}
+                        className="px-3.5 py-2 bg-[#171513] text-[#F8F4EE] hover:bg-[#2F2A26] text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> New Drink
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Category & Search Filter Controls for Items */}
+                  <div className="flex flex-wrap items-center gap-2.5 pt-1 pb-2 border-b border-[#E7DED3]">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search className="w-3.5 h-3.5 text-[#171513]/40 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search dishes, drinks, or dietary tags..."
+                        value={menuItemSearch}
+                        onChange={(e) => setMenuItemSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 bg-[#F8F4EE] border border-[#E7DED3] text-xs focus:outline-none focus:border-[#C65B2B]"
+                      />
+                    </div>
+                    <select
+                      aria-label="Filter items by category"
+                      value={menuCategoryFilter}
+                      onChange={(e) => setMenuCategoryFilter(e.target.value)}
+                      className="px-3 py-1.5 bg-[#F8F4EE] border border-[#E7DED3] text-xs focus:outline-none focus:border-[#C65B2B]"
                     >
-                      <Plus className="w-3.5 h-3.5" /> New Dish / Drink
-                    </button>
+                      <option value="all">
+                        All{' '}
+                        {menuSectionFilter === 'food'
+                          ? 'Food'
+                          : menuSectionFilter === 'drinks'
+                          ? 'Drinks'
+                          : ''}{' '}
+                        Categories
+                      </option>
+                      {visibleAdminCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="divide-y divide-[#E7DED3] text-xs">
-                    {menuItems.map((item) => {
-                      const isCurrentlyEditing = editingMenuItem?.id === item.id;
-                      const effectiveCurrency: MenuCurrencyDisplay =
-                        item.priceCurrency && item.priceCurrency !== 'default'
-                          ? item.priceCurrency
-                          : settings.menuCurrencyDisplay || 'both';
-                      return (
-                        <div
-                          key={item.id}
-                          className={`py-3.5 px-2 flex flex-wrap items-center justify-between gap-4 transition-colors ${
-                            isCurrentlyEditing ? 'bg-[#FDF3EF] border-l-4 border-[#C65B2B]' : ''
-                          }`}
-                        >
-                          <div className="flex items-center gap-3.5 max-w-md">
-                            <div className="w-14 h-14 border border-[#E7DED3] overflow-hidden shrink-0 bg-[#F8F4EE]">
-                              <EditorialVisual src={item.imageUrl} alt={item.name} />
-                            </div>
-                            <div className="space-y-1">
-                              <div className="font-semibold text-sm text-[#171513]">{item.name}</div>
-                              <div className="text-[#171513]/60 flex flex-wrap items-center gap-1.5">
-                                <span>{item.categoryName}</span>
-                                <span>·</span>
-                                <span className="font-mono-tabular text-[#171513]">
-                                  LKR {item.priceLkr.toLocaleString()}
-                                </span>
-                                <span>/</span>
-                                <span className="font-mono-tabular text-[#171513]">
-                                  USD ${item.priceUsd.toFixed(2)}
-                                </span>
+                    {visibleAdminMenuItems.length === 0 ? (
+                      <div className="py-10 text-center text-[#171513]/60">
+                        No menu items match the active section or search filter.
+                      </div>
+                    ) : (
+                      visibleAdminMenuItems.map((item) => {
+                        const isCurrentlyEditing = editingMenuItem?.id === item.id;
+                        const itemSection = resolveMenuItemSection(item, menuCategories);
+                        const effectiveCurrency: MenuCurrencyDisplay =
+                          item.priceCurrency && item.priceCurrency !== 'default'
+                            ? item.priceCurrency
+                            : settings.menuCurrencyDisplay || 'both';
+                        return (
+                          <div
+                            key={item.id}
+                            className={`py-3.5 px-2 flex flex-wrap items-center justify-between gap-4 transition-colors ${
+                              isCurrentlyEditing
+                                ? 'bg-[#FDF3EF] border-l-4 border-[#C65B2B]'
+                                : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-3.5 max-w-md">
+                              <div className="w-14 h-14 border border-[#E7DED3] overflow-hidden shrink-0 bg-[#F8F4EE]">
+                                <EditorialVisual src={item.imageUrl} alt={item.name} />
                               </div>
-                              <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
-                                Showing on Menu:{' '}
-                                {effectiveCurrency === 'lkr'
-                                  ? `LKR ${item.priceLkr.toLocaleString()} Only`
-                                  : effectiveCurrency === 'usd'
-                                  ? `USD $${item.priceUsd.toFixed(2)} Only`
-                                  : `LKR ${item.priceLkr.toLocaleString()} & USD $${item.priceUsd.toFixed(2)}`}
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-semibold text-sm text-[#171513]">
+                                    {item.name}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 border font-semibold ${
+                                      itemSection === 'drinks'
+                                        ? 'border-[#171513]/30 text-[#171513] bg-[#F8F4EE]'
+                                        : 'border-[#C65B2B]/40 text-[#C65B2B] bg-[#FDF3EF]'
+                                    }`}
+                                  >
+                                    {itemSection === 'drinks' ? 'Drinks' : 'Food'}
+                                  </span>
+                                </div>
+                                <div className="text-[#171513]/60 flex flex-wrap items-center gap-1.5">
+                                  <span>{item.categoryName}</span>
+                                  <span>·</span>
+                                  <span className="font-mono-tabular text-[#171513]">
+                                    LKR {item.priceLkr.toLocaleString()}
+                                  </span>
+                                  <span>/</span>
+                                  <span className="font-mono-tabular text-[#171513]">
+                                    USD ${item.priceUsd.toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
+                                  Showing on Menu:{' '}
+                                  {effectiveCurrency === 'lkr'
+                                    ? `LKR ${item.priceLkr.toLocaleString()} Only`
+                                    : effectiveCurrency === 'usd'
+                                    ? `USD $${item.priceUsd.toFixed(2)} Only`
+                                    : `LKR ${item.priceLkr.toLocaleString()} & USD $${item.priceUsd.toFixed(2)}`}
+                                </div>
+                                {item.dietaryTags.length > 0 && (
+                                  <div className="text-[10px] text-[#58644E]">
+                                    {item.dietaryTags.join(' · ')}
+                                  </div>
+                                )}
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex flex-wrap items-center gap-2">
-                            {/* Per-Item Currency Selector right on row */}
-                            <select
-                              aria-label={`Price currency display for ${item.name}`}
-                              value={item.priceCurrency || 'default'}
-                              onChange={async (e) => {
-                                const nextCurrency = e.target.value as MenuItemCurrencyOption;
-                                const updated = { ...item, priceCurrency: nextCurrency };
-                                await saveMenuItem(updated);
-                                if (editingMenuItem?.id === item.id) {
-                                  setEditingMenuItem(updated);
-                                }
-                                showToast(
-                                  `Updated "${item.name}" price display to ${
-                                    nextCurrency === 'default'
-                                      ? `Global Default (${(settings.menuCurrencyDisplay || 'both').toUpperCase()})`
-                                      : nextCurrency.toUpperCase()
-                                  }.`
-                                );
-                              }}
-                              className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] text-[#171513] font-medium text-xs focus:outline-none focus:border-[#C65B2B]"
-                            >
-                              <option value="default">
-                                Currency: Global ({(settings.menuCurrencyDisplay || 'both').toUpperCase()})
-                              </option>
-                              <option value="both">Show Both (LKR &amp; USD)</option>
-                              <option value="lkr">Show LKR Only</option>
-                              <option value="usd">Show USD Only</option>
-                            </select>
-
-                            {/* Direct 1-Click Photo Upload on Row */}
-                            <label className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] hover:border-[#171513] cursor-pointer inline-flex items-center gap-1 font-medium">
-                              <Upload className="w-3 h-3 text-[#C65B2B]" />
-                              <span>
-                                {uploadingRowItemId === item.id ? 'Uploading...' : 'Replace Photo'}
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
+                            <div className="flex flex-wrap items-center gap-2">
+                              {/* Per-Item Currency Selector right on row */}
+                              <select
+                                aria-label={`Price currency display for ${item.name}`}
+                                value={item.priceCurrency || 'default'}
                                 onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  setUploadingRowItemId(item.id);
-                                  try {
-                                    const r2Url = await uploadMediaFile(
-                                      file,
-                                      'menu',
-                                      item.imageUrl
-                                    );
-                                    const updated = { ...item, imageUrl: r2Url };
-                                    await saveMenuItem(updated);
-                                    if (editingMenuItem?.id === item.id) {
-                                      setEditingMenuItem(updated);
-                                    }
-                                    showToast(
-                                      `Uploaded & saved photo for "${item.name}" to Cloudflare R2.`
-                                    );
-                                  } finally {
-                                    setUploadingRowItemId(null);
-                                    e.target.value = '';
-                                  }
-                                }}
-                              />
-                            </label>
-
-                            {item.imageUrl && item.imageUrl.startsWith('http') && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const updated = { ...item, imageUrl: '' };
+                                  const nextCurrency = e.target.value as MenuItemCurrencyOption;
+                                  const updated = { ...item, priceCurrency: nextCurrency };
                                   await saveMenuItem(updated);
                                   if (editingMenuItem?.id === item.id) {
                                     setEditingMenuItem(updated);
                                   }
-                                  showToast(`Reset photo for "${item.name}" in Cloudflare R2.`);
+                                  showToast(
+                                    `Updated "${item.name}" price display to ${
+                                      nextCurrency === 'default'
+                                        ? `Global Default (${(
+                                            settings.menuCurrencyDisplay || 'both'
+                                          ).toUpperCase()})`
+                                        : nextCurrency.toUpperCase()
+                                    }.`
+                                  );
                                 }}
-                                className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 font-medium"
+                                className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] text-[#171513] font-medium text-xs focus:outline-none focus:border-[#C65B2B]"
                               >
-                                <RefreshCw className="w-3 h-3" /> Reset Photo
+                                <option value="default">
+                                  Currency: Global (
+                                  {(settings.menuCurrencyDisplay || 'both').toUpperCase()})
+                                </option>
+                                <option value="both">Show Both (LKR &amp; USD)</option>
+                                <option value="lkr">Show LKR Only</option>
+                                <option value="usd">Show USD Only</option>
+                              </select>
+
+                              {/* Direct 1-Click Photo Upload on Row */}
+                              <label className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] hover:border-[#171513] cursor-pointer inline-flex items-center gap-1 font-medium">
+                                <Upload className="w-3 h-3 text-[#C65B2B]" />
+                                <span>
+                                  {uploadingRowItemId === item.id
+                                    ? 'Uploading...'
+                                    : 'Replace Photo'}
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setUploadingRowItemId(item.id);
+                                    try {
+                                      const r2Url = await uploadMediaFile(
+                                        file,
+                                        'menu',
+                                        item.imageUrl
+                                      );
+                                      const updated = { ...item, imageUrl: r2Url };
+                                      await saveMenuItem(updated);
+                                      if (editingMenuItem?.id === item.id) {
+                                        setEditingMenuItem(updated);
+                                      }
+                                      showToast(
+                                        `Uploaded & saved photo for "${item.name}" to Cloudflare R2.`
+                                      );
+                                    } finally {
+                                      setUploadingRowItemId(null);
+                                      e.target.value = '';
+                                    }
+                                  }}
+                                />
+                              </label>
+
+                              {item.imageUrl && item.imageUrl.startsWith('http') && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const updated = { ...item, imageUrl: '' };
+                                    await saveMenuItem(updated);
+                                    if (editingMenuItem?.id === item.id) {
+                                      setEditingMenuItem(updated);
+                                    }
+                                    showToast(`Reset photo for "${item.name}" in Cloudflare R2.`);
+                                  }}
+                                  className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 font-medium cursor-pointer"
+                                >
+                                  <RefreshCw className="w-3 h-3" /> Reset Photo
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const nextAvail = !item.isAvailable;
+                                  await saveMenuItem({ ...item, isAvailable: nextAvail });
+                                  if (editingMenuItem?.id === item.id) {
+                                    setEditingMenuItem({
+                                      ...editingMenuItem,
+                                      isAvailable: nextAvail,
+                                    });
+                                  }
+                                  showToast(
+                                    `Marked "${item.name}" as ${
+                                      nextAvail ? 'Available' : 'Sold Out'
+                                    }.`
+                                  );
+                                }}
+                                className={`px-2.5 py-1.5 border font-medium cursor-pointer ${
+                                  item.isAvailable
+                                    ? 'border-[#58644E] text-[#58644E] bg-[#F8F4EE]'
+                                    : 'border-[#E7DED3] text-[#171513]/40 bg-white'
+                                }`}
+                              >
+                                {item.isAvailable ? 'Available' : 'Sold Out'}
                               </button>
-                            )}
 
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const nextAvail = !item.isAvailable;
-                                await saveMenuItem({ ...item, isAvailable: nextAvail });
-                                if (editingMenuItem?.id === item.id) {
-                                  setEditingMenuItem({ ...editingMenuItem, isAvailable: nextAvail });
-                                }
-                                showToast(
-                                  `Marked "${item.name}" as ${nextAvail ? 'Available' : 'Sold Out'}.`
-                                );
-                              }}
-                              className={`px-2.5 py-1.5 border font-medium ${
-                                item.isAvailable
-                                  ? 'border-[#58644E] text-[#58644E] bg-[#F8F4EE]'
-                                  : 'border-[#E7DED3] text-[#171513]/40 bg-white'
-                              }`}
-                            >
-                              {item.isAvailable ? 'Available' : 'Sold Out'}
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingMenuItem({ ...item });
+                                  menuEditorRef.current?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'nearest',
+                                  });
+                                  showToast(`Editing "${item.name}" in the editor panel.`);
+                                }}
+                                className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] transition-colors inline-flex items-center gap-1 font-medium cursor-pointer"
+                              >
+                                <Edit3 className="w-3 h-3" /> Edit Price &amp; Details
+                              </button>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingMenuItem({ ...item });
-                                menuEditorRef.current?.scrollIntoView({
-                                  behavior: 'smooth',
-                                  block: 'nearest',
-                                });
-                                showToast(`Editing "${item.name}" in the editor panel.`);
-                              }}
-                              className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] transition-colors inline-flex items-center gap-1 font-medium"
-                            >
-                              <Edit3 className="w-3 h-3" /> Edit Price &amp; Details
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const removedName = item.name;
-                                if (editingMenuItem?.id === item.id) {
-                                  setEditingMenuItem(null);
-                                }
-                                await deleteMenuItem(item.id);
-                                showToast(`Deleted "${removedName}" from menu.`);
-                              }}
-                              className="px-3 py-1.5 border border-[#E7DED3] text-[#9E3F16] hover:bg-[#FDF3EF] transition-colors inline-flex items-center gap-1 font-medium"
-                            >
-                              <Trash2 className="w-3 h-3" /> Delete
-                            </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const removedName = item.name;
+                                  if (editingMenuItem?.id === item.id) {
+                                    setEditingMenuItem(null);
+                                  }
+                                  await deleteMenuItem(item.id);
+                                  showToast(`Deleted "${removedName}" from menu.`);
+                                }}
+                                className="px-3 py-1.5 border border-[#E7DED3] text-[#9E3F16] hover:bg-[#FDF3EF] transition-colors inline-flex items-center gap-1 font-medium cursor-pointer"
+                              >
+                                <Trash2 className="w-3 h-3" /> Delete
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
@@ -2219,327 +2525,468 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ref={menuEditorRef}
                   className="bg-white border border-[#E7DED3] p-6 space-y-4 self-start sticky top-6"
                 >
-                <div className="flex items-center justify-between border-b border-[#E7DED3] pb-2">
-                  <h3 className="text-lg font-editorial font-semibold">
-                    {editingMenuItem
-                      ? editingMenuItem.name
-                        ? `Edit: ${editingMenuItem.name}`
-                        : 'New Dish / Drink'
-                      : 'Dish / Drink Editor'}
-                  </h3>
-                  {editingMenuItem && (
-                    <button
-                      type="button"
-                      onClick={() => setEditingMenuItem(null)}
-                      className="text-xs text-[#171513]/50 hover:text-[#171513]"
-                    >
-                      Close
-                    </button>
-                  )}
-                </div>
-
-                {!editingMenuItem ? (
-                  <div className="py-6 text-xs text-[#171513]/60 space-y-3">
-                    <p>
-                      Select <strong>Edit</strong> next to any menu item on the left to modify its
-                      details, price, or upload a photograph from your device, or click below to
-                      create a new dish.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEditingMenuItem({
-                          id: `item_${Date.now()}`,
-                          name: '',
-                          categoryId: menuCategories[0]?.id || 'cat_coffee',
-                          categoryName:
-                            menuCategories[0]?.name || 'Specialty Coffee & Botanicals',
-                          description: '',
-                          priceLkr: 1800,
-                          priceUsd: 6.0,
-                          imageUrl: 'editorial:hopper-bowl',
-                          dietaryTags: ['Signature'],
-                          isFeatured: false,
-                          isAvailable: true,
-                        })
-                      }
-                      className="px-4 py-2 bg-[#C65B2B] text-white uppercase tracking-wider font-medium inline-flex items-center gap-1.5"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Create New Menu Item
-                    </button>
-                  </div>
-                ) : (
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      await saveMenuItem(editingMenuItem);
-                      showToast(`Saved "${editingMenuItem.name}" to Firestore.`);
-                      setEditingMenuItem(null);
-                    }}
-                    className="space-y-3.5 text-xs"
-                  >
-                    <div>
-                      <label className="block text-[#171513]/60 mb-1">Dish / Drink Name *</label>
-                      <input
-                        type="text"
-                        required
-                        value={editingMenuItem.name}
-                        onChange={(e) =>
-                          setEditingMenuItem({ ...editingMenuItem, name: e.target.value })
-                        }
-                        className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[#171513]/60 mb-1">Category</label>
-                      <select
-                        value={editingMenuItem.categoryId}
-                        onChange={(e) => {
-                          const cat = menuCategories.find((c) => c.id === e.target.value);
-                          if (cat) {
-                            setEditingMenuItem({
-                              ...editingMenuItem,
-                              categoryId: cat.id,
-                              categoryName: cat.name,
-                            });
-                          }
-                        }}
-                        className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
+                  <div className="flex items-center justify-between border-b border-[#E7DED3] pb-2">
+                    <h3 className="text-lg font-editorial font-semibold">
+                      {editingMenuItem
+                        ? editingMenuItem.name
+                          ? `Edit: ${editingMenuItem.name}`
+                          : 'New Dish / Drink'
+                        : 'Dish / Drink Editor'}
+                    </h3>
+                    {editingMenuItem && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingMenuItem(null)}
+                        className="text-xs text-[#171513]/50 hover:text-[#171513] cursor-pointer"
                       >
-                        {menuCategories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                        Close
+                      </button>
+                    )}
+                  </div>
 
-                    <div className="p-3 bg-[#F8F4EE] border border-[#E7DED3] space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="block font-semibold text-[#171513]">
-                          Price &amp; Currency Display
-                        </label>
-                        <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B]">
-                          USD / LKR
-                        </span>
+                  {!editingMenuItem ? (
+                    <div className="py-6 text-xs text-[#171513]/60 space-y-3">
+                      <p>
+                        Select <strong>Edit</strong> next to any food or drink item on the left to
+                        modify its details, category, dietary tags, price, or photograph, or create
+                        a new item below.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const defaultFoodCat = foodCategories[0] || menuCategories[0];
+                            setEditingMenuItem({
+                              id: `item_${Date.now()}`,
+                              name: '',
+                              categoryId: defaultFoodCat?.id || 'cat_mains',
+                              categoryName: defaultFoodCat?.name || 'Hearth & Earth Plates',
+                              description: '',
+                              priceLkr: 2400,
+                              priceUsd: 8.0,
+                              imageUrl: '',
+                              dietaryTags: ['Signature'],
+                              isFeatured: false,
+                              isAvailable: true,
+                            });
+                          }}
+                          className="px-4 py-2 bg-[#C65B2B] text-white uppercase tracking-wider font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> New Food Dish
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const defaultDrinkCat = drinkCategories[0] || menuCategories[0];
+                            setEditingMenuItem({
+                              id: `item_${Date.now()}`,
+                              name: '',
+                              categoryId: defaultDrinkCat?.id || 'cat_coffee',
+                              categoryName:
+                                defaultDrinkCat?.name || 'Specialty Coffee & Botanicals',
+                              description: '',
+                              priceLkr: 1450,
+                              priceUsd: 4.8,
+                              imageUrl: '',
+                              dietaryTags: ['Signature'],
+                              isFeatured: false,
+                              isAvailable: true,
+                            });
+                          }}
+                          className="px-4 py-2 bg-[#171513] text-[#F8F4EE] uppercase tracking-wider font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> New Drink
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        await saveMenuItem(editingMenuItem);
+                        showToast(`Saved "${editingMenuItem.name}" to Firestore.`);
+                        setEditingMenuItem(null);
+                      }}
+                      className="space-y-3.5 text-xs"
+                    >
+                      <div>
+                        <label className="block text-[#171513]/60 mb-1">Dish / Drink Name *</label>
+                        <input
+                          type="text"
+                          required
+                          value={editingMenuItem.name}
+                          onChange={(e) =>
+                            setEditingMenuItem({ ...editingMenuItem, name: e.target.value })
+                          }
+                          className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
+                        />
                       </div>
 
                       <div>
                         <label className="block text-[#171513]/60 mb-1">
-                          Show Price On Menu In
+                          Section &amp; Category
                         </label>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {(
-                            [
-                              {
-                                id: 'default',
-                                label: `Global (${(settings.menuCurrencyDisplay || 'both').toUpperCase()})`,
-                              },
-                              { id: 'both', label: 'Both LKR & USD' },
-                              { id: 'lkr', label: 'LKR Only (Rs.)' },
-                              { id: 'usd', label: 'USD Only ($)' },
-                            ] as { id: MenuItemCurrencyOption; label: string }[]
-                          ).map((opt) => {
-                            const activeOpt = editingMenuItem.priceCurrency || 'default';
-                            const isSelected = activeOpt === opt.id;
+                        <select
+                          value={editingMenuItem.categoryId}
+                          onChange={(e) => {
+                            const cat = menuCategories.find((c) => c.id === e.target.value);
+                            if (cat) {
+                              setEditingMenuItem({
+                                ...editingMenuItem,
+                                categoryId: cat.id,
+                                categoryName: cat.name,
+                              });
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
+                        >
+                          {foodCategories.length > 0 && (
+                            <optgroup label="Food Selections">
+                              {foodCategories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {drinkCategories.length > 0 && (
+                            <optgroup label="Drinks & Coffee">
+                              {drinkCategories.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="p-3 bg-[#F8F4EE] border border-[#E7DED3] space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="block font-semibold text-[#171513]">
+                            Price &amp; Currency Display
+                          </label>
+                          <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B]">
+                            USD / LKR
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[#171513]/60 mb-1">
+                            Show Price On Menu In
+                          </label>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {(
+                              [
+                                {
+                                  id: 'default',
+                                  label: `Global (${(
+                                    settings.menuCurrencyDisplay || 'both'
+                                  ).toUpperCase()})`,
+                                },
+                                { id: 'both', label: 'Both LKR & USD' },
+                                { id: 'lkr', label: 'LKR Only (Rs.)' },
+                                { id: 'usd', label: 'USD Only ($)' },
+                              ] as { id: MenuItemCurrencyOption; label: string }[]
+                            ).map((opt) => {
+                              const activeOpt = editingMenuItem.priceCurrency || 'default';
+                              const isSelected = activeOpt === opt.id;
+                              return (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  onClick={() =>
+                                    setEditingMenuItem({
+                                      ...editingMenuItem,
+                                      priceCurrency: opt.id,
+                                    })
+                                  }
+                                  className={`px-2.5 py-1.5 text-[11px] font-medium border transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-[#171513] text-[#F8F4EE] border-[#171513]'
+                                      : 'bg-white text-[#171513]/75 border-[#E7DED3] hover:border-[#171513]'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[#171513]/60 mb-1">Price (LKR)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              step="10"
+                              required
+                              value={editingMenuItem.priceLkr}
+                              onChange={(e) =>
+                                setEditingMenuItem({
+                                  ...editingMenuItem,
+                                  priceLkr: Number(e.target.value),
+                                })
+                              }
+                              className="w-full px-3 py-2 bg-white border border-[#E7DED3] font-mono-tabular"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[#171513]/60 mb-1">Price (USD $)</label>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.05"
+                              required
+                              value={editingMenuItem.priceUsd}
+                              onChange={(e) =>
+                                setEditingMenuItem({
+                                  ...editingMenuItem,
+                                  priceUsd: Number(e.target.value),
+                                })
+                              }
+                              className="w-full px-3 py-2 bg-white border border-[#E7DED3] font-mono-tabular"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[#171513]/60 mb-1">
+                          Editorial Description
+                        </label>
+                        <textarea
+                          rows={3}
+                          required
+                          value={editingMenuItem.description}
+                          onChange={(e) =>
+                            setEditingMenuItem({
+                              ...editingMenuItem,
+                              description: e.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
+                        />
+                      </div>
+
+                      {/* Dietary & Filter Tags Editor */}
+                      <div className="p-3 bg-[#F8F4EE] border border-[#E7DED3] space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="block font-semibold text-[#171513]">
+                            Dietary &amp; Menu Filter Tags
+                          </label>
+                          <span className="text-[10px] text-[#171513]/55">
+                            Powers [V] [VG] [GF] [SF] &amp; Filters
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {COMMON_DIETARY_TAGS.map((tag) => {
+                            const selected = (editingMenuItem.dietaryTags || []).some(
+                              (t) => t.toLowerCase() === tag.toLowerCase()
+                            );
                             return (
                               <button
-                                key={opt.id}
+                                key={tag}
                                 type="button"
-                                onClick={() =>
+                                onClick={() => {
+                                  const existing = editingMenuItem.dietaryTags || [];
+                                  const nextTags = selected
+                                    ? existing.filter(
+                                        (t) => t.toLowerCase() !== tag.toLowerCase()
+                                      )
+                                    : [...existing, tag].slice(0, 10);
                                   setEditingMenuItem({
                                     ...editingMenuItem,
-                                    priceCurrency: opt.id,
-                                  })
-                                }
-                                className={`px-2.5 py-1.5 text-[11px] font-medium border transition-colors ${
-                                  isSelected
+                                    dietaryTags: nextTags,
+                                  });
+                                }}
+                                className={`px-2 py-1 text-[11px] border transition-colors cursor-pointer ${
+                                  selected
                                     ? 'bg-[#171513] text-[#F8F4EE] border-[#171513]'
                                     : 'bg-white text-[#171513]/75 border-[#E7DED3] hover:border-[#171513]'
                                 }`}
                               >
-                                {opt.label}
+                                {tag}
                               </button>
                             );
                           })}
                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[#171513]/60 mb-1">Price (LKR)</label>
+                        <div className="flex items-center gap-1.5 pt-1">
                           <input
-                            type="number"
-                            min={0}
-                            step="10"
-                            required
-                            value={editingMenuItem.priceLkr}
-                            onChange={(e) =>
-                              setEditingMenuItem({
-                                ...editingMenuItem,
-                                priceLkr: Number(e.target.value),
-                              })
-                            }
-                            className="w-full px-3 py-2 bg-white border border-[#E7DED3] font-mono-tabular"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[#171513]/60 mb-1">Price (USD $)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.05"
-                            required
-                            value={editingMenuItem.priceUsd}
-                            onChange={(e) =>
-                              setEditingMenuItem({
-                                ...editingMenuItem,
-                                priceUsd: Number(e.target.value),
-                              })
-                            }
-                            className="w-full px-3 py-2 bg-white border border-[#E7DED3] font-mono-tabular"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[#171513]/60 mb-1">Editorial Description</label>
-                      <textarea
-                        rows={3}
-                        required
-                        value={editingMenuItem.description}
-                        onChange={(e) =>
-                          setEditingMenuItem({
-                            ...editingMenuItem,
-                            description: e.target.value,
-                          })
-                        }
-                        className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
-                      />
-                    </div>
-
-                    {/* Dish Image Preview + Device Upload (Cloudflare R2) + Remove */}
-                    <div className="space-y-2 border border-[#E7DED3] p-3 bg-[#F8F4EE]/60">
-                      <label className="block font-semibold text-[#171513]">
-                        Dish / Drink Image (Saved directly in Cloudflare R2)
-                      </label>
-                      <div className="aspect-[4/3] w-full border border-[#E7DED3] overflow-hidden bg-white">
-                        <EditorialVisual
-                          src={editingMenuItem.imageUrl}
-                          alt={editingMenuItem.name || 'Dish preview'}
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#171513] text-[#F8F4EE] cursor-pointer hover:bg-[#C65B2B] transition-colors font-medium">
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>
-                            {uploadingImage
-                              ? 'Uploading to R2...'
-                              : editingMenuItem.imageUrl.startsWith('http')
-                              ? 'Replace R2 Photo'
-                              : 'Upload Photo to R2'}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              setUploadingImage(true);
-                              try {
-                                const r2Url = await uploadMediaFile(
-                                  file,
-                                  'menu',
-                                  editingMenuItem.imageUrl
-                                );
-                                const updatedItem = { ...editingMenuItem, imageUrl: r2Url };
-                                setEditingMenuItem(updatedItem);
+                            type="text"
+                            placeholder="Add custom tag (e.g. Organic)..."
+                            value={customDietaryTag}
+                            onChange={(e) => setCustomDietaryTag(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const trimmed = customDietaryTag.trim();
+                                if (!trimmed) return;
+                                const existing = editingMenuItem.dietaryTags || [];
                                 if (
-                                  menuItems.some((m) => m.id === updatedItem.id) ||
-                                  updatedItem.name.trim().length > 0
+                                  !existing.some(
+                                    (t) => t.toLowerCase() === trimmed.toLowerCase()
+                                  )
                                 ) {
-                                  await saveMenuItem(updatedItem);
-                                  showToast(
-                                    `Uploaded & saved photo for "${
-                                      updatedItem.name || 'Dish'
-                                    }" directly to Cloudflare R2.`
-                                  );
-                                } else {
-                                  showToast(
-                                    'Photo uploaded to Cloudflare R2. Enter dish name and click Save Dish.'
-                                  );
+                                  setEditingMenuItem({
+                                    ...editingMenuItem,
+                                    dietaryTags: [...existing, trimmed].slice(0, 10),
+                                  });
                                 }
-                              } finally {
-                                setUploadingImage(false);
-                                e.target.value = '';
+                                setCustomDietaryTag('');
                               }
                             }}
+                            className="flex-1 px-2.5 py-1.5 bg-white border border-[#E7DED3] text-xs"
                           />
-                        </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const trimmed = customDietaryTag.trim();
+                              if (!trimmed) return;
+                              const existing = editingMenuItem.dietaryTags || [];
+                              if (
+                                !existing.some((t) => t.toLowerCase() === trimmed.toLowerCase())
+                              ) {
+                                setEditingMenuItem({
+                                  ...editingMenuItem,
+                                  dietaryTags: [...existing, trimmed].slice(0, 10),
+                                });
+                              }
+                              setCustomDietaryTag('');
+                            }}
+                            className="px-3 py-1.5 bg-[#171513] text-[#F8F4EE] text-xs font-medium cursor-pointer"
+                          >
+                            Add
+                          </button>
+                        </div>
+                        {(editingMenuItem.dietaryTags || []).length > 0 && (
+                          <div className="text-[11px] text-[#58644E] pt-0.5">
+                            Active: {(editingMenuItem.dietaryTags || []).join(' · ')}
+                          </div>
+                        )}
+                      </div>
 
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const updatedItem = { ...editingMenuItem, imageUrl: '' };
-                            setEditingMenuItem(updatedItem);
-                            if (menuItems.some((m) => m.id === updatedItem.id)) {
-                              await saveMenuItem(updatedItem);
-                              showToast('Removed custom photo from Cloudflare R2.');
-                            } else {
-                              showToast('Cleared custom photo.');
+                      {/* Dish Image Preview + Device Upload (Cloudflare R2) + Remove */}
+                      <div className="space-y-2 border border-[#E7DED3] p-3 bg-[#F8F4EE]/60">
+                        <label className="block font-semibold text-[#171513]">
+                          Dish / Drink Image (Saved directly in Cloudflare R2)
+                        </label>
+                        <div className="aspect-[4/3] w-full border border-[#E7DED3] overflow-hidden bg-white">
+                          <EditorialVisual
+                            src={editingMenuItem.imageUrl}
+                            alt={editingMenuItem.name || 'Dish preview'}
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <label className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#171513] text-[#F8F4EE] cursor-pointer hover:bg-[#C65B2B] transition-colors font-medium">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>
+                              {uploadingImage
+                                ? 'Uploading to R2...'
+                                : editingMenuItem.imageUrl.startsWith('http')
+                                ? 'Replace R2 Photo'
+                                : 'Upload Photo to R2'}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                setUploadingImage(true);
+                                try {
+                                  const r2Url = await uploadMediaFile(
+                                    file,
+                                    'menu',
+                                    editingMenuItem.imageUrl
+                                  );
+                                  const updatedItem = { ...editingMenuItem, imageUrl: r2Url };
+                                  setEditingMenuItem(updatedItem);
+                                  if (
+                                    menuItems.some((m) => m.id === updatedItem.id) ||
+                                    updatedItem.name.trim().length > 0
+                                  ) {
+                                    await saveMenuItem(updatedItem);
+                                    showToast(
+                                      `Uploaded & saved photo for "${
+                                        updatedItem.name || 'Dish'
+                                      }" directly to Cloudflare R2.`
+                                    );
+                                  } else {
+                                    showToast(
+                                      'Photo uploaded to Cloudflare R2. Enter name and click Save.'
+                                    );
+                                  }
+                                } finally {
+                                  setUploadingImage(false);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const updatedItem = { ...editingMenuItem, imageUrl: '' };
+                              setEditingMenuItem(updatedItem);
+                              if (menuItems.some((m) => m.id === updatedItem.id)) {
+                                await saveMenuItem(updatedItem);
+                                showToast('Removed custom photo from Cloudflare R2.');
+                              } else {
+                                showToast('Cleared custom photo.');
+                              }
+                            }}
+                            className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Remove Image
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-5 pt-1">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editingMenuItem.isFeatured}
+                            onChange={(e) =>
+                              setEditingMenuItem({
+                                ...editingMenuItem,
+                                isFeatured: e.target.checked,
+                              })
                             }
-                          }}
-                          className="px-3 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] inline-flex items-center gap-1"
+                          />
+                          <span>Featured Highlight</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editingMenuItem.isAvailable}
+                            onChange={(e) =>
+                              setEditingMenuItem({
+                                ...editingMenuItem,
+                                isAvailable: e.target.checked,
+                              })
+                            }
+                          />
+                          <span>Available</span>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          className="flex-1 py-2.5 bg-[#C65B2B] text-white uppercase tracking-widest font-medium hover:bg-[#B04E22] transition-colors cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" /> Remove Image
+                          Save Item to Firestore
                         </button>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-5 pt-1">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={editingMenuItem.isFeatured}
-                          onChange={(e) =>
-                            setEditingMenuItem({
-                              ...editingMenuItem,
-                              isFeatured: e.target.checked,
-                            })
-                          }
-                        />
-                        <span>Featured on Home</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={editingMenuItem.isAvailable}
-                          onChange={(e) =>
-                            setEditingMenuItem({
-                              ...editingMenuItem,
-                              isAvailable: e.target.checked,
-                            })
-                          }
-                        />
-                        <span>Available</span>
-                      </label>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-2">
-                      <button
-                        type="submit"
-                        className="flex-1 py-2.5 bg-[#C65B2B] text-white uppercase tracking-widest font-medium hover:bg-[#B04E22] transition-colors"
-                      >
-                        Save Dish to Firestore
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
+                    </form>
+                  )}
+                </div>
               </div>
             </div>
           )}

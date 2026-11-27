@@ -4,7 +4,6 @@ import {
   MapPin,
   Phone,
   Clock,
-  Search,
   X,
   MessageCircle,
   ExternalLink,
@@ -13,6 +12,9 @@ import {
   Menu as MenuIcon,
   ChevronLeft,
   ChevronRight,
+  Calendar,
+  Users,
+  Check,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -23,7 +25,9 @@ import { LateriteStorySection } from './components/LateriteStorySection';
 import { ReservationEngine } from './components/ReservationEngine';
 import { SanctuaryMap } from './components/SanctuaryMap';
 import { GoogleMapsRatingCard } from './components/GoogleMapsRatingCard';
+import { MenuPage } from './components/MenuPage';
 import { OFFICIAL_ONELOVE_MAPS_PLACE_URL } from './lib/mapUtils';
+import { extractDietaryFlags, resolveMenuItemSection } from './lib/menuSections';
 import { AdminDashboard, AdminTab } from './components/AdminDashboard';
 import { SeoHead } from './components/SeoHead';
 import { GalleryItem, MenuItem } from './types/cafe';
@@ -145,10 +149,6 @@ const OneLoveRouter: React.FC = () => {
     submitInquiry,
   } = useCafe();
 
-  // Menu page filter states
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [menuSearch, setMenuSearch] = useState<string>('');
-
   const resolveMenuPriceCurrency = (item: MenuItem): 'both' | 'lkr' | 'usd' => {
     if (item.priceCurrency && item.priceCurrency !== 'default') {
       return item.priceCurrency;
@@ -244,14 +244,10 @@ const OneLoveRouter: React.FC = () => {
     () => siteContent.find((s) => s.sectionKey === 'footer'),
     [siteContent]
   );
-  const menuGalleryBgContent = useMemo(
-    () => siteContent.find((s) => s.sectionKey === 'menu_gallery_bg'),
-    [siteContent]
-  );
-  const menuGalleryBgUrl = useMemo(() => {
-    const raw = menuGalleryBgContent?.imageUrl?.trim() || '';
-    return raw.length > 0 ? raw : '';
-  }, [menuGalleryBgContent]);
+
+  const [homeMenuDetailItem, setHomeMenuDetailItem] = useState<MenuItem | null>(null);
+  const [homeReserveTime, setHomeReserveTime] = useState<string>('19:30');
+  const [homeReserveGuests, setHomeReserveGuests] = useState<number>(2);
 
   // Hero Background Slideshow list & timer (strictly mirrors Admin Panel settings.heroImages from Cloudflare R2)
   const heroSlides = useMemo(() => {
@@ -290,24 +286,10 @@ const OneLoveRouter: React.FC = () => {
 
   // Zero-Jank Smooth Scroll (Lenis + GSAP Ticker) & Ref-Driven Parallax (Zero React Re-Renders on Scroll)
   const [isScrolledPastHeader, setIsScrolledPastHeader] = useState(false);
-  const [isMenuSectionDark, setIsMenuSectionDark] = useState(false);
-  const homeMenuGalleryRef = useRef<HTMLElement | null>(null);
-  const menuAuraRef = useRef<HTMLDivElement | null>(null);
   const heroBgRef = useRef<HTMLDivElement | null>(null);
   const mouseParallaxRef = useRef({ x: 0, y: 0 });
   const lenisRef = useRef<Lenis | null>(null);
   const appRootRef = useRef<HTMLDivElement | null>(null);
-
-  const computeDynamicCoffeeBg = (t: number): string => {
-    if (t <= 0.005) return '#FCF9F4';
-    const lerp = (a: number, b: number, u: number) => Math.round(a + (b - a) * u);
-    if (t < 0.45) {
-      const u = t / 0.45;
-      return `rgb(${lerp(252, 148, u)}, ${lerp(249, 95, u)}, ${lerp(244, 62, u)})`;
-    }
-    const u = (t - 0.45) / 0.55;
-    return `rgb(${lerp(148, 46, u)}, ${lerp(95, 26, u)}, ${lerp(62, 16, u)})`;
-  };
 
   const applyHeroParallaxTransform = (scrollTop: number) => {
     const bgEl = heroBgRef.current;
@@ -361,35 +343,6 @@ const OneLoveRouter: React.FC = () => {
       const pastHeader = y > 48;
       setIsScrolledPastHeader((prev) => (prev === pastHeader ? prev : pastHeader));
       applyHeroParallaxTransform(y);
-
-      const targetEl = pathname === '/' ? homeMenuGalleryRef.current : null;
-      if (!targetEl) {
-        setIsMenuSectionDark((prev) => (prev ? false : prev));
-        return;
-      }
-
-      if (menuGalleryBgUrl) {
-        setIsMenuSectionDark((prev) => (prev ? prev : true));
-        return;
-      }
-
-      const vh = window.innerHeight || 800;
-      const rect = targetEl.getBoundingClientRect();
-      const entry = (vh * 0.88 - rect.top) / (vh * 0.58);
-      const exit = (rect.bottom - vh * 0.14) / (vh * 0.58);
-      const raw = Math.max(0, Math.min(1, Math.min(entry, exit)));
-      const eased = raw * raw * (3 - 2 * raw);
-
-      targetEl.style.backgroundColor = computeDynamicCoffeeBg(eased);
-      targetEl.style.borderColor =
-        eased > 0.35
-          ? `rgba(231, 222, 211, ${Math.max(0.18, 1 - eased * 0.75).toFixed(3)})`
-          : '#E7DED3';
-      if (menuAuraRef.current) {
-        menuAuraRef.current.style.opacity = eased.toFixed(3);
-      }
-      const nextDark = eased > 0.35;
-      setIsMenuSectionDark((prev) => (prev === nextDark ? prev : nextDark));
     };
 
     const scheduleUpdate = () => {
@@ -406,7 +359,7 @@ const OneLoveRouter: React.FC = () => {
       window.removeEventListener('scroll', scheduleUpdate);
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [pathname, menuGalleryBgUrl]);
+  }, [pathname]);
 
   const handleHeroMouseMove = (e: React.MouseEvent<HTMLElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -422,24 +375,26 @@ const OneLoveRouter: React.FC = () => {
     applyHeroParallaxTransform(window.scrollY);
   };
 
-  // 4 Columns × 4 Rows = 16 items in Signature Plates & Highland Pour-Overs
-  const featuredDishes = useMemo(() => {
-    const available = menuItems.filter((m) => m.isAvailable);
+  // Featured Food & Drinks items separated for the Home Page Menu Section (4 in a row)
+  const featuredFoodItems = useMemo(() => {
+    const available = menuItems.filter(
+      (m) => m.isAvailable && resolveMenuItemSection(m, menuCategories) === 'food'
+    );
     const featured = available.filter((m) => m.isFeatured);
     const nonFeatured = available.filter((m) => !m.isFeatured);
-    return [...featured, ...nonFeatured].slice(0, 16);
-  }, [menuItems]);
+    return [...featured, ...nonFeatured].slice(0, 8);
+  }, [menuItems, menuCategories]);
 
-  const filteredMenuItems = useMemo(() => {
-    return menuItems.filter((item) => {
-      const matchesCat = selectedCategory === 'all' || item.categoryId === selectedCategory;
-      const matchesSearch =
-        !menuSearch ||
-        item.name.toLowerCase().includes(menuSearch.toLowerCase()) ||
-        item.description.toLowerCase().includes(menuSearch.toLowerCase());
-      return matchesCat && matchesSearch;
-    });
-  }, [menuItems, selectedCategory, menuSearch]);
+  const featuredDrinkItems = useMemo(() => {
+    const available = menuItems.filter(
+      (m) => m.isAvailable && resolveMenuItemSection(m, menuCategories) === 'drinks'
+    );
+    const featured = available.filter((m) => m.isFeatured);
+    const nonFeatured = available.filter((m) => !m.isFeatured);
+    return [...featured, ...nonFeatured].slice(0, 8);
+  }, [menuItems, menuCategories]);
+
+  const featuredDishesCount = featuredFoodItems.length + featuredDrinkItems.length;
 
   const filteredGallery = useMemo(() => {
     if (selectedGalleryCat === 'All') return gallery;
@@ -567,55 +522,7 @@ const OneLoveRouter: React.FC = () => {
         );
       }
 
-      // 4. Experiences Under the Sigiriya Palms Section
-      const expHeader = gsap.utils.toArray<HTMLElement>('[data-gsap-exp-header]');
-      if (expHeader.length > 0) {
-        gsap.fromTo(
-          expHeader,
-          { y: 30, opacity: 0 },
-          {
-            y: 0,
-            opacity: 1,
-            duration: 0.85,
-            stagger: 0.1,
-            ease: 'power3.out',
-            scrollTrigger: {
-              trigger: expHeader[0],
-              start: 'top 84%',
-              toggleActions: 'play none none none',
-            },
-          }
-        );
-      }
-
-      const expCards = gsap.utils.toArray<HTMLElement>('[data-gsap-exp-card]');
-      if (expCards.length > 0) {
-        expCards.forEach((card) => {
-          card.style.transition = 'none';
-        });
-        gsap.fromTo(
-          expCards,
-          { y: 32, opacity: 0 },
-          {
-            y: 0,
-            opacity: 1,
-            duration: 0.75,
-            stagger: 0.12,
-            ease: 'power3.out',
-            onComplete: () => {
-              gsap.set(expCards, { clearProps: 'transform,opacity' });
-              expCards.forEach((card) => {
-                card.style.transition = '';
-              });
-            },
-            scrollTrigger: {
-              trigger: expCards[0],
-              start: 'top 86%',
-              toggleActions: 'play none none none',
-            },
-          }
-        );
-      }
+      // 4. Home Page Editorial Showcase & Gallery Reveal (handled seamlessly by section flyover)
 
       // 5. Traveler & Partner Voices Section
       const voiceItems = gsap.utils.toArray<HTMLElement>('[data-gsap-voice]');
@@ -764,10 +671,8 @@ const OneLoveRouter: React.FC = () => {
   }, [
     pathname,
     routeInfo.page,
-    selectedCategory,
     selectedGalleryCat,
-    featuredDishes.length,
-    filteredMenuItems.length,
+    featuredDishesCount,
     filteredGallery.length,
   ]);
 
@@ -921,7 +826,7 @@ const OneLoveRouter: React.FC = () => {
               <section
                 onMouseMove={handleHeroMouseMove}
                 onMouseLeave={handleHeroMouseLeave}
-                className="relative -mt-[72px] pt-[72px] min-h-[74vh] sm:min-h-[78vh] lg:min-h-[82vh] flex items-center justify-center bg-[#3A2E25] text-white overflow-hidden"
+                className="relative -mt-[72px] pt-[72px] min-h-screen min-h-[100dvh] flex flex-col items-center justify-center bg-[#1C1612] text-white overflow-hidden"
               >
                 {/* Background Slideshow Layer with Wide Field of View & Zero-Jank Ref Parallax */}
                 <div
@@ -943,45 +848,53 @@ const OneLoveRouter: React.FC = () => {
                         src={slideSrc}
                         alt={`OneLove Café Sigiriya, Sri Lanka hero slide ${idx + 1}`}
                         priority={true}
-                        className="h-full w-full object-cover object-center contrast-[1.12] saturate-[1.18] brightness-[1.04]"
+                        className="h-full w-full object-cover object-center contrast-[1.06] saturate-[1.08] brightness-[0.88]"
                       />
                     </div>
                   ))}
-                  {/* Balanced Wide-Angle Lighting Overlay: Clear Edges + Readable Center */}
-                  <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_48%,rgba(18,14,10,0.28)_0%,rgba(18,14,10,0.16)_58%,rgba(18,14,10,0.34)_100%)]" />
-                  <div className="absolute inset-0 bg-gradient-to-b from-[#1E1712]/35 via-transparent to-[#18120E]/50" />
+                  {/* Warm Deep Atmospheric Scrim matching Reference Screenshot */}
+                  <div className="absolute inset-0 bg-[#18120D]/55" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-[#140F0B]/60 via-[#18120D]/35 to-[#120D0A]/80" />
                 </div>
 
-                {/* Slider Navigation Arrows (Left & Right) matching reference screenshot */}
+                {/* Slider Navigation Arrows (Left & Right) */}
                 {heroSlides.length > 1 && (
                   <>
                     <button
                       type="button"
                       onClick={handlePrevSlide}
                       aria-label="Previous slide"
-                      className="hidden sm:flex absolute left-4 sm:left-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/55 border border-white/35 text-white hover:bg-black/85 hover:border-white/65 items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-lg"
+                      className="hidden sm:flex absolute left-4 sm:left-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/45 border border-white/15 text-white/85 hover:bg-black/75 hover:text-white items-center justify-center transition-all cursor-pointer backdrop-blur-xs"
                     >
-                      <ChevronLeft className="w-5 h-5" />
+                      <ChevronLeft className="w-4 h-4" />
                     </button>
                     <button
                       type="button"
                       onClick={handleNextSlide}
                       aria-label="Next slide"
-                      className="hidden sm:flex absolute right-4 sm:right-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/55 border border-white/35 text-white hover:bg-black/85 hover:border-white/65 items-center justify-center transition-all cursor-pointer backdrop-blur-xs shadow-lg"
+                      className="hidden sm:flex absolute right-4 sm:right-8 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-black/45 border border-white/15 text-white/85 hover:bg-black/75 hover:text-white items-center justify-center transition-all cursor-pointer backdrop-blur-xs"
                     >
-                      <ChevronRight className="w-5 h-5" />
+                      <ChevronRight className="w-4 h-4" />
                     </button>
                   </>
                 )}
 
-                {/* Foreground Content Layer - Centered, Big Main Text Widespread & High-Contrast Secondary Text */}
-                <div className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-12 pt-10 pb-16 sm:pt-12 sm:pb-20 flex flex-col items-center justify-center text-center subpixel-antialiased">
-                  <div className="space-y-5 sm:space-y-7 flex flex-col items-center justify-center text-center w-full">
-                    {/* Big Main Text Widespread matching screenshot with luminous contrast + crawlable brand H1 prefix */}
+                {/* Foreground Content Layer — Centered Editorial Layout Matching Reference */}
+                <div className="relative z-10 max-w-4xl mx-auto w-full px-5 sm:px-10 pt-10 pb-16 sm:pt-14 sm:pb-20 flex flex-col items-center justify-center text-center subpixel-antialiased">
+                  <div className="flex flex-col items-center justify-center text-center w-full space-y-5 sm:space-y-6">
+                    {/* Minimal Location Eyebrow */}
+                    <div
+                      data-gsap-hero
+                      className="inline-flex items-center px-4 py-1.5 rounded-full bg-black/35 border border-white/15 backdrop-blur-xs text-[10px] sm:text-[11px] font-mono-tabular uppercase tracking-[0.22em] text-white/90"
+                    >
+                      Sigiriya · Sri Lanka · Lion Rock Sanctuary
+                    </div>
+
+                    {/* Hero Headline — 50% Reduced Size, Clean Balanced Proportions */}
                     <h1
                       data-gsap-hero
                       style={{ textWrap: 'balance' }}
-                      className="font-hero-display text-5xl sm:text-7xl md:text-[84px] lg:text-[104px] xl:text-[124px] font-extrabold leading-[1.04] sm:leading-[1.02] tracking-[-0.025em] text-[#FFFFFF] max-w-6xl mx-auto [text-shadow:0_6px_28px_rgba(0,0,0,0.68)]"
+                      className="font-outfit text-[26px] sm:text-[36px] md:text-[42px] lg:text-[52px] xl:text-[62px] font-normal leading-[1.08] tracking-[-0.02em] text-[#FFFFFF] max-w-2xl mx-auto [text-shadow:0_4px_24px_rgba(0,0,0,0.45)]"
                     >
                       <span className="sr-only">
                         OneLove Café Sigiriya — Café &amp; Restaurant in Sigiriya, Central Province, Sri Lanka:{' '}
@@ -989,19 +902,19 @@ const OneLoveRouter: React.FC = () => {
                       {heroContent?.heading || 'Where Jungle Stone Meets Slow Highland Coffee.'}
                     </h1>
 
-                    {/* Crisp High-Contrast Secondary Text */}
+                    {/* Clean Centered Subtitle */}
                     <p
                       data-gsap-hero
-                      className="text-sm sm:text-base md:text-lg text-[#FFFFFF] max-w-2xl mx-auto leading-relaxed font-medium [text-shadow:0_2px_16px_rgba(0,0,0,0.92),0_1px_3px_rgba(0,0,0,0.85)] px-1 sm:px-2"
+                      className="text-sm sm:text-base text-white/90 max-w-xl mx-auto leading-relaxed font-light px-1 sm:px-2"
                     >
                       {heroContent?.subheading ||
                         'Nestled in the emerald canopy beneath Sigiriya Lion Rock in Central Province, Sri Lanka, OneLove Café is an open-air architectural sanctuary for single-estate Ceylon coffee, wood-fired coastal plates, and unhurried twilight gatherings.'}
                     </p>
 
-                    {/* High-Contrast Action Buttons matching reference screenshot */}
+                    {/* Balanced 3-Button Pill Row */}
                     <div
                       data-gsap-hero
-                      className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 pt-3 w-full"
+                      className="flex flex-wrap items-center justify-center gap-3 sm:gap-3.5 pt-2 w-full"
                     >
                       <a
                         href="/menu"
@@ -1009,7 +922,7 @@ const OneLoveRouter: React.FC = () => {
                           e.preventDefault();
                           navigate('/menu');
                         }}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#D9622B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#BF5220] hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(217,98,43,0.45)] cursor-pointer inline-flex items-center justify-center"
+                        className="min-h-[44px] px-6 sm:px-7 py-2.5 rounded-full bg-[#D9622B] text-white text-[11px] sm:text-xs font-semibold uppercase tracking-[0.14em] hover:bg-[#BF5220] transition-colors whitespace-nowrap shrink-0 cursor-pointer inline-flex items-center justify-center"
                       >
                         View Menu
                       </a>
@@ -1019,7 +932,7 @@ const OneLoveRouter: React.FC = () => {
                           e.preventDefault();
                           handleReserveCtaClick();
                         }}
-                        className="min-h-[54px] px-7 sm:px-9 py-3.5 sm:py-4 rounded-full bg-[#FFFDF9] text-[#110F0D] text-[14.5px] font-bold uppercase tracking-wider hover:bg-[#F3ECE0] hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap shrink-0 shadow-[0_10px_28px_rgba(0,0,0,0.42)] cursor-pointer inline-flex items-center justify-center leading-none"
+                        className="min-h-[44px] px-6 sm:px-7 py-2.5 rounded-full bg-[#FFFFFF] text-[#14100D] text-[11px] sm:text-xs font-semibold uppercase tracking-[0.14em] hover:bg-[#F3ECE0] transition-colors whitespace-nowrap shrink-0 cursor-pointer inline-flex items-center justify-center"
                       >
                         Reserve a Table
                       </a>
@@ -1029,182 +942,75 @@ const OneLoveRouter: React.FC = () => {
                           e.preventDefault();
                           navigate('/story');
                         }}
-                        className="min-h-[44px] px-5 sm:px-7 py-3 rounded-full bg-[#0F0D0B]/70 border border-white/45 text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#0F0D0B]/90 hover:border-white/75 hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap shrink-0 shadow-[0_8px_24px_rgba(0,0,0,0.45)] backdrop-blur-xs cursor-pointer inline-flex items-center justify-center"
+                        className="min-h-[44px] px-6 sm:px-7 py-2.5 rounded-full bg-black/30 border border-white/40 text-white text-[11px] sm:text-xs font-semibold uppercase tracking-[0.14em] hover:bg-black/55 hover:border-white/75 transition-colors whitespace-nowrap shrink-0 backdrop-blur-xs cursor-pointer inline-flex items-center justify-center"
                       >
                         Discover More
                       </a>
                     </div>
 
-                    {/* Glassmorphic Continuous Horizontal Traveler Ratings Strip Underneath Hero Buttons */}
+                    {/* Minimal Bottom Hairline Bar (Hours + Quick Links) */}
                     <div
                       data-gsap-hero
-                      aria-label="Traveler ratings across platforms"
-                      className="relative z-20 mt-4 sm:mt-6 w-full max-w-4xl mx-auto rounded-full bg-white/10 backdrop-blur-md border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.28)] overflow-hidden select-none py-3 sm:py-3.5"
+                      className="w-full max-w-2xl mx-auto pt-4 mt-6 sm:mt-8 border-t border-white/15 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-[10px] sm:text-[11px] text-white/75"
                     >
-                      <div
-                        className="overflow-hidden w-full"
-                        style={{
-                          WebkitMaskImage:
-                            'linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)',
-                          maskImage:
-                            'linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)',
-                        }}
+                      <span className="font-mono-tabular uppercase tracking-[0.16em]">
+                        Open Daily 7:30 AM – 10:30 PM · Sigiriya
+                      </span>
+                      <nav
+                        aria-label="Quick sanctuary navigation"
+                        className="flex items-center gap-3 font-mono-tabular text-white/80"
                       >
-                        {/* Seamless Horizontal Sliding Track */}
-                        <div className="animate-ratings-slider items-center">
-                        {[0, 1].map((halfIdx) => (
-                          <div
-                            key={halfIdx}
-                            aria-hidden={halfIdx === 1}
-                            className="flex items-center shrink-0"
-                          >
-                            {[0, 1].map((repeatIdx) => (
-                              <React.Fragment key={`${halfIdx}-${repeatIdx}`}>
-                                {[
-                                  {
-                                    id: 'tripadvisor',
-                                    score: '4.3',
-                                    outOf: '/ 5.0',
-                                    hasHalf: true,
-                                    logo: (
-                                      <span
-                                        aria-label="Tripadvisor"
-                                        title="Tripadvisor"
-                                        className="inline-flex items-center gap-2 text-white whitespace-nowrap"
-                                      >
-                                        <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#34E0A1] flex items-center justify-center shrink-0 shadow-2xs">
-                                          <svg
-                                            viewBox="0 0 24 24"
-                                            className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-[#000000]"
-                                            fill="currentColor"
-                                            aria-hidden="true"
-                                          >
-                                            <path d="M12 6.2c-2.6 0-4.9.8-6.6 2.1L2.5 8v1.8c.5.4 1 .9 1.2 1.6-.5.8-.7 1.7-.7 2.6 0 2.9 2.3 5.2 5.2 5.2 1.6 0 3.1-.7 4-1.9l-.2-.2 1.9-1.9-1.9 1.9c.9 1.2 2.4 1.9 4 1.9 2.9 0 5.2-2.3 5.2-5.2 0-.9-.2-1.8-.7-2.6.2-.7.7-1.2 1.2-1.6V8l-2.9.3C16.9 7 14.6 6.2 12 6.2zm-3.8 4.4c1.9 0 3.4 1.5 3.4 3.4s-1.5 3.4-3.4 3.4-3.4-1.5-3.4-3.4 1.5-3.4 3.4-3.4zm7.6 0c1.9 0 3.4 1.5 3.4 3.4s-1.5 3.4-3.4 3.4-3.4-1.5-3.4-3.4 1.5-3.4 3.4-3.4zm-7.6 1.7c-.9 0-1.7.8-1.7 1.7s.8 1.7 1.7 1.7 1.7-.8 1.7-1.7-.8-1.7-1.7-1.7zm7.6 0c-.9 0-1.7.8-1.7 1.7s.8 1.7 1.7 1.7 1.7-.8 1.7-1.7-.8-1.7-1.7-1.7z" />
-                                          </svg>
-                                        </span>
-                                        <span className="font-sans text-xs sm:text-sm font-bold tracking-tight text-white">
-                                          Tripadvisor
-                                        </span>
-                                      </span>
-                                    ),
-                                  },
-                                  {
-                                    id: 'google-maps',
-                                    score: '4.9',
-                                    outOf: '/ 5.0',
-                                    hasHalf: false,
-                                    logo: (
-                                      <span
-                                        aria-label="Google Maps"
-                                        title="Google Maps"
-                                        className="inline-flex items-center gap-2 text-white whitespace-nowrap"
-                                      >
-                                        <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white flex items-center justify-center shrink-0 shadow-2xs">
-                                          <svg
-                                            viewBox="0 0 24 24"
-                                            className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0"
-                                            aria-hidden="true"
-                                          >
-                                            <path
-                                              fill="#4285F4"
-                                              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                                            />
-                                            <path
-                                              fill="#34A853"
-                                              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                                            />
-                                            <path
-                                              fill="#FBBC05"
-                                              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                                            />
-                                            <path
-                                              fill="#EA4335"
-                                              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                                            />
-                                          </svg>
-                                        </span>
-                                        <span className="font-sans text-xs sm:text-sm font-semibold tracking-tight text-white">
-                                          Google <span className="font-normal text-white/85">Maps</span>
-                                        </span>
-                                      </span>
-                                    ),
-                                  },
-                                  {
-                                    id: 'addagio',
-                                    score: '4.9',
-                                    outOf: '/ 5.0',
-                                    hasHalf: false,
-                                    logo: (
-                                      <span
-                                        aria-label="Addagio"
-                                        title="Addagio"
-                                        className="inline-flex items-center gap-2 text-white whitespace-nowrap"
-                                      >
-                                        <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/15 border border-white/30 text-white flex items-center justify-center shrink-0">
-                                          <svg
-                                            viewBox="0 0 24 24"
-                                            className="w-3.5 h-3.5 sm:w-4 sm:h-4"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            aria-hidden="true"
-                                          >
-                                            <path
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                              d="M12 3L4.5 20.5h3.2l1.6-4h5.4l1.6 4h3.2L12 3zm-1.6 10L12 8.6l1.6 4.4h-3.2z"
-                                            />
-                                          </svg>
-                                        </span>
-                                        <span className="font-editorial text-sm sm:text-base font-semibold tracking-[0.1em] uppercase text-white">
-                                          Addagio
-                                        </span>
-                                      </span>
-                                    ),
-                                  },
-                                ].map((item) => (
-                                  <div
-                                    key={`${halfIdx}-${repeatIdx}-${item.id}`}
-                                    className="flex items-center gap-3 sm:gap-4 px-7 sm:px-10 border-r border-white/20 shrink-0"
-                                  >
-                                    {item.logo}
-                                    <span
-                                      className="w-3 sm:w-4 h-[1px] bg-white/35 shrink-0"
-                                      aria-hidden="true"
-                                    />
-                                    <div className="inline-flex items-center gap-1.5 sm:gap-2 shrink-0">
-                                      <span className="font-editorial text-lg sm:text-2xl font-semibold tracking-tight text-white font-mono-tabular">
-                                        {item.score}
-                                      </span>
-                                      <span className="text-[10px] sm:text-xs font-mono-tabular text-white/75">
-                                        {item.outOf}
-                                      </span>
-                                      <span
-                                        aria-hidden="true"
-                                        className="inline-flex items-center gap-0.5 text-[#F7B955] text-xs sm:text-sm leading-none ml-0.5"
-                                      >
-                                        <span>★</span>
-                                        <span>★</span>
-                                        <span>★</span>
-                                        <span>★</span>
-                                        <span className={item.hasHalf ? 'opacity-45' : ''}>★</span>
-                                      </span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </React.Fragment>
-                            ))}
-                          </div>
-                        ))}
-                        </div>
-                      </div>
+                        <a
+                          href="/story"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate('/story');
+                          }}
+                          className="hover:text-white transition-colors"
+                        >
+                          Sanctuary
+                        </a>
+                        <span className="text-white/30">·</span>
+                        <a
+                          href="/menu"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate('/menu');
+                          }}
+                          className="hover:text-white transition-colors"
+                        >
+                          Menu
+                        </a>
+                        <span className="text-white/30">·</span>
+                        <a
+                          href="/gallery"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate('/gallery');
+                          }}
+                          className="hover:text-white transition-colors"
+                        >
+                          Gallery
+                        </a>
+                        <span className="text-white/30">·</span>
+                        <a
+                          href="/contact"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate('/contact');
+                          }}
+                          className="hover:text-white transition-colors"
+                        >
+                          Contact
+                        </a>
+                      </nav>
                     </div>
                   </div>
                 </div>
 
-                {/* Slide Indicator Dots at bottom center matching reference screenshot */}
+                {/* Slide Indicator Dots at bottom center */}
                 {heroSlides.length > 1 && (
-                  <div className="absolute bottom-5 sm:bottom-6 right-4 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 z-20 flex items-center justify-center gap-2.5">
+                  <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center gap-2">
                     {heroSlides.map((_, idx) => (
                       <button
                         key={idx}
@@ -1213,8 +1019,8 @@ const OneLoveRouter: React.FC = () => {
                         aria-label={`Show hero slide ${idx + 1}`}
                         className={`rounded-full transition-all cursor-pointer ${
                           idx === heroSlideIndex
-                            ? 'w-2.5 h-2.5 bg-[#D9622B] ring-2 ring-[#D9622B]/50'
-                            : 'w-2 h-2 bg-white/55 hover:bg-white'
+                            ? 'w-2.5 h-2.5 bg-[#D9622B]'
+                            : 'w-2 h-2 bg-white/45 hover:bg-white'
                         }`}
                       />
                     ))}
@@ -1226,68 +1032,16 @@ const OneLoveRouter: React.FC = () => {
             {/* 2. Crafted from Laterite Earth, Teak & Monsoon Light — 5-Photo Hover-Animated Collage */}
             <LateriteStorySection onReadMonograph={() => navigate('/story')} />
 
-            {/* 3. Featured Culinary & Roastery Selections (Menu Gallery Section: Custom 20% Blurred Image or Scroll-Driven Roasted Coffee Background) */}
-            <section
-              ref={homeMenuGalleryRef}
-              style={{
-                backgroundColor: menuGalleryBgUrl ? '#3A2B20' : '#FCF9F4',
-                borderColor: menuGalleryBgUrl ? 'rgba(231, 222, 211, 0.25)' : '#E7DED3',
-              }}
-              className="relative overflow-hidden w-full py-14 sm:py-24 lg:py-28 border-b"
-            >
-              {/* Admin-Uploaded Menu Gallery Background Image with 20% Blur */}
-              {menuGalleryBgUrl && (
-                <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-[#3A2B20]"
-                >
-                  <div
-                    className="w-full h-full"
-                    style={{
-                      filter: 'blur(4px)',
-                      transform: 'scale(1.04)',
-                    }}
-                  >
-                    <EditorialVisual
-                      src={menuGalleryBgUrl}
-                      alt=""
-                      priority={true}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  {/* Subtle Atmospheric Scrim for Crisp Typography & Card Contrast */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-[#241A13]/45 via-[#241A13]/30 to-[#241A13]/50" />
-                </div>
-              )}
-
-              {/* Section-Scoped Stimulating Roasted Coffee Aura Overlay */}
-              <div
-                ref={menuAuraRef}
-                aria-hidden="true"
-                style={{ opacity: menuGalleryBgUrl ? 0.35 : 0 }}
-                className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_20%_25%,rgba(217,114,54,0.24),transparent_55%),radial-gradient(circle_at_80%_75%,rgba(138,76,38,0.32),transparent_60%)]"
-              />
-
-              <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 space-y-8 sm:space-y-12">
+            {/* 3. Featured Culinary & Roastery Selections (Solid White, Separated into Food & Drinks, 4-in-a-Row Square Cards) */}
+            <section className="relative w-full bg-white py-16 sm:py-24 lg:py-28 border-b border-[#E7DED3]">
+              <div className="max-w-7xl mx-auto px-5 sm:px-8 lg:px-12 space-y-12 sm:space-y-16">
                 <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
                   <div data-gsap-menu-header className="space-y-2 max-w-2xl">
-                    <div
-                      style={{
-                        color:
-                          menuGalleryBgUrl || isMenuSectionDark ? '#F3A871' : '#C65B2B',
-                      }}
-                      className="text-[11px] uppercase tracking-[0.2em] font-semibold transition-colors duration-300 ease-out"
-                    >
-                      Single-Estate Ceylon Roast &amp; Wood-Fired Kitchen
+                    <div className="text-[11px] font-mono-tabular uppercase tracking-[0.22em] text-[#C65B2B] font-medium">
+                      Curated Highlights
                     </div>
-                    <h2
-                      style={{
-                        color:
-                          menuGalleryBgUrl || isMenuSectionDark ? '#FCF6EE' : '#171513',
-                      }}
-                      className="text-3xl sm:text-5xl font-editorial font-semibold transition-colors duration-300 ease-out"
-                    >
-                      Signature Plates &amp; Highland Pour-Overs
+                    <h2 className="font-outfit text-3xl sm:text-4xl lg:text-[42px] font-normal text-[#14110E] tracking-tight leading-tight">
+                      Culinary &amp; Roastery Monograph
                     </h2>
                   </div>
                   <a
@@ -1297,174 +1051,588 @@ const OneLoveRouter: React.FC = () => {
                       e.preventDefault();
                       navigate('/menu');
                     }}
-                    className={`w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all duration-500 whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center ${
-                      menuGalleryBgUrl || isMenuSectionDark
-                        ? 'bg-[#D9622B] text-[#FFFDF9] hover:bg-[#BF5220] shadow-[0_8px_24px_rgba(0,0,0,0.35)]'
-                        : 'bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B]'
-                    }`}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-mono-tabular uppercase tracking-[0.18em] text-[#C65B2B] hover:text-[#14110E] transition-colors font-medium cursor-pointer"
                   >
-                    View Complete Menu
+                    <span>View Complete Dining Menu</span>
+                    <span aria-hidden="true">↗</span>
                   </a>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-                  {featuredDishes.map((dish) => (
-                    <article
-                      key={dish.id}
-                      data-gsap-menu-card
-                      className="bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between group shadow-[0_10px_28px_rgba(17,11,7,0.12)] hover:-translate-y-1.5 hover:shadow-[0_20px_42px_rgba(17,11,7,0.22)] transition-all duration-300"
-                    >
-                      <div>
-                        <div className="aspect-[4/3] overflow-hidden bg-[#EAE2D6] border-b border-[#E7DED3]">
-                          <EditorialVisual
-                            src={dish.imageUrl}
-                            alt={dish.name}
-                            className="group-hover:scale-105 transition-transform duration-500 ease-out"
-                          />
-                        </div>
-                        <div className="p-3 sm:p-5 space-y-1.5 sm:space-y-2">
-                          {/* Zero-pill metadata */}
-                          <div className="text-[9px] sm:text-[11px] text-[#58644E] uppercase tracking-wider line-clamp-1">
-                            {dish.categoryName}
-                            {dish.dietaryTags.length > 0 && ` · ${dish.dietaryTags.join(' · ')}`}
-                          </div>
-                          <h3 className="text-sm sm:text-lg font-editorial font-semibold text-[#171513] leading-snug group-hover:text-[#C65B2B] transition-colors">
-                            {dish.name}
-                          </h3>
-                          <p className="text-[11px] sm:text-xs text-[#171513]/70 leading-relaxed line-clamp-2 sm:line-clamp-none">
-                            {dish.description}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="px-3 sm:px-5 py-2.5 sm:py-3.5 border-t border-[#E7DED3] flex flex-wrap items-center justify-between gap-1 text-[10px] sm:text-xs font-mono-tabular">
-                        {(() => {
-                          const currencyMode = resolveMenuPriceCurrency(dish);
-                          if (currencyMode === 'lkr') {
-                            return (
-                              <span className="font-semibold text-[#171513]">
-                                LKR {dish.priceLkr.toLocaleString()}
-                              </span>
-                            );
-                          }
-                          if (currencyMode === 'usd') {
-                            return (
-                              <span className="font-semibold text-[#171513]">
-                                USD ${dish.priceUsd.toFixed(2)}
-                              </span>
-                            );
-                          }
-                          return (
-                            <>
-                              <span className="font-semibold text-[#171513]">
-                                LKR {dish.priceLkr.toLocaleString()}
-                              </span>
-                              <span className="text-[#171513]/55">
-                                USD ${dish.priceUsd.toFixed(2)}
-                              </span>
-                            </>
-                          );
-                        })()}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            {/* 4. Embedded Homepage Reservation Section (#reserve-section) - Swapped & Dark Theme */}
-            <section
-              id="reserve-section"
-              className="scroll-mt-20 bg-[#171513] text-[#F8F4EE] py-14 sm:py-24 lg:py-28"
-            >
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 space-y-8 sm:space-y-10">
-                <div data-gsap-reserve className="text-center max-w-2xl mx-auto space-y-3">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#D9622B] font-semibold">
-                    Live Floor Plan &amp; Concierge Booking
-                  </div>
-                  <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#F8F4EE]">
-                    Reserve Your Sanctuary Table
-                  </h2>
-                  <p className="text-xs sm:text-sm text-[#F8F4EE]/75 leading-relaxed font-light">
-                    Choose your preferred dining atmosphere across our open-air jungle verandah,
-                    candlelit stone courtyard, or cooled specialty roastery lounge.
-                  </p>
-                </div>
-
-                <div data-gsap-reserve className="text-[#171513]">
-                  <ReservationEngine />
-                </div>
-              </div>
-            </section>
-
-            {/* 5. Curated Evening Rituals & Experiences Preview - Swapped & Light Theme */}
-            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-14 sm:py-24 lg:py-28 border-b border-[#E7DED3] space-y-8 sm:space-y-12">
-              <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
-                <div data-gsap-exp-header className="space-y-2 max-w-2xl">
-                  <div className="text-[11px] uppercase tracking-[0.2em] text-[#C65B2B] font-semibold">
-                    Twilight Gatherings &amp; Roastery Sessions
-                  </div>
-                  <h2 className="text-3xl sm:text-5xl font-editorial font-semibold text-[#171513]">
-                    Experiences Under the Sigiriya Palms
-                  </h2>
-                </div>
-                <a
-                  data-gsap-exp-header
-                  href="/events"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate('/events');
-                  }}
-                  className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#171513] text-[#F8F4EE] text-xs font-semibold uppercase tracking-wider hover:bg-[#C65B2B] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center"
-                >
-                  All Events &amp; Cuppings
-                </a>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {events
-                  .filter((e) => e.isActive)
-                  .slice(0, 3)
-                  .map((evt, idx) => (
+                {/* FOOD SELECTIONS */}
+                {featuredFoodItems.length > 0 && (
+                  <div className="space-y-6">
                     <div
-                      key={evt.id}
-                      data-gsap-exp-card
-                      className="group bg-white border border-[#E7DED3] flex flex-col justify-between overflow-hidden shadow-xs hover:-translate-y-1.5 hover:shadow-[0_18px_38px_rgba(23,21,19,0.12)] transition-all duration-300"
+                      data-gsap-menu-header
+                      className="flex items-baseline justify-between border-b border-[#14110E]/10 pb-3"
                     >
-                      <div>
-                        <div className="aspect-[16/9] overflow-hidden bg-[#EAE2D6] border-b border-[#E7DED3]">
-                          <EditorialVisual
-                            src={evt.imageUrl}
-                            alt={evt.title}
-                            className="group-hover:scale-105 transition-transform duration-500 ease-out"
-                          />
-                        </div>
-                        <div className="p-5 sm:p-7 space-y-3">
-                          <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-mono-tabular font-medium">
-                            0{idx + 1} · {evt.category} · {evt.date}
-                          </div>
-                          <h3 className="text-2xl font-editorial font-semibold text-[#171513] group-hover:text-[#C65B2B] transition-colors">
-                            {evt.title}
-                          </h3>
-                          <p className="text-xs text-[#171513]/70 leading-relaxed font-light">
-                            {evt.description}
-                          </p>
-                        </div>
+                      <h3 className="font-outfit text-xl sm:text-2xl font-normal text-[#14110E] tracking-tight">
+                        Food Selections
+                      </h3>
+                      <span className="text-xs font-mono-tabular text-[#14110E]/50">
+                        {featuredFoodItems.length} dishes
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
+                      {featuredFoodItems.map((dish) => {
+                        const flags = extractDietaryFlags(dish);
+                        const primaryTag = dish.dietaryTags[0] || dish.categoryName;
+                        const shortCodes = [
+                          flags.isVegetarian && !flags.isVegan ? '[V]' : null,
+                          flags.isVegan ? '[VG]' : null,
+                          flags.isGlutenFree ? '[GF]' : null,
+                          flags.isSeafood ? '[SF]' : null,
+                        ].filter(Boolean);
+                        const currencyMode = resolveMenuPriceCurrency(dish);
+                        const priceText =
+                          currencyMode === 'usd'
+                            ? `$${dish.priceUsd.toFixed(2)}`
+                            : `LKR ${dish.priceLkr.toLocaleString()}`;
+
+                        return (
+                          <article
+                            key={dish.id}
+                            data-gsap-menu-card
+                            onClick={() => setHomeMenuDetailItem(dish)}
+                            className="group bg-white rounded-[22px] border border-[#14110E]/10 shadow-[0_8px_28px_rgba(18,14,11,0.06)] hover:shadow-[0_18px_40px_rgba(18,14,11,0.11)] hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col justify-between aspect-square cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#181512] text-white text-[9px] font-mono-tabular uppercase tracking-[0.16em] font-medium truncate max-w-[75%]">
+                                {primaryTag}
+                              </span>
+                              {shortCodes.length > 0 && (
+                                <span className="text-[10px] font-mono-tabular text-[#14110E]/55 shrink-0">
+                                  {shortCodes.join(' ')}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="my-auto py-3 space-y-2.5">
+                              <h4 className="font-outfit text-xl font-normal text-[#14110E] leading-snug tracking-tight group-hover:text-[#C65B2B] transition-colors line-clamp-2">
+                                {dish.name}
+                              </h4>
+                              <p className="text-[13px] text-[#14110E]/65 font-light leading-relaxed line-clamp-3">
+                                {dish.description}
+                              </p>
+                            </div>
+
+                            <div className="pt-3.5 border-t border-[#14110E]/8 flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-mono-tabular uppercase tracking-[0.12em] font-semibold text-[#C65B2B] tabular-nums">
+                                {priceText}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-[#C65B2B] group-hover:translate-x-0.5 transition-transform">
+                                <span>Details</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </span>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* DRINKS & COFFEE */}
+                {featuredDrinkItems.length > 0 && (
+                  <div className="space-y-6">
+                    <div
+                      data-gsap-menu-header
+                      className="flex items-baseline justify-between border-b border-[#14110E]/10 pb-3"
+                    >
+                      <h3 className="font-outfit text-xl sm:text-2xl font-normal text-[#14110E] tracking-tight">
+                        Drinks &amp; Coffee
+                      </h3>
+                      <span className="text-xs font-mono-tabular text-[#14110E]/50">
+                        {featuredDrinkItems.length} drinks
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
+                      {featuredDrinkItems.map((drink) => {
+                        const flags = extractDietaryFlags(drink);
+                        const primaryTag = drink.dietaryTags[0] || drink.categoryName;
+                        const shortCodes = [
+                          flags.isVegan ? '[VG]' : null,
+                          flags.isGlutenFree ? '[GF]' : null,
+                        ].filter(Boolean);
+                        const currencyMode = resolveMenuPriceCurrency(drink);
+                        const priceText =
+                          currencyMode === 'usd'
+                            ? `$${drink.priceUsd.toFixed(2)}`
+                            : `LKR ${drink.priceLkr.toLocaleString()}`;
+
+                        return (
+                          <article
+                            key={drink.id}
+                            data-gsap-menu-card
+                            onClick={() => setHomeMenuDetailItem(drink)}
+                            className="group bg-white rounded-[22px] border border-[#14110E]/10 shadow-[0_8px_28px_rgba(18,14,11,0.06)] hover:shadow-[0_18px_40px_rgba(18,14,11,0.11)] hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col justify-between aspect-square cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#181512] text-white text-[9px] font-mono-tabular uppercase tracking-[0.16em] font-medium truncate max-w-[75%]">
+                                {primaryTag}
+                              </span>
+                              {shortCodes.length > 0 && (
+                                <span className="text-[10px] font-mono-tabular text-[#14110E]/55 shrink-0">
+                                  {shortCodes.join(' ')}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="my-auto py-3 space-y-2.5">
+                              <h4 className="font-outfit text-xl font-normal text-[#14110E] leading-snug tracking-tight group-hover:text-[#C65B2B] transition-colors line-clamp-2">
+                                {drink.name}
+                              </h4>
+                              <p className="text-[13px] text-[#14110E]/65 font-light leading-relaxed line-clamp-3">
+                                {drink.description}
+                              </p>
+                            </div>
+
+                            <div className="pt-3.5 border-t border-[#14110E]/8 flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-mono-tabular uppercase tracking-[0.12em] font-semibold text-[#C65B2B] tabular-nums">
+                                {priceText}
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-[#C65B2B] group-hover:translate-x-0.5 transition-transform">
+                                <span>Details</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                              </span>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Clean Text-Only Detail Modal for Home Menu Cards */}
+              {homeMenuDetailItem && (
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={homeMenuDetailItem.name}
+                >
+                  <div
+                    onClick={() => setHomeMenuDetailItem(null)}
+                    className="absolute inset-0 bg-[#120E0B]/60 backdrop-blur-xs"
+                  />
+                  <div className="relative w-full max-w-lg bg-white rounded-3xl p-7 sm:p-9 shadow-2xl border border-[#120E0B]/10 z-10 space-y-5">
+                    <button
+                      type="button"
+                      onClick={() => setHomeMenuDetailItem(null)}
+                      aria-label="Close item details"
+                      className="absolute top-5 right-5 w-9 h-9 rounded-full bg-[#120E0B]/5 hover:bg-[#120E0B]/12 text-[#120E0B] flex items-center justify-center transition cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+
+                    <div className="space-y-1.5 border-b border-[#120E0B]/10 pb-4 pr-8">
+                      <span className="text-[10px] font-mono-tabular font-semibold uppercase tracking-[0.2em] text-[#C65B2B] block">
+                        {resolveMenuItemSection(homeMenuDetailItem, menuCategories) === 'drinks'
+                          ? 'Drinks & Coffee'
+                          : 'Food Selections'}{' '}
+                        · {homeMenuDetailItem.categoryName}
+                      </span>
+                      <h3 className="font-outfit text-2xl sm:text-3xl font-normal text-[#120E0B] tracking-tight">
+                        {homeMenuDetailItem.name}
+                      </h3>
+                      <div className="flex items-baseline gap-3 pt-1 font-mono-tabular">
+                        <span className="text-lg font-semibold text-[#120E0B]">
+                          LKR {homeMenuDetailItem.priceLkr.toLocaleString()}
+                        </span>
+                        {homeMenuDetailItem.priceUsd > 0 && (
+                          <span className="text-xs text-[#120E0B]/55">
+                            (USD ${homeMenuDetailItem.priceUsd.toFixed(2)})
+                          </span>
+                        )}
                       </div>
-                      <div className="px-5 sm:px-7 py-4 border-t border-[#E7DED3] flex items-center justify-between text-xs font-mono-tabular text-[#171513]/70">
-                        <span>{evt.time}</span>
+                    </div>
+
+                    <p className="text-sm text-[#120E0B]/80 font-light leading-relaxed">
+                      {homeMenuDetailItem.description}
+                    </p>
+
+                    {homeMenuDetailItem.dietaryTags.length > 0 && (
+                      <div className="text-xs text-[#120E0B]/65 font-light">
+                        {homeMenuDetailItem.dietaryTags.join(' · ')}
+                      </div>
+                    )}
+
+                    <div className="pt-2 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setHomeMenuDetailItem(null)}
+                        className="px-5 py-2.5 rounded-full border border-[#120E0B]/20 text-[#120E0B] font-outfit text-xs font-semibold uppercase tracking-wider hover:border-[#120E0B] transition cursor-pointer"
+                      >
+                        Close
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href="/menu"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setHomeMenuDetailItem(null);
+                            navigate('/menu');
+                          }}
+                          className="px-5 py-2.5 rounded-full border border-[#120E0B]/20 text-[#120E0B] font-outfit text-xs font-semibold uppercase tracking-wider hover:border-[#120E0B] transition cursor-pointer"
+                        >
+                          Full Menu
+                        </a>
                         <a
                           href="/reserve"
                           onClick={(e) => {
                             e.preventDefault();
+                            setHomeMenuDetailItem(null);
                             handleReserveCtaClick();
                           }}
-                          className="text-[#C65B2B] hover:underline uppercase tracking-wider font-semibold cursor-pointer"
+                          className="px-5 py-2.5 rounded-full bg-[#C65B2B] hover:bg-[#B04E22] text-white font-outfit text-xs font-semibold uppercase tracking-wider transition cursor-pointer"
                         >
-                          Book Table →
+                          Reserve Table
                         </a>
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* 4. The Golden Hour Culinary Feature (Replaces Experiences Under the Sigiriya Palms) */}
+            <section className="w-full bg-[#120E0B] text-white py-20 sm:py-28 lg:py-32">
+              <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-center">
+                <div className="lg:col-span-6">
+                  <div className="rounded-[24px] overflow-hidden border border-white/10 bg-[#1C1612] aspect-[4/3] shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
+                    <EditorialVisual
+                      src={
+                        gallery.find((g) => g.category === 'Culinary')?.imageUrl ||
+                        events[0]?.imageUrl ||
+                        'https://cdn.onelovecafesigiriya.com/gallery/1793182356132-42957eec-2f66-492e-b754-eaeb2e0420af.webp'
+                      }
+                      alt="OneLove Café Sigiriya culinary showcase"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+
+                <div className="lg:col-span-6 space-y-6">
+                  <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white/[0.06] border border-white/15 text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#E6DDD3]">
+                    The Golden Hour
+                  </div>
+                  <h2 className="font-outfit text-4xl sm:text-5xl lg:text-[54px] font-normal text-white leading-[1.06] tracking-[-0.02em]">
+                    Fresh from the Sigiriya valley.
+                  </h2>
+                  <p className="text-sm sm:text-[15px] text-[#CFC5B9] leading-relaxed font-light max-w-md">
+                    Harvested daily from Dry Zone gardens and highland roasters, prepared with care
+                    and served beneath the palms on our open-air verandah.
+                  </p>
+                  <div className="pt-2">
+                    <a
+                      href="/menu"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate('/menu');
+                      }}
+                      className="inline-flex items-center justify-center min-h-[44px] px-7 py-3 rounded-full bg-[#C65B2B] hover:bg-[#B04E22] text-white text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.16em] transition-colors cursor-pointer"
+                    >
+                      Explore Evening Menu
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* 5. Atmosphere & Spaces Section */}
+            <section className="w-full bg-[#F5F1EB] text-[#14110E] py-20 sm:py-28 lg:py-32">
+              <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16 items-center">
+                <div className="lg:col-span-5 space-y-5">
+                  <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white border border-[#E7DED3] text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#C65B2B]">
+                    Atmosphere &amp; Spaces
+                  </div>
+                  <h2 className="font-outfit text-4xl sm:text-5xl lg:text-[48px] font-normal text-[#14110E] leading-[1.08] tracking-[-0.02em]">
+                    Teak, Woven Textures, and Tropical Light
+                  </h2>
+                  <p className="text-sm sm:text-[15px] text-[#5C544D] leading-[1.75] font-light max-w-md">
+                    Natural woven lamps, warm reclaimed teak details, candlelit corners, and an open
+                    Sigiriya breeze create a relaxed setting where mornings and evenings unfold
+                    naturally.
+                  </p>
+                </div>
+
+                <div className="lg:col-span-7">
+                  <div className="rounded-[24px] border-[4px] border-white shadow-[0_20px_50px_rgba(20,16,12,0.09)] overflow-hidden aspect-[16/10] bg-[#EAE2D6]">
+                    <EditorialVisual
+                      src={
+                        conciergeContent?.imageUrl ||
+                        gallery.find((g) => g.category === 'Architecture')?.imageUrl ||
+                        'https://cdn.onelovecafesigiriya.com/gallery/1793182353441-wp11934943-cozy-cafe-4k-wallpapers.webp'
+                      }
+                      alt="OneLove Café Sigiriya warm teak and tropical light atmosphere"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* 6. Gallery Section — Life Beneath the Rock */}
+            <section className="w-full bg-[#FAF8F5] text-[#14110E] py-20 sm:py-28 lg:py-32 border-t border-[#EAE2D6]">
+              <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12 space-y-10 sm:space-y-12">
+                <div className="flex flex-wrap items-end justify-between gap-4 sm:gap-6">
+                  <div className="space-y-3">
+                    <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white border border-[#E7DED3] text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#C65B2B]">
+                      Life at OneLove
+                    </div>
+                    <h2 className="font-outfit text-4xl sm:text-5xl lg:text-[52px] font-normal text-[#14110E] leading-[1.06] tracking-[-0.02em]">
+                      Life Beneath the Rock
+                    </h2>
+                  </div>
+
+                  <a
+                    href="/gallery"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate('/gallery');
+                    }}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-mono-tabular uppercase tracking-[0.18em] text-[#C65B2B] hover:text-[#14110E] font-medium transition-colors cursor-pointer"
+                  >
+                    <span>Explore Visual Archive</span>
+                    <span aria-hidden="true">↗</span>
+                  </a>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7">
+                  {gallery.slice(0, 6).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setLightboxItem(item)}
+                      aria-label={`View ${item.title}`}
+                      className="group relative aspect-square rounded-[22px] overflow-hidden bg-[#EAE2D6] shadow-[0_10px_28px_rgba(20,16,12,0.06)] hover:shadow-[0_18px_40px_rgba(20,16,12,0.12)] transition-all duration-300 cursor-pointer block w-full text-left"
+                    >
+                      <EditorialVisual
+                        src={item.imageUrl}
+                        alt={item.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                      />
+                    </button>
                   ))}
+                </div>
+              </div>
+            </section>
+
+            {/* 7. Home Page Reservation Section (#reserve-section) — Clean 2-Column Concierge Card */}
+            <section
+              id="reserve-section"
+              className="scroll-mt-20 w-full bg-[#14100C] text-[#F8F4EE] py-20 sm:py-28 lg:py-32"
+            >
+              <div className="max-w-6xl mx-auto px-5 sm:px-8 lg:px-12 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-14 items-center">
+                {/* Left Editorial Column */}
+                <div data-gsap-reserve className="lg:col-span-7 space-y-6">
+                  <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-white/[0.05] border border-white/15 text-[10px] font-mono-tabular uppercase tracking-[0.22em] text-[#D89A78]">
+                    Effortless Dining
+                  </div>
+                  <h2 className="font-outfit text-4xl sm:text-5xl lg:text-[56px] font-normal text-white leading-[1.06] tracking-[-0.02em] max-w-lg">
+                    Make the evening feel effortless.
+                  </h2>
+                  <p className="text-sm sm:text-[15px] text-[#BFAEA0] leading-relaxed font-light max-w-xl">
+                    Reserve your table online in seconds. Choose your preferred dining area—from
+                    leafy garden shade to candlelit verandah tables beneath the Sigiriya palms.
+                  </p>
+
+                  {/* Three Clean Ritual Timing Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-2">
+                    {[
+                      {
+                        kicker: 'Ritual 01',
+                        title: 'Sunrise Roast & Brunch',
+                        hours: '7:30 AM – 11:30 AM',
+                      },
+                      {
+                        kicker: 'Ritual 02',
+                        title: 'Golden Hour Verandah',
+                        hours: '4:00 PM – 6:30 PM',
+                      },
+                      {
+                        kicker: 'Ritual 03',
+                        title: 'Candlelit Hearth Dining',
+                        hours: '6:30 PM – 10:30 PM',
+                      },
+                    ].map((ritual) => (
+                      <div
+                        key={ritual.kicker}
+                        className="rounded-2xl bg-white/[0.03] border border-white/10 px-4 py-4 space-y-1.5"
+                      >
+                        <div className="text-[9px] font-mono-tabular uppercase tracking-[0.2em] text-[#C86634]">
+                          {ritual.kicker}
+                        </div>
+                        <div className="text-xs font-medium text-white leading-snug">
+                          {ritual.title}
+                        </div>
+                        <div className="text-[11px] font-mono-tabular text-white/55">
+                          {ritual.hours}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Primary & WhatsApp Concierge Buttons */}
+                  <div className="flex flex-wrap items-center gap-3.5 pt-2">
+                    <a
+                      href="/reserve"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate('/reserve');
+                      }}
+                      className="inline-flex items-center justify-center gap-2 min-h-[46px] px-7 py-3 rounded-full bg-[#C65B2B] hover:bg-[#B04E22] text-white text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.16em] transition-colors cursor-pointer"
+                    >
+                      <span>Select Table on Floor Plan</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                    <a
+                      href={`https://wa.me/${(settings.whatsapp || '+94778429100').replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 min-h-[46px] px-6 py-3 rounded-full bg-transparent border border-white/20 hover:border-white/50 text-white text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.16em] transition-colors cursor-pointer"
+                    >
+                      <Phone className="w-3.5 h-3.5 text-[#C86634]" />
+                      <span>WhatsApp Concierge</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Right Elevated Cream Quick-Booking Card */}
+                <div data-gsap-reserve className="lg:col-span-5">
+                  <div className="bg-[#FAF7F2] text-[#171310] rounded-[28px] p-7 sm:p-8 shadow-[0_24px_60px_rgba(0,0,0,0.45)] space-y-6">
+                    {/* Card Header */}
+                    <div className="flex items-start justify-between gap-4 border-b border-[#171310]/10 pb-5">
+                      <div className="space-y-1">
+                        <div className="text-[10px] font-mono-tabular uppercase tracking-[0.2em] text-[#C65B2B] font-medium">
+                          Direct Concierge
+                        </div>
+                        <h3 className="font-outfit text-2xl sm:text-[26px] font-normal text-[#171310] leading-snug tracking-tight">
+                          Reserve Your Sanctuary Table
+                        </h3>
+                        <p className="text-xs text-[#171310]/55 font-light">
+                          Direct table assignment · Zero reservation fees
+                        </p>
+                      </div>
+                      <div
+                        aria-hidden="true"
+                        className="w-11 h-11 rounded-full bg-[#C65B2B] text-white flex items-center justify-center shrink-0"
+                      >
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                    </div>
+
+                    {/* Preferred Time of Evening */}
+                    <div className="space-y-2.5">
+                      <div className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-[#171310]/55">
+                        Preferred Time of Evening
+                      </div>
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {[
+                          { label: '7:00 PM', value: '19:00' },
+                          { label: '8:00 PM', value: '20:00' },
+                          { label: '9:00 PM', value: '21:00' },
+                        ].map((slot) => {
+                          const isSelected = homeReserveTime === slot.value;
+                          return (
+                            <button
+                              key={slot.value}
+                              type="button"
+                              onClick={() => setHomeReserveTime(slot.value)}
+                              className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-mono-tabular font-medium border transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#C65B2B] text-white border-[#C65B2B]'
+                                  : 'bg-white text-[#171310] border-[#E6DDD2] hover:border-[#C65B2B]/50'
+                              }`}
+                            >
+                              {slot.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Party Size */}
+                    <div className="space-y-2.5">
+                      <div className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-[#171310]/55">
+                        Party Size
+                      </div>
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {[
+                          { label: '2 Guests', value: 2 },
+                          { label: '4 Guests', value: 4 },
+                          { label: '6+ Group', value: 6 },
+                        ].map((opt) => {
+                          const isSelected = homeReserveGuests === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setHomeReserveGuests(opt.value)}
+                              className={`min-h-[42px] px-3 py-2 rounded-xl text-xs font-medium border transition-colors cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#C65B2B] text-white border-[#C65B2B]'
+                                  : 'bg-white text-[#171310] border-[#E6DDD2] hover:border-[#C65B2B]/50'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Live Selection Summary Row */}
+                    <div className="rounded-xl bg-white border border-[#E6DDD2] px-4 py-3 flex items-center justify-between text-xs text-[#171310] font-medium">
+                      <span className="inline-flex items-center gap-2 font-mono-tabular">
+                        <Clock className="w-3.5 h-3.5 text-[#C65B2B]" />
+                        <span>
+                          Today,{' '}
+                          {homeReserveTime === '19:00'
+                            ? '7:00 PM'
+                            : homeReserveTime === '20:00'
+                            ? '8:00 PM'
+                            : homeReserveTime === '21:00'
+                            ? '9:00 PM'
+                            : '7:30 PM'}
+                        </span>
+                      </span>
+                      <span className="inline-flex items-center gap-2 font-mono-tabular">
+                        <Users className="w-3.5 h-3.5 text-[#C65B2B]" />
+                        <span>
+                          {homeReserveGuests === 6 ? '6+ Guests' : `${homeReserveGuests} Guests`}
+                        </span>
+                      </span>
+                    </div>
+
+                    {/* Choose Table on Floor Plan CTA */}
+                    <a
+                      href="/reserve"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate('/reserve');
+                      }}
+                      className="w-full min-h-[48px] py-3.5 px-5 rounded-xl bg-[#C65B2B] hover:bg-[#B04E22] text-white text-[11px] font-mono-tabular font-semibold uppercase tracking-[0.18em] transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <span>Choose Table on Floor Plan</span>
+                      <span aria-hidden="true">↗</span>
+                    </a>
+
+                    {/* Reassurance Notes */}
+                    <div className="space-y-2 pt-1 text-xs text-[#171310]/65 font-light">
+                      <div className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-[#C65B2B] shrink-0" />
+                        <span>Instant confirmation sent via SMS / Email</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-[#C65B2B] shrink-0" />
+                        <span>Select garden, lounge, or candlelit dining zone</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -1526,142 +1694,13 @@ const OneLoveRouter: React.FC = () => {
 
         {/* ==================== OUR MENU PAGE (/menu) ==================== */}
         {routeInfo.page === 'menu' && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-12 sm:py-24 space-y-8 sm:space-y-12">
-            <div
-              data-gsap-subpage
-              className="border-b border-[#E7DED3] pb-8 sm:pb-10 flex flex-wrap items-end justify-between gap-4 sm:gap-6"
-            >
-              <div className="space-y-3 max-w-2xl">
-                <div className="text-xs uppercase tracking-widest text-[#C65B2B] font-medium">
-                  Culinary &amp; Roastery Monograph · Sigiriya
-                </div>
-                <h1 className="text-3xl sm:text-6xl font-editorial font-semibold text-[#171513]">
-                  Our Seasonal Menu
-                </h1>
-                <p className="text-xs sm:text-sm text-[#171513]/75 leading-relaxed font-light">
-                  Every dish is prepared to order using heirloom Dry Zone grains, organic Dambulla
-                  orchard produce, wild east-coast seafood, and single-estate Ceylon highland coffee.
-                </p>
-              </div>
-              <a
-                href="/reserve"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate('/reserve');
-                }}
-                className="w-full sm:w-auto justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[#C65B2B] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[#B04E22] transition-colors whitespace-nowrap shrink-0 shadow-sm cursor-pointer inline-flex items-center"
-              >
-                Reserve a Table
-              </a>
-            </div>
-
-            {/* Interactive Filter Tabs & Search Bar */}
-            <div data-gsap-subpage className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-1.5 bg-[#EFE9DF] p-1 border border-[#E7DED3] overflow-x-auto max-w-full">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory('all')}
-                  className={`px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                    selectedCategory === 'all'
-                      ? 'bg-[#171513] text-[#F8F4EE]'
-                      : 'text-[#171513]/70 hover:text-[#171513]'
-                  }`}
-                >
-                  All Offerings
-                </button>
-                {menuCategories
-                  .filter((c) => c.isActive)
-                  .map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`px-3.5 py-2 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                        selectedCategory === cat.id
-                          ? 'bg-[#171513] text-[#F8F4EE]'
-                          : 'text-[#171513]/70 hover:text-[#171513]'
-                      }`}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
-              </div>
-
-              <div className="relative w-full sm:w-72">
-                <Search className="w-4 h-4 text-[#171513]/40 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search dishes, hoppers, coffee..."
-                  value={menuSearch}
-                  onChange={(e) => setMenuSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-white text-[#171513] border border-[#E7DED3] text-xs focus:outline-none focus:border-[#C65B2B]"
-                />
-              </div>
-            </div>
-
-            {/* Menu Grid (Menu item cards strictly remain bg-white) */}
-            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-8">
-              {filteredMenuItems.map((item) => (
-                <article
-                  key={item.id}
-                  data-gsap-subcard
-                  className="group bg-white text-[#171513] border border-[#E7DED3] flex flex-col justify-between shadow-[0_10px_28px_rgba(17,11,7,0.12)] hover:-translate-y-1.5 transition-all duration-300"
-                >
-                  <div>
-                    <div className="aspect-[4/3] overflow-hidden bg-[#EAE2D6] border-b border-[#E7DED3]">
-                      <EditorialVisual
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="group-hover:scale-105 transition-transform duration-500 ease-out"
-                      />
-                    </div>
-                    <div className="p-3 sm:p-6 space-y-1.5 sm:space-y-2.5">
-                      <div className="text-[9px] sm:text-[11px] uppercase tracking-wider text-[#58644E] line-clamp-1">
-                        {item.categoryName}
-                        {item.dietaryTags.length > 0 && ` · ${item.dietaryTags.join(' · ')}`}
-                        {!item.isAvailable && ' · Currently Resting'}
-                      </div>
-                      <h2 className="text-sm sm:text-xl font-editorial font-semibold text-[#171513] leading-snug group-hover:text-[#C65B2B] transition-colors">
-                        {item.name}
-                      </h2>
-                      <p className="text-[11px] sm:text-xs text-[#171513]/70 leading-relaxed line-clamp-2 sm:line-clamp-none">
-                        {item.description}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="px-3 sm:px-6 py-2.5 sm:py-4 border-t border-[#E7DED3] flex flex-wrap items-center justify-between gap-1 text-[10px] sm:text-xs font-mono-tabular">
-                    {(() => {
-                      const currencyMode = resolveMenuPriceCurrency(item);
-                      if (currencyMode === 'lkr') {
-                        return (
-                          <span className="font-semibold text-[#171513]">
-                            LKR {item.priceLkr.toLocaleString()}
-                          </span>
-                        );
-                      }
-                      if (currencyMode === 'usd') {
-                        return (
-                          <span className="font-semibold text-[#171513]">
-                            USD ${item.priceUsd.toFixed(2)}
-                          </span>
-                        );
-                      }
-                      return (
-                        <>
-                          <span className="font-semibold text-[#171513]">
-                            LKR {item.priceLkr.toLocaleString()}
-                          </span>
-                          <span className="text-[#171513]/55">
-                            USD ${item.priceUsd.toFixed(2)}
-                          </span>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
+          <MenuPage
+            settings={settings}
+            openingHours={openingHours}
+            menuCategories={menuCategories}
+            menuItems={menuItems}
+            onNavigate={navigate}
+          />
         )}
 
         {/* ==================== OUR STORY PAGE (/story) ==================== */}
@@ -1816,39 +1855,6 @@ const OneLoveRouter: React.FC = () => {
                 </div>
               ))}
             </div>
-
-            {/* Lightbox Modal */}
-            {lightboxItem && (
-              <div
-                onClick={() => setLightboxItem(null)}
-                className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6"
-              >
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="max-w-4xl w-full bg-[#171513] text-[#F8F4EE] border border-[#38312B] p-6 space-y-4"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs uppercase tracking-widest text-[#C65B2B]">
-                        {lightboxItem.category}
-                      </div>
-                      <h3 className="text-2xl font-editorial">{lightboxItem.title}</h3>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setLightboxItem(null)}
-                      className="p-2 text-[#F8F4EE]/70 hover:text-white"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                  <div className="aspect-[16/9] w-full overflow-hidden border border-[#2E2925]">
-                    <EditorialVisual src={lightboxItem.imageUrl} alt={lightboxItem.title} />
-                  </div>
-                  <p className="text-xs text-[#F8F4EE]/75">{lightboxItem.caption}</p>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -2165,7 +2171,11 @@ const OneLoveRouter: React.FC = () => {
             </div>
 
             <div data-gsap-subpage>
-              <ReservationEngine initialVoucherCode={routeInfo.voucherCode} />
+              <ReservationEngine
+                initialVoucherCode={routeInfo.voucherCode}
+                initialTime={homeReserveTime}
+                initialPartySize={homeReserveGuests}
+              />
             </div>
           </div>
         )}
@@ -2204,6 +2214,40 @@ const OneLoveRouter: React.FC = () => {
               >
                 Reserve a Table
               </a>
+            </div>
+          </div>
+        )}
+
+        {/* Shared Gallery Lightbox Modal (Home Gallery + /gallery) */}
+        {lightboxItem && (
+          <div
+            onClick={() => setLightboxItem(null)}
+            className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-4xl w-full bg-[#171513] text-[#F8F4EE] border border-[#38312B] rounded-2xl p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs uppercase tracking-widest text-[#C65B2B]">
+                    {lightboxItem.category}
+                  </div>
+                  <h3 className="text-2xl font-outfit font-normal">{lightboxItem.title}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLightboxItem(null)}
+                  aria-label="Close photo preview"
+                  className="p-2 text-[#F8F4EE]/70 hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="aspect-[16/9] w-full overflow-hidden rounded-xl border border-[#2E2925]">
+                <EditorialVisual src={lightboxItem.imageUrl} alt={lightboxItem.title} />
+              </div>
+              <p className="text-xs text-[#F8F4EE]/75">{lightboxItem.caption}</p>
             </div>
           </div>
         )}

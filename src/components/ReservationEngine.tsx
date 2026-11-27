@@ -107,7 +107,9 @@ function getUpcomingDayOfWeekIso(targetDay: number): string {
 
 export const ReservationEngine: React.FC<{
   initialVoucherCode?: string | null;
-}> = ({ initialVoucherCode }) => {
+  initialTime?: string;
+  initialPartySize?: number;
+}> = ({ initialVoucherCode, initialTime, initialPartySize }) => {
   const {
     settings,
     zones,
@@ -123,9 +125,9 @@ export const ReservationEngine: React.FC<{
   const [step, setStep] = useState<number>(1);
   const [selectedDate, setSelectedDate] = useState<string>(() => getNextDateIso(1));
   const [selectedQuickLabel, setSelectedQuickLabel] = useState<string | null>('Tomorrow');
-  const [selectedTime, setSelectedTime] = useState<string>('18:30');
+  const [selectedTime, setSelectedTime] = useState<string>(initialTime || '18:30');
   const [selectedPeriodTitle, setSelectedPeriodTitle] = useState<string>('Golden Hour & Live Hearth');
-  const [partySize, setPartySize] = useState<number>(2);
+  const [partySize, setPartySize] = useState<number>(initialPartySize || 2);
   const [selectedTable, setSelectedTable] = useState<CafeTable | null>(null);
 
   // Hold state

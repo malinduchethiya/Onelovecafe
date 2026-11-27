@@ -29,6 +29,7 @@ import {
   logAdminAction,
 } from '../lib/firebase';
 import { fileToCompressedBase64 } from '../lib/imageBase64';
+import { resolveMenuCategorySection } from '../lib/menuSections';
 import {
   CafeSettings,
   SeatingZone,
@@ -826,7 +827,14 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (snap) => {
           if (!snap.empty) {
             const list = snap.docs
-              .map((d) => ({ id: d.id, ...(d.data() as Omit<MenuCategory, 'id'>) }))
+              .map((d) => {
+                const raw = d.data() as Omit<MenuCategory, 'id'>;
+                return {
+                  id: d.id,
+                  ...raw,
+                  section: resolveMenuCategorySection({ id: d.id, ...raw }),
+                };
+              })
               .sort((a, b) => a.sortOrder - b.sortOrder);
             setMenuCategories(list);
             writeLocalCache('onelove_cache_categories', list);
@@ -1934,12 +1942,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveMenuCategory = useCallback(async (cat: MenuCategory) => {
     try {
-      setMenuCategories((prev) => {
-        const exists = prev.some((c) => c.id === cat.id);
-        const updated = exists ? prev.map((c) => (c.id === cat.id ? cat : c)) : [...prev, cat];
-        return updated.sort((a, b) => a.sortOrder - b.sortOrder);
-      });
-
       // Keep menuItems' categoryName in sync if category name changed
       setMenuItems((prev) =>
         prev.map((m) => (m.categoryId === cat.id ? { ...m, categoryName: cat.name } : m))
@@ -1955,10 +1957,24 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'category'
       ).slice(0, 60);
 
+      const resolvedSection = resolveMenuCategorySection({ id, ...data });
+      const normalizedCat: MenuCategory = { ...cat, slug: safeSlug, section: resolvedSection };
+
+      setMenuCategories((prev) => {
+        const exists = prev.some((c) => c.id === cat.id);
+        const updated = exists
+          ? prev.map((c) => (c.id === cat.id ? normalizedCat : c))
+          : [...prev, normalizedCat];
+        const sorted = updated.sort((a, b) => a.sortOrder - b.sortOrder);
+        writeLocalCache('onelove_cache_categories', sorted);
+        return sorted;
+      });
+
       await setDoc(doc(db, 'menuCategories', id), {
         name: (data.name || 'Untitled Category').slice(0, 60),
         slug: safeSlug,
         subtitle: (data.subtitle || '').slice(0, 140),
+        section: resolvedSection,
         sortOrder: Number(data.sortOrder) || 1,
         isActive: Boolean(data.isActive),
         updatedAt: serverTimestamp(),

@@ -114,11 +114,14 @@ export interface BlockedDateRecord {
   createdAt?: unknown;
 }
 
+export type MenuSection = 'food' | 'drinks';
+
 export interface MenuCategory {
   id: string;
   name: string;
   slug: string;
   subtitle: string;
+  section?: MenuSection;
   sortOrder: number;
   isActive: boolean;
   updatedAt?: unknown;

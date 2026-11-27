@@ -279,19 +279,12 @@ export const DEFAULT_OPENING_HOURS: OpeningHoursConfig[] = [
 
 export const DEFAULT_MENU_CATEGORIES: MenuCategory[] = [
   {
-    id: 'cat_coffee',
-    name: 'Specialty Coffee & Botanicals',
-    slug: 'coffee',
-    subtitle: 'Single-origin Kotmale & Haputale highland roasts, cold-pressed elixirs, and ceremonial matcha',
-    sortOrder: 1,
-    isActive: true,
-  },
-  {
     id: 'cat_breakfast',
     name: 'Morning Sanctuary & Brunch',
     slug: 'breakfast',
     subtitle: 'Served 7:30 AM – 2:30 PM · Heirloom grains, hopper bowls, and orchard fruits',
-    sortOrder: 2,
+    section: 'food',
+    sortOrder: 1,
     isActive: true,
   },
   {
@@ -299,7 +292,8 @@ export const DEFAULT_MENU_CATEGORIES: MenuCategory[] = [
     name: 'Hearth & Earth Plates',
     slug: 'mains',
     subtitle: 'Served from 12:00 PM · Wood-fired coastal catch, heirloom red rice curries, and handmade pasta',
-    sortOrder: 3,
+    section: 'food',
+    sortOrder: 2,
     isActive: true,
   },
   {
@@ -307,6 +301,16 @@ export const DEFAULT_MENU_CATEGORIES: MenuCategory[] = [
     name: 'Artisanal Sweets & Pastry',
     slug: 'desserts',
     subtitle: 'Kithul treacle confections, dark Ceylon cacao, and warm morning bakes',
+    section: 'food',
+    sortOrder: 3,
+    isActive: true,
+  },
+  {
+    id: 'cat_coffee',
+    name: 'Specialty Coffee & Botanicals',
+    slug: 'coffee',
+    subtitle: 'Single-origin Kotmale & Haputale highland roasts, cold-pressed elixirs, and ceremonial matcha',
+    section: 'drinks',
     sortOrder: 4,
     isActive: true,
   },
@@ -315,6 +319,7 @@ export const DEFAULT_MENU_CATEGORIES: MenuCategory[] = [
     name: 'Sunset Aperitifs & Coolers',
     slug: 'beverages',
     subtitle: 'Botanical infusions, king coconut tonics, and smoked cinnamon craft mocktails',
+    section: 'drinks',
     sortOrder: 5,
     isActive: true,
   },
