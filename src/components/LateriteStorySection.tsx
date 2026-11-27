@@ -20,20 +20,20 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
 
   const storyContent = siteContent.find((s) => s.sectionKey === 'story');
 
-  const getSlotImage = (slotIndex: number, fallbackSrc: string): string => {
+  const getSlotImage = (slotIndex: number): string => {
     const key = `story_collage_${slotIndex}`;
     const found = siteContent.find((s) => s.sectionKey === key);
-    if (found && found.imageUrl && found.imageUrl.trim().length > 0) {
-      return found.imageUrl;
+    if (found && found.imageUrl && /^https?:\/\//i.test(found.imageUrl.trim())) {
+      return found.imageUrl.trim();
     }
     if (
       slotIndex === 1 &&
       storyContent?.imageUrl &&
-      !storyContent.imageUrl.startsWith('editorial:')
+      /^https?:\/\//i.test(storyContent.imageUrl.trim())
     ) {
-      return storyContent.imageUrl;
+      return storyContent.imageUrl.trim();
     }
-    return fallbackSrc;
+    return '';
   };
 
   useLayoutEffect(() => {
@@ -63,14 +63,8 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
     return () => ctx.revert();
   }, []);
 
-  const primaryStoryImage = getSlotImage(
-    1,
-    'https://cdn.onelovecafesigiriya.com/content/1793182321672-wp2352856-coffee-shop-wallpapers.webp'
-  );
-  const secondaryStoryImage = getSlotImage(
-    2,
-    'https://cdn.onelovecafesigiriya.com/collage/1793182271989-wp2352856-coffee-shop-wallpapers.webp'
-  );
+  const primaryStoryImage = getSlotImage(1);
+  const secondaryStoryImage = getSlotImage(2);
 
   return (
     <section

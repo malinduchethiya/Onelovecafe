@@ -436,10 +436,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Hero Slideshow Helper Handlers
   const rawAdminHeroImages = Array.isArray(settings.heroImages)
-    ? settings.heroImages.filter((img) => typeof img === 'string' && img.trim().length > 0)
+    ? settings.heroImages.filter((img) => typeof img === 'string' && /^https?:\/\//i.test(img.trim()))
     : [];
-  const currentHeroImages =
-    rawAdminHeroImages.length > 0 ? rawAdminHeroImages : ['editorial:hero-sanctuary'];
+  const currentHeroImages = rawAdminHeroImages;
   const currentSlideshowSpeed = settings.heroSlideshowSpeedSeconds || 5;
 
   const handleUploadMultipleHeroImages = async (files: FileList | null) => {
@@ -451,9 +450,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const r2Url = await uploadMediaFile(files[i], 'hero');
         uploadedR2Urls.push(r2Url);
       }
-      const allDefaults = currentHeroImages.every((img) => img.startsWith('editorial:'));
-      const baseList = allDefaults ? [] : currentHeroImages;
-      const nextHeroImages = [...baseList, ...uploadedR2Urls].slice(0, 12);
+      const nextHeroImages = [...currentHeroImages, ...uploadedR2Urls].slice(0, 12);
       const updatedSettings = {
         ...settings,
         heroImages: nextHeroImages,
@@ -2870,7 +2867,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           title: '',
                           category: 'Architecture',
                           caption: '',
-                          imageUrl: 'editorial:hero-sanctuary',
+                          imageUrl: '',
                           aspectRatio: '4:3',
                           isFeatured: true,
                           sortOrder: 0,
@@ -3008,7 +3005,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           title: '',
                           category: 'Architecture',
                           caption: '',
-                          imageUrl: 'editorial:hero-sanctuary',
+                          imageUrl: '',
                           aspectRatio: '4:3',
                           isFeatured: true,
                           sortOrder: 0,
@@ -3190,7 +3187,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         time: '18:30 – 21:30',
                         category: 'Evening Ritual',
                         description: '',
-                        imageUrl: 'editorial:evening-hearth',
+                        imageUrl: '',
                         priceInfo: 'Complimentary with Table Reservation',
                         isFeatured: true,
                         isActive: true,
@@ -3530,10 +3527,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ].map((slot) => {
                     const sec = siteContent.find((s) => s.sectionKey === slot.key);
                     const currentSrc =
-                      sec?.imageUrl && sec.imageUrl.trim().length > 0
-                        ? sec.imageUrl
-                        : slot.defaultSrc;
-                    const isCustom = !currentSrc.startsWith('editorial:');
+                      sec?.imageUrl && /^https?:\/\//i.test(sec.imageUrl.trim())
+                        ? sec.imageUrl.trim()
+                        : '';
+                    const isCustom = Boolean(currentSrc);
                     const isBusy = uploadingCollageSlot === slot.index;
 
                     return (
@@ -3912,7 +3909,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                         <div className="aspect-[16/10] bg-white border border-[#E7DED3] overflow-hidden">
                           <EditorialVisual
-                            src={settings.floorPlanImageUrl || 'editorial:courtyard'}
+                            src={settings.floorPlanImageUrl || ''}
                             alt="Floor Plan Background"
                           />
                         </div>

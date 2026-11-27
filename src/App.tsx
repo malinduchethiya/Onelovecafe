@@ -264,12 +264,12 @@ const OneLoveRouter: React.FC = () => {
   const [homeReserveTime, setHomeReserveTime] = useState<string>('19:30');
   const [homeReserveGuests, setHomeReserveGuests] = useState<number>(2);
 
-  // Hero Background Slideshow list & timer (strictly mirrors Admin Panel settings.heroImages from Cloudflare R2)
+  // Hero Background Slideshow list & timer (strictly mirrors Admin Panel settings.heroImages from Firestore + Cloudflare R2)
   const heroSlides = useMemo(() => {
     const rawSlides = Array.isArray(settings.heroImages)
-      ? settings.heroImages.filter((img) => typeof img === 'string' && img.trim().length > 0)
+      ? settings.heroImages.filter((img) => typeof img === 'string' && /^https?:\/\//i.test(img.trim()))
       : [];
-    return rawSlides.length > 0 ? rawSlides : ['editorial:hero-sanctuary'];
+    return rawSlides.length > 0 ? rawSlides : [''];
   }, [settings.heroImages]);
 
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
@@ -745,7 +745,7 @@ const OneLoveRouter: React.FC = () => {
             : 'bg-transparent'
         }`}
       >
-        {/* Zone 1: Brand Logo on Mobile, Wordmark on Desktop */}
+        {/* Zone 1: Brand Wordmark (or R2 brand logo if uploaded in Admin) */}
         <a
           href="/"
           aria-label="OneLove Café Sigiriya"
@@ -755,15 +755,23 @@ const OneLoveRouter: React.FC = () => {
           }}
           className="flex items-center font-editorial text-lg sm:text-2xl font-bold tracking-wider text-white drop-shadow-sm whitespace-nowrap shrink-0"
         >
-          <img
-            src="/logo-transparent.png"
-            alt="OneLove Café Sigiriya"
-            width="48"
-            height="48"
-            decoding="async"
-            className="md:hidden h-11 w-auto object-contain brightness-0 invert sepia-[.18] saturate-[.45] hue-rotate-[355deg] drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]"
-          />
-          <span className="hidden md:inline text-white">ONELOVE CAFÉ</span>
+          {seoGlobal.brandLogoUrl && /^https?:\/\//i.test(seoGlobal.brandLogoUrl) ? (
+            <img
+              src={seoGlobal.brandLogoUrl}
+              alt={settings.cafeName || 'OneLove Café Sigiriya'}
+              width="48"
+              height="48"
+              decoding="async"
+              className="md:hidden h-10 w-auto object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)]"
+            />
+          ) : (
+            <span className="md:hidden text-white">
+              {(settings.cafeName || 'ONELOVE CAFÉ').toUpperCase()}
+            </span>
+          )}
+          <span className="hidden md:inline text-white">
+            {(settings.cafeName || 'ONELOVE CAFÉ').toUpperCase()}
+          </span>
         </a>
 
         {/* Zone 2: 5 concise single-line text navigation links */}
@@ -1844,7 +1852,7 @@ const OneLoveRouter: React.FC = () => {
               >
                 <div className="lg:col-span-7 min-h-[260px] sm:min-h-[420px] bg-white border border-[#E7DED3] p-2.5 sm:p-3">
                   <EditorialVisual
-                    src={storyContent?.imageUrl || 'editorial:courtyard'}
+                    src={storyContent?.imageUrl || ''}
                     alt={storyContent?.heading || 'Sigiriya sanctuary architecture at dusk'}
                     className="h-full"
                   />
@@ -2425,17 +2433,19 @@ const OneLoveRouter: React.FC = () => {
                 {settings.cafeName || 'ONELOVE CAFÉ'}
               </div>
               <p className="leading-relaxed">{settings.tagline}</p>
-              <div className="pt-2">
-                <img
-                  src="/logo-transparent.png"
-                  alt="OneLove Café Sigiriya Sri Lanka Emblem"
-                  loading="lazy"
-                  decoding="async"
-                  width="112"
-                  height="112"
-                  className="w-28 h-auto object-contain"
-                />
-              </div>
+              {seoGlobal.brandLogoUrl && /^https?:\/\//i.test(seoGlobal.brandLogoUrl) && (
+                <div className="pt-2">
+                  <img
+                    src={seoGlobal.brandLogoUrl}
+                    alt={`${settings.cafeName || 'OneLove Café'} Emblem`}
+                    loading="lazy"
+                    decoding="async"
+                    width="112"
+                    height="112"
+                    className="w-28 h-auto object-contain"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="space-y-2.5 md:justify-self-center md:text-center">

@@ -1,8 +1,8 @@
 import { GlobalSeoConfig, PageSeoConfig, SeoKeywordCategory, SeoPageKey } from '../types/seo';
 
-export const DEFAULT_BRAND_FAVICON_PATH = '/favicon.png';
+export const DEFAULT_BRAND_FAVICON_PATH = '';
 
-export const DEFAULT_BRAND_LOGO_PATH = '/logo.png';
+export const DEFAULT_BRAND_LOGO_PATH = '';
 
 export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   id: 'main',
@@ -24,13 +24,13 @@ export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   canonicalDomain: 'https://onelovecafesigiriya.com',
   language: 'en',
   googleVerificationTag: '',
-  defaultOgImageUrl: DEFAULT_BRAND_LOGO_PATH,
-  brandLogoUrl: DEFAULT_BRAND_LOGO_PATH,
-  faviconSourceUrl: '/favicon.png',
-  favicon48Url: '/favicon.png',
-  favicon96Url: '/favicon.png',
-  favicon192Url: '/favicon.png',
-  appleTouchIconUrl: '/favicon.png',
+  defaultOgImageUrl: '',
+  brandLogoUrl: '',
+  faviconSourceUrl: '',
+  favicon48Url: '',
+  favicon96Url: '',
+  favicon192Url: '',
+  appleTouchIconUrl: '',
   allowIndexing: true,
   noindexPreviewDomains: false,
   businessType: 'CafeOrCoffeeShop',
@@ -460,10 +460,15 @@ export function buildStructuredDataGraph(
   const canonicalUrl = `${domain}${
     pageSeo.canonicalPath.startsWith('/') ? pageSeo.canonicalPath : `/${pageSeo.canonicalPath}`
   }`;
-  const logoUrl = `${domain}/logo.png`;
+  const logoUrl = /^https?:\/\//i.test((globalSeo.brandLogoUrl || '').trim())
+    ? globalSeo.brandLogoUrl.trim()
+    : '';
+  const ogImgUrl = /^https?:\/\//i.test((pageSeo.ogImageUrl || globalSeo.defaultOgImageUrl || '').trim())
+    ? (pageSeo.ogImageUrl || globalSeo.defaultOgImageUrl || '').trim()
+    : logoUrl;
 
   const graph: Record<string, unknown>[] = [
-    // 1. WebSite Schema (Required by Google Search for Site Name & Favicon association)
+    // 1. WebSite Schema
     {
       '@type': 'WebSite',
       '@id': `${domain}/#website`,
@@ -489,12 +494,16 @@ export function buildStructuredDataGraph(
       name: globalSeo.siteName || 'OneLove Café Sigiriya',
       alternateName: globalSeo.alternateNames,
       url: `${domain}/`,
-      logo: {
-        '@type': 'ImageObject',
-        url: logoUrl,
-        width: 512,
-        height: 512,
-      },
+      ...(logoUrl
+        ? {
+            logo: {
+              '@type': 'ImageObject',
+              url: logoUrl,
+              width: 512,
+              height: 512,
+            },
+          }
+        : {}),
       contactPoint: {
         '@type': 'ContactPoint',
         telephone: globalSeo.telephone || '+94 66 228 6420',
@@ -513,8 +522,8 @@ export function buildStructuredDataGraph(
       alternateName: globalSeo.alternateNames,
       description: globalSeo.defaultDescription,
       url: `${domain}/`,
-      logo: logoUrl,
-      image: [logoUrl],
+      ...(logoUrl ? { logo: logoUrl } : {}),
+      ...(ogImgUrl ? { image: [ogImgUrl] } : {}),
       telephone: globalSeo.telephone || '+94 66 228 6420',
       email: globalSeo.email || 'concierge@onelovecafe.lk',
       priceRange: globalSeo.priceRange || '$$',

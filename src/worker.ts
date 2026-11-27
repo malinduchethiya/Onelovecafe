@@ -1,21 +1,14 @@
-import { z } from 'zod';
 import {
   S3Client,
   PutObjectCommand,
-  GetObjectCommand,
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import {
-  DEFAULT_BRAND_FAVICON_PATH,
   DEFAULT_GLOBAL_SEO,
   DEFAULT_PAGE_SEO,
   buildStructuredDataGraph,
 } from './data/seoDefaults';
-import { GlobalSeoConfig, PageSeoConfig, SeoPageKey } from './types/seo';
-import { R2MediaManifest } from './types/cafe';
-import { DEFAULT_GALLERY, DEFAULT_SETTINGS } from './data/seedData';
-
-const R2_MANIFEST_OBJECT_KEY = 'manifest/site-media.json';
+import { PageSeoConfig, SeoPageKey } from './types/seo';
 
 export interface WorkerR2Bucket {
   get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
@@ -63,79 +56,6 @@ export interface WorkerEnv {
   [key: string]: unknown;
 }
 
-interface SeoRuntimeState {
-  global: GlobalSeoConfig;
-  pages: Record<SeoPageKey, PageSeoConfig>;
-}
-
-let workerSeoState: SeoRuntimeState = {
-  global: { ...DEFAULT_GLOBAL_SEO },
-  pages: { ...DEFAULT_PAGE_SEO },
-};
-
-function createDefaultWorkerR2Manifest(): R2MediaManifest {
-  return {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    heroImages: DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'],
-    heroSlideshowSpeedSeconds: DEFAULT_SETTINGS.heroSlideshowSpeedSeconds || 5,
-    floorPlanImageUrl: DEFAULT_SETTINGS.floorPlanImageUrl || '',
-    menuImages: {},
-    galleryItems: DEFAULT_GALLERY.map((g) => ({ ...g })),
-    eventImages: {},
-    sectionImages: {},
-    seoImages: {},
-  };
-}
-
-let workerR2Manifest: R2MediaManifest = createDefaultWorkerR2Manifest();
-let workerManifestLoaded = false;
-
-function normalizeWorkerR2Manifest(raw: Partial<R2MediaManifest> | null | undefined): R2MediaManifest {
-  const base = createDefaultWorkerR2Manifest();
-  if (!raw || typeof raw !== 'object') return base;
-  return {
-    version: typeof raw.version === 'number' ? raw.version : base.version,
-    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : base.updatedAt,
-    heroImages:
-      Array.isArray(raw.heroImages) && raw.heroImages.length > 0
-        ? raw.heroImages.filter((u) => typeof u === 'string' && u.trim().length > 0)
-        : base.heroImages,
-    heroSlideshowSpeedSeconds:
-      typeof raw.heroSlideshowSpeedSeconds === 'number'
-        ? raw.heroSlideshowSpeedSeconds
-        : base.heroSlideshowSpeedSeconds,
-    floorPlanImageUrl:
-      typeof raw.floorPlanImageUrl === 'string' ? raw.floorPlanImageUrl : base.floorPlanImageUrl,
-    menuImages:
-      raw.menuImages && typeof raw.menuImages === 'object' ? { ...raw.menuImages } : {},
-    galleryItems:
-      Array.isArray(raw.galleryItems) && raw.galleryItems.length > 0
-        ? raw.galleryItems
-        : base.galleryItems,
-    eventImages:
-      raw.eventImages && typeof raw.eventImages === 'object' ? { ...raw.eventImages } : {},
-    sectionImages:
-      raw.sectionImages && typeof raw.sectionImages === 'object' ? { ...raw.sectionImages } : {},
-    seoImages:
-      raw.seoImages && typeof raw.seoImages === 'object' ? { ...raw.seoImages } : {},
-  };
-}
-
-function extractWorkerR2Key(url: string | undefined, publicUrl: string): string | null {
-  if (!url || typeof url !== 'string') return null;
-  const trimmed = url.trim();
-  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('editorial:')) return null;
-  const cleanPublic = (publicUrl || 'https://cdn.onelovecafesigiriya.com').replace(/\/+$/, '');
-  if (trimmed.startsWith(cleanPublic + '/')) {
-    return trimmed.slice(cleanPublic.length + 1).split('?')[0];
-  }
-  if (trimmed.startsWith('https://cdn.onelovecafesigiriya.com/')) {
-    return trimmed.slice('https://cdn.onelovecafesigiriya.com/'.length).split('?')[0];
-  }
-  return null;
-}
-
 function readEnvString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -170,6 +90,20 @@ function getWorkerPublicUrl(env: WorkerEnv): string {
     readEnvString(env.AWS_S3_PUBLIC_URL) ||
     'https://cdn.onelovecafesigiriya.com'
   ).replace(/\/$/, '');
+}
+
+function extractWorkerR2Key(url: string | undefined, publicUrl: string): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed || !/^https?:\/\//i.test(trimmed)) return null;
+  const cleanPublic = (publicUrl || 'https://cdn.onelovecafesigiriya.com').replace(/\/+$/, '');
+  if (trimmed.startsWith(cleanPublic + '/')) {
+    return trimmed.slice(cleanPublic.length + 1).split('?')[0];
+  }
+  if (trimmed.startsWith('https://cdn.onelovecafesigiriya.com/')) {
+    return trimmed.slice('https://cdn.onelovecafesigiriya.com/'.length).split('?')[0];
+  }
+  return null;
 }
 
 function getWorkerS3Client(env: WorkerEnv): { s3: S3Client; bucket: string; publicUrl: string } | null {
@@ -213,100 +147,19 @@ function getWorkerS3Client(env: WorkerEnv): { s3: S3Client; bucket: string; publ
   return { s3, bucket, publicUrl };
 }
 
-async function readWorkerManifest(env: WorkerEnv, force = false): Promise<R2MediaManifest> {
-  if (workerManifestLoaded && !force) return workerR2Manifest;
-  try {
-    const r2Bucket = resolveWorkerR2Bucket(env);
-    if (r2Bucket) {
-      const obj = await r2Bucket.get(R2_MANIFEST_OBJECT_KEY);
-      if (obj) {
-        const text = await obj.text();
-        workerR2Manifest = normalizeWorkerR2Manifest(JSON.parse(text) as Partial<R2MediaManifest>);
-        workerManifestLoaded = true;
-        return workerR2Manifest;
-      }
-    } else {
-      const s3Info = getWorkerS3Client(env);
-      if (s3Info) {
-        const resp = await s3Info.s3.send(
-          new GetObjectCommand({
-            Bucket: s3Info.bucket,
-            Key: R2_MANIFEST_OBJECT_KEY,
-          })
-        );
-        if (resp.Body) {
-          const text = await resp.Body.transformToString('utf-8');
-          workerR2Manifest = normalizeWorkerR2Manifest(JSON.parse(text) as Partial<R2MediaManifest>);
-          workerManifestLoaded = true;
-          return workerR2Manifest;
-        }
-      }
-    }
-
-    // Edge HTTP fallback to public R2 CDN domain (bypasses browser CORS and works even without Worker S3 secrets)
-    const publicUrl = getWorkerPublicUrl(env);
-    const cdnResp = await fetch(`${publicUrl}/${R2_MANIFEST_OBJECT_KEY}?t=${Date.now()}`, {
-      headers: { Accept: 'application/json' },
-    });
-    if (cdnResp.ok) {
-      const text = await cdnResp.text();
-      workerR2Manifest = normalizeWorkerR2Manifest(JSON.parse(text) as Partial<R2MediaManifest>);
-      workerManifestLoaded = true;
-      return workerR2Manifest;
-    }
-  } catch {
-    // Fallback to in-memory state
-  }
-  return workerR2Manifest;
-}
-
-async function writeWorkerManifest(env: WorkerEnv, manifest: R2MediaManifest): Promise<string | null> {
-  const normalized = normalizeWorkerR2Manifest(manifest);
-  workerR2Manifest = normalized;
-  workerManifestLoaded = true;
-  const jsonStr = JSON.stringify(normalized, null, 2);
-  const publicBase = getWorkerPublicUrl(env);
-
-  const r2Bucket = resolveWorkerR2Bucket(env);
-  if (r2Bucket) {
-    await r2Bucket.put(R2_MANIFEST_OBJECT_KEY, jsonStr, {
-      httpMetadata: {
-        contentType: 'application/json; charset=utf-8',
-        cacheControl: 'public, max-age=5, must-revalidate',
-      },
-    });
-    return `${publicBase}/${R2_MANIFEST_OBJECT_KEY}`;
-  }
-
-  const s3Info = getWorkerS3Client(env);
-  if (s3Info) {
-    await s3Info.s3.send(
-      new PutObjectCommand({
-        Bucket: s3Info.bucket,
-        Key: R2_MANIFEST_OBJECT_KEY,
-        Body: new TextEncoder().encode(jsonStr),
-        ContentType: 'application/json; charset=utf-8',
-        CacheControl: 'public, max-age=5, must-revalidate',
-      })
-    );
-    return `${s3Info.publicUrl}/${R2_MANIFEST_OBJECT_KEY}`;
-  }
-  return null;
-}
-
 async function deleteWorkerR2Object(env: WorkerEnv, keyOrUrl: string): Promise<string | null> {
   if (!keyOrUrl) return null;
-  const publicBase = getWorkerPublicUrl(env);
-  const extractedKey =
+  const publicUrl = getWorkerPublicUrl(env);
+  const key =
     keyOrUrl.startsWith('http://') || keyOrUrl.startsWith('https://')
-      ? extractWorkerR2Key(keyOrUrl, publicBase)
+      ? extractWorkerR2Key(keyOrUrl, publicUrl)
       : keyOrUrl.replace(/^\/+/, '');
-  if (!extractedKey || extractedKey === R2_MANIFEST_OBJECT_KEY) return null;
+  if (!key) return null;
 
   const r2Bucket = resolveWorkerR2Bucket(env);
   if (r2Bucket) {
-    await r2Bucket.delete(extractedKey);
-    return extractedKey;
+    await r2Bucket.delete(key);
+    return key;
   }
 
   const s3Info = getWorkerS3Client(env);
@@ -314,57 +167,28 @@ async function deleteWorkerR2Object(env: WorkerEnv, keyOrUrl: string): Promise<s
     await s3Info.s3.send(
       new DeleteObjectCommand({
         Bucket: s3Info.bucket,
-        Key: extractedKey,
+        Key: key,
       })
     );
-    return extractedKey;
+    return key;
   }
+
   return null;
 }
 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 
-function checkRateLimit(ip: string, limit = 20, windowMs = 60_000): boolean {
+function checkRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
   const now = Date.now();
-  const entry = rateLimitStore.get(ip);
+  const entry = rateLimitStore.get(key);
   if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(ip, { count: 1, resetAt: now + windowMs });
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
     return true;
   }
-  if (entry.count >= limit) {
-    return false;
-  }
+  if (entry.count >= maxRequests) return false;
   entry.count += 1;
   return true;
 }
-
-const ReservationPayloadSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid YYYY-MM-DD date'),
-  time: z.string().min(4).max(10),
-  servicePeriod: z.string().max(40).default('Evening Sanctuary'),
-  partySize: z.number().int().min(1).max(20),
-  tableId: z.string().min(1).max(40),
-  tableLabel: z.string().min(1).max(40),
-  zoneId: z.string().min(1).max(40),
-  zoneName: z.string().min(1).max(60),
-  guestName: z.string().trim().min(2, 'Name must be at least 2 characters').max(100),
-  guestEmail: z.string().trim().email('Valid email address required').max(120),
-  whatsapp: z.string().trim().min(5, 'Valid WhatsApp number required').max(30),
-  country: z.string().trim().min(2, 'Country is required').max(80),
-  occasion: z.string().max(60).default('None'),
-  dietaryNotes: z.string().max(500).default(''),
-  specialRequests: z.string().max(500).default(''),
-  honeypot: z.string().max(0).optional(),
-});
-
-const InquiryPayloadSchema = z.object({
-  name: z.string().trim().min(2).max(100),
-  email: z.string().trim().email().max(120),
-  phone: z.string().trim().max(40).default(''),
-  subject: z.string().trim().min(2).max(120),
-  message: z.string().trim().min(5).max(1000),
-  honeypot: z.string().max(0).optional(),
-});
 
 function escapeHtmlAttr(str: string): string {
   return (str || '')
@@ -378,7 +202,8 @@ function injectWorkerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   const cleanPath = (reqPath.split('?')[0] || '/').replace(/\/+$/, '') || '/';
   const lower = cleanPath.toLowerCase();
 
-  const { global: g, pages } = workerSeoState;
+  const g = DEFAULT_GLOBAL_SEO;
+  const pages = DEFAULT_PAGE_SEO;
   const domain = (g.canonicalDomain || 'https://onelovecafesigiriya.com').replace(/\/+$/, '');
 
   const isAdmin = lower === '/admin' || lower.startsWith('/admin/');
@@ -394,18 +219,16 @@ function injectWorkerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   else if (lower === '/events') pageKey = 'events';
 
   const activePage: PageSeoConfig =
-    pageKey !== 'notfound' && pages[pageKey] ? pages[pageKey] : pages.home || DEFAULT_PAGE_SEO.home;
+    pageKey !== 'notfound' && pages[pageKey] ? pages[pageKey] : pages.home;
   const lockedCanonicalPath =
-    pageKey !== 'notfound' && DEFAULT_PAGE_SEO[pageKey]
-      ? DEFAULT_PAGE_SEO[pageKey].canonicalPath
-      : '/';
+    pageKey !== 'notfound' && pages[pageKey] ? pages[pageKey].canonicalPath : '/';
 
   let finalTitle = activePage.title || g.defaultTitle;
   let finalDesc = activePage.metaDescription || g.defaultDescription;
   let canonicalPath = lockedCanonicalPath;
 
   if (isAdmin) {
-    finalTitle = `SEO & Hospitality Admin Console | ${g.siteName || 'OneLove Café'}`;
+    finalTitle = `Admin Console | ${g.siteName || 'OneLove Café'}`;
     finalDesc = 'Protected administrative console for OneLove Café Sigiriya.';
     canonicalPath = '/admin';
   } else if (isVoucher) {
@@ -421,12 +244,6 @@ function injectWorkerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   const canonicalUrl = `${domain}${
     canonicalPath.startsWith('/') ? canonicalPath : `/${canonicalPath}`
   }`;
-
-  const rawOgImg = activePage.ogImageUrl || g.defaultOgImageUrl || DEFAULT_BRAND_FAVICON_PATH;
-  const ogImgUrl =
-    rawOgImg.startsWith('http') || rawOgImg.startsWith('data:')
-      ? rawOgImg
-      : `${domain}${rawOgImg.startsWith('/') ? rawOgImg : `/${rawOgImg}`}`;
 
   const isPreviewHost =
     g.noindexPreviewDomains &&
@@ -459,11 +276,11 @@ function injectWorkerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   let html = rawHtml;
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtmlAttr(finalTitle)}</title>`);
   html = html.replace(
-    /<meta\s+name="description"[\s\S]*?\/>/i,
+    /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/i,
     `<meta name="description" content="${escapeHtmlAttr(finalDesc)}" />`
   );
   html = html.replace(
-    /<meta\s+name="keywords"[\s\S]*?\/>/i,
+    /<meta\s+name="keywords"\s+content="[^"]*"\s*\/?>/i,
     `<meta name="keywords" content="${escapeHtmlAttr(combinedKeywords)}" />`
   );
   html = html.replace(
@@ -479,58 +296,46 @@ function injectWorkerSeoIntoHtml(rawHtml: string, reqPath: string, hostHeader: s
   const ogDesc = activePage.ogDescription || finalDesc;
 
   html = html.replace(
-    /<meta\s+property="og:site_name"[\s\S]*?\/>/i,
+    /<meta\s+property="og:site_name"\s+content="[^"]*"\s*\/?>/i,
     `<meta property="og:site_name" content="${escapeHtmlAttr(g.siteName || 'OneLove Café')}" />`
   );
   html = html.replace(
-    /<meta\s+property="og:title"[\s\S]*?\/>/i,
+    /<meta\s+property="og:title"\s+content="[^"]*"\s*\/?>/i,
     `<meta property="og:title" content="${escapeHtmlAttr(ogTitle)}" />`
   );
   html = html.replace(
-    /<meta\s+property="og:description"[\s\S]*?\/>/i,
+    /<meta\s+property="og:description"\s+content="[^"]*"\s*\/?>/i,
     `<meta property="og:description" content="${escapeHtmlAttr(ogDesc)}" />`
   );
   html = html.replace(
-    /<meta\s+property="og:url"[\s\S]*?\/>/i,
+    /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
     `<meta property="og:url" content="${escapeHtmlAttr(canonicalUrl)}" />`
   );
   html = html.replace(
-    /<meta\s+property="og:image"[\s\S]*?\/>/i,
-    `<meta property="og:image" content="${escapeHtmlAttr(ogImgUrl)}" />`
-  );
-  html = html.replace(
-    /<meta\s+name="twitter:title"[\s\S]*?\/>/i,
+    /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
     `<meta name="twitter:title" content="${escapeHtmlAttr(ogTitle)}" />`
   );
   html = html.replace(
-    /<meta\s+name="twitter:description"[\s\S]*?\/>/i,
+    /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
     `<meta name="twitter:description" content="${escapeHtmlAttr(ogDesc)}" />`
   );
-  html = html.replace(
-    /<meta\s+name="twitter:image"[\s\S]*?\/>/i,
-    `<meta name="twitter:image" content="${escapeHtmlAttr(ogImgUrl)}" />`
-  );
-  html = html.replace(
-    /<h1\s+id="static-seo-h1">[\s\S]*?<\/h1>/i,
-    `<h1 id="static-seo-h1">${escapeHtmlAttr(finalTitle)}</h1>`
-  );
-  html = html.replace(
-    /<p\s+id="static-seo-desc">[\s\S]*?<\/p>/i,
-    `<p id="static-seo-desc">${escapeHtmlAttr(finalDesc)}</p>`
-  );
 
-  const jsonLdObj = buildStructuredDataGraph(g, {
-    ...activePage,
-    canonicalPath: lockedCanonicalPath,
-  });
-  html = html.replace(
-    /<script\s+id="onelove-jsonld"\s+type="application\/ld\+json">[\s\S]*?<\/script>/i,
-    `<script id="onelove-jsonld" type="application/ld+json">\n${JSON.stringify(
-      jsonLdObj,
+  if (!isAdmin) {
+    const jsonLdGraph = buildStructuredDataGraph(g, {
+      ...activePage,
+      canonicalPath: lockedCanonicalPath,
+    });
+    const jsonLdScript = `<script id="onelove-jsonld" type="application/ld+json">\n${JSON.stringify(
+      jsonLdGraph,
       null,
       2
-    )}\n    </script>`
-  );
+    )}\n    </script>`;
+    if (/<script\s+id="onelove-jsonld"[\s\S]*?<\/script>/i.test(html)) {
+      html = html.replace(/<script\s+id="onelove-jsonld"[\s\S]*?<\/script>/i, jsonLdScript);
+    } else {
+      html = html.replace('</head>', `    ${jsonLdScript}\n  </head>`);
+    }
+  }
 
   return html;
 }
@@ -541,6 +346,7 @@ function jsonResponse(data: unknown, status = 200): Response {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
     },
   });
 }
@@ -549,15 +355,13 @@ export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
     const url = new URL(request.url);
     const pathname = url.pathname;
-    const hostLower = url.hostname.toLowerCase();
+    const host = (request.headers.get('host') || url.host || '').toLowerCase();
 
-    // Canonical 301 redirect from www to non-www root domain so Google Search & Google-Favicon never split indexing
-    if (
-      hostLower === 'www.onelovecafesigiriya.com' ||
-      hostLower === 'www.onelovecafe.lk'
-    ) {
-      const targetDomain = hostLower.replace(/^www\./, '');
-      return Response.redirect(`https://${targetDomain}${pathname}${url.search}`, 301);
+    if (host.startsWith('www.onelovecafesigiriya.com') || host.startsWith('www.onelovecafe.lk')) {
+      const canonicalDomain = (
+        DEFAULT_GLOBAL_SEO.canonicalDomain || 'https://onelovecafesigiriya.com'
+      ).replace(/\/+$/, '');
+      return Response.redirect(`${canonicalDomain}${url.pathname}${url.search}`, 301);
     }
 
     const clientIp =
@@ -565,161 +369,88 @@ export default {
       request.headers.get('x-forwarded-for') ||
       'unknown';
 
-    // Handle internal relative alias /visit -> /contact
-    if (pathname === '/visit' || pathname === '/visit/') {
-      return Response.redirect(new URL('/contact' + url.search, url.origin).toString(), 301);
+    if (pathname === '/robots.txt') {
+      const baseUrl = (
+        DEFAULT_GLOBAL_SEO.canonicalDomain ||
+        env.APP_URL ||
+        'https://onelovecafesigiriya.com'
+      ).replace(/\/$/, '');
+      const lines = [
+        'User-agent: *',
+        DEFAULT_GLOBAL_SEO.allowIndexing ? 'Allow: /' : 'Disallow: /',
+        'Disallow: /admin',
+        'Disallow: /admin/',
+        'Disallow: /admin/seo',
+        'Disallow: /reserve/voucher/',
+        'Disallow: /api/',
+        `Sitemap: ${baseUrl}/sitemap.xml`,
+      ];
+      return new Response(lines.join('\n') + '\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
     }
 
-    // API Endpoints
+    if (pathname === '/sitemap.xml') {
+      const baseUrl = (
+        DEFAULT_GLOBAL_SEO.canonicalDomain ||
+        env.APP_URL ||
+        'https://onelovecafesigiriya.com'
+      ).replace(/\/$/, '');
+      const today = new Date().toISOString().slice(0, 10);
+      const indexablePages = (Object.values(DEFAULT_PAGE_SEO) as PageSeoConfig[]).filter(
+        (p) => p.indexable
+      );
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${indexablePages
+  .map((page) => {
+    const route = page.canonicalPath.startsWith('/')
+      ? page.canonicalPath
+      : `/${page.canonicalPath}`;
+    const priority =
+      route === '/' ? '1.0' : route === '/reserve' || route === '/menu' ? '0.9' : '0.8';
+    const changefreq =
+      route === '/' || route === '/menu' || route === '/reserve' ? 'daily' : 'weekly';
+    return `  <url>
+    <loc>${baseUrl}${route}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>${changefreq}</changefreq>
+    <priority>${priority}</priority>
+  </url>`;
+  })
+  .join('\n')}
+</urlset>`;
+      return new Response(xml, {
+        status: 200,
+        headers: { 'Content-Type': 'application/xml; charset=utf-8' },
+      });
+    }
+
     if (pathname === '/api/health') {
       return jsonResponse({
         ok: true,
         success: true,
         status: 'ok',
         service: 'onelove-cafe-sigiriya',
+        runtime: 'cloudflare-workers',
         timestamp: new Date().toISOString(),
       });
     }
 
-    if (pathname === '/api/storage/status' && request.method === 'GET') {
+    if (pathname === '/api/storage/status') {
       const r2Bucket = resolveWorkerR2Bucket(env);
       const s3Info = r2Bucket ? null : getWorkerS3Client(env);
-      const hasR2Binding = Boolean(r2Bucket);
-      const hasS3Creds = Boolean(s3Info);
-      const isConfigured = hasR2Binding || hasS3Creds;
-      const publicUrl = isConfigured ? getWorkerPublicUrl(env) : null;
-      const bucketName =
-        readEnvString(env.R2_BUCKET_NAME) ||
-        readEnvString(env.S3_BUCKET_NAME) ||
-        readEnvString(env.AWS_S3_BUCKET) ||
-        (hasR2Binding ? 'onelove-assets' : null);
-
-      return jsonResponse({
-        ok: true,
-        success: true,
-        configured: isConfigured,
-        provider: hasR2Binding
-          ? 'cloudflare-r2'
-          : hasS3Creds
-          ? 'cloudflare-r2-s3'
-          : 'inline',
-        bucket: bucketName,
-        publicUrl,
-        manifestUrl: publicUrl ? `${publicUrl}/${R2_MANIFEST_OBJECT_KEY}` : null,
-      });
-    }
-
-    if (pathname === '/api/storage/manifest' && request.method === 'GET') {
-      const force = url.searchParams.get('refresh') === '1';
-      const manifest = await readWorkerManifest(env, force);
-      const r2Bucket = resolveWorkerR2Bucket(env);
-      const s3Info = r2Bucket ? null : getWorkerS3Client(env);
-      const isConfigured = Boolean(r2Bucket || s3Info);
+      const configured = Boolean(r2Bucket || s3Info);
       const publicUrl = getWorkerPublicUrl(env);
       return jsonResponse({
         ok: true,
         success: true,
-        configured: isConfigured,
-        source: isConfigured ? 'cloudflare-r2' : 'memory',
-        manifestUrl: isConfigured ? `${publicUrl}/${R2_MANIFEST_OBJECT_KEY}` : null,
-        manifest,
+        configured,
+        provider: configured ? 'cloudflare-r2' : 'unconfigured',
+        bucket: s3Info?.bucket || (r2Bucket ? 'onelove-assets' : null),
+        publicUrl: configured ? publicUrl : null,
       });
-    }
-
-    if (pathname === '/api/storage/manifest' && request.method === 'POST') {
-      try {
-        const current = await readWorkerManifest(env, false);
-        const rawBody = ((await request.json()) || {}) as Record<string, unknown>;
-        const hasNestedManifest =
-          Boolean(rawBody.manifest) &&
-          typeof rawBody.manifest === 'object' &&
-          !Array.isArray(rawBody.manifest);
-        const patch = (hasNestedManifest ? rawBody.manifest : rawBody) as Partial<R2MediaManifest> & {
-          deleteUrls?: string[];
-        };
-        const deleteUrls = Array.isArray(rawBody.deleteUrls)
-          ? (rawBody.deleteUrls as string[])
-          : Array.isArray(patch.deleteUrls)
-          ? patch.deleteUrls
-          : [];
-
-        if (deleteUrls.length > 0) {
-          for (const u of deleteUrls) {
-            if (typeof u === 'string' && u.trim()) {
-              await deleteWorkerR2Object(env, u).catch(() => {});
-            }
-          }
-        }
-
-        const mergedMenuImages = hasNestedManifest
-          ? { ...(patch.menuImages || {}) }
-          : { ...current.menuImages, ...(patch.menuImages || {}) };
-        Object.keys(mergedMenuImages).forEach((k) => {
-          if (!mergedMenuImages[k]) delete mergedMenuImages[k];
-        });
-
-        const mergedEventImages = hasNestedManifest
-          ? { ...(patch.eventImages || {}) }
-          : { ...current.eventImages, ...(patch.eventImages || {}) };
-        Object.keys(mergedEventImages).forEach((k) => {
-          if (!mergedEventImages[k]) delete mergedEventImages[k];
-        });
-
-        const mergedSectionImages = hasNestedManifest
-          ? { ...(patch.sectionImages || {}) }
-          : { ...current.sectionImages, ...(patch.sectionImages || {}) };
-        Object.keys(mergedSectionImages).forEach((k) => {
-          if (!mergedSectionImages[k]) delete mergedSectionImages[k];
-        });
-
-        const mergedSeoImages = {
-          ...current.seoImages,
-          ...(patch.seoImages || {}),
-          pageOgImages: hasNestedManifest
-            ? { ...(patch.seoImages?.pageOgImages || {}) }
-            : {
-                ...(current.seoImages?.pageOgImages || {}),
-                ...(patch.seoImages?.pageOgImages || {}),
-              },
-        };
-
-        const nextManifest: R2MediaManifest = normalizeWorkerR2Manifest({
-          version: (current.version || 1) + 1,
-          updatedAt: new Date().toISOString(),
-          heroImages: patch.heroImages !== undefined ? patch.heroImages : current.heroImages,
-          heroSlideshowSpeedSeconds:
-            patch.heroSlideshowSpeedSeconds !== undefined
-              ? patch.heroSlideshowSpeedSeconds
-              : current.heroSlideshowSpeedSeconds,
-          floorPlanImageUrl:
-            patch.floorPlanImageUrl !== undefined
-              ? patch.floorPlanImageUrl
-              : current.floorPlanImageUrl,
-          menuImages: mergedMenuImages,
-          galleryItems: patch.galleryItems !== undefined ? patch.galleryItems : current.galleryItems,
-          eventImages: mergedEventImages,
-          sectionImages: mergedSectionImages,
-          seoImages: mergedSeoImages,
-        });
-
-        const manifestUrl = await writeWorkerManifest(env, nextManifest);
-        return jsonResponse({
-          ok: true,
-          success: true,
-          storage: manifestUrl ? 'r2' : 'local',
-          manifestUrl,
-          manifest: nextManifest,
-        });
-      } catch (err) {
-        return jsonResponse(
-          {
-            ok: false,
-            success: false,
-            error: err instanceof Error ? err.message : 'Failed to update R2 manifest',
-          },
-          500
-        );
-      }
     }
 
     if (pathname === '/api/storage/delete' && request.method === 'POST') {
@@ -865,142 +596,10 @@ export default {
       }
     }
 
-    if (pathname === '/api/seo/config' && request.method === 'GET') {
-      return jsonResponse({
-        ok: true,
-        success: true,
-        global: workerSeoState.global,
-        pages: workerSeoState.pages,
-      });
-    }
-
-    if (pathname === '/api/seo/sync' && request.method === 'POST') {
-      try {
-        const body = (await request.json()) as Partial<SeoRuntimeState>;
-        workerSeoState = {
-          global: { ...workerSeoState.global, ...(body.global || {}) },
-          pages: { ...workerSeoState.pages, ...(body.pages || {}) },
-        };
-        return jsonResponse({ ok: true, success: true });
-      } catch (err) {
-        return jsonResponse(
-          {
-            ok: false,
-            success: false,
-            error: err instanceof Error ? err.message : 'Invalid SEO sync payload',
-          },
-          400
-        );
-      }
-    }
-
-
-    if (pathname === '/api/reservations/validate' && request.method === 'POST') {
-      if (!checkRateLimit(`res_${clientIp}`, 15, 60_000)) {
-        return jsonResponse(
-          {
-            ok: false,
-            success: false,
-            valid: false,
-            error: 'Too many reservation attempts. Please wait a moment and try again.',
-          },
-          429
-        );
-      }
-      try {
-        const body = await request.json();
-        const parsed = ReservationPayloadSchema.safeParse(body);
-        if (!parsed.success) {
-          return jsonResponse(
-            {
-              ok: false,
-              success: false,
-              valid: false,
-              error: parsed.error.issues[0]?.message || 'Invalid reservation details.',
-              issues: parsed.error.issues,
-            },
-            400
-          );
-        }
-
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        let code = 'OL-';
-        for (let i = 0; i < 6; i++) {
-          code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-
-        return jsonResponse({
-          ok: true,
-          success: true,
-          valid: true,
-          referenceCode: code,
-          sanitized: parsed.data,
-          serverValidatedAt: new Date().toISOString(),
-        });
-      } catch {
-        return jsonResponse(
-          {
-            ok: false,
-            success: false,
-            valid: false,
-            error: 'Invalid reservation request payload.',
-          },
-          400
-        );
-      }
-    }
-
-    if (pathname === '/api/inquiries/validate' && request.method === 'POST') {
-      if (!checkRateLimit(`inq_${clientIp}`, 10, 60_000)) {
-        return jsonResponse(
-          {
-            ok: false,
-            success: false,
-            valid: false,
-            error: 'Rate limit exceeded. Please wait a minute before sending another message.',
-          },
-          429
-        );
-      }
-      try {
-        const body = await request.json();
-        const parsed = InquiryPayloadSchema.safeParse(body);
-        if (!parsed.success) {
-          return jsonResponse(
-            {
-              ok: false,
-              success: false,
-              valid: false,
-              error: parsed.error.issues[0]?.message || 'Please check your inquiry fields.',
-            },
-            400
-          );
-        }
-
-        return jsonResponse({
-          ok: true,
-          success: true,
-          valid: true,
-          sanitized: parsed.data,
-        });
-      } catch {
-        return jsonResponse(
-          {
-            ok: false,
-            success: false,
-            valid: false,
-            error: 'Invalid inquiry request payload.',
-          },
-          400
-        );
-      }
-    }
-
     if (pathname.startsWith('/api/')) {
-      return jsonResponse({ ok: true, success: true });
+      return jsonResponse({ ok: false, success: false, error: 'API route not found' }, 404);
     }
 
-    // Delegate static assets and SPA routes to Cloudflare Workers Static Assets binding
     if (env.ASSETS) {
       const assetResponse = await env.ASSETS.fetch(request);
       if (assetResponse.status !== 404) {
@@ -1022,7 +621,6 @@ export default {
         return assetResponse;
       }
 
-      // SPA fallback for extensionless routes when ASSETS returns 404
       const indexUrl = new URL('/index.html', request.url);
       const indexResponse = await env.ASSETS.fetch(new Request(indexUrl, request));
       if (indexResponse.ok) {

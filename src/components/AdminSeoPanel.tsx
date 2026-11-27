@@ -18,8 +18,6 @@ import {
 } from 'lucide-react';
 import { useCafe } from '../context/CafeContext';
 import {
-  DEFAULT_BRAND_FAVICON_PATH,
-  DEFAULT_BRAND_LOGO_PATH,
   DEFAULT_GLOBAL_SEO,
   DEFAULT_PAGE_SEO,
   SEO_KEYWORD_LIBRARY,
@@ -96,6 +94,8 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
   // Asset upload states
   const [uploadingDefaultOg, setUploadingDefaultOg] = useState(false);
   const [uploadingPageOg, setUploadingPageOg] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
+  const [uploadingBrandLogo, setUploadingBrandLogo] = useState(false);
 
   // Alt-text manager filter state
   const [altFilter, setAltFilter] = useState<'all' | 'missing' | 'menu' | 'gallery'>('all');
@@ -301,7 +301,9 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
     /\/+$/,
     ''
   );
-  const activeFaviconPreview = '/favicon.png';
+  const activeFaviconPreview = /^https?:\/\//i.test((globalForm.faviconSourceUrl || '').trim())
+    ? globalForm.faviconSourceUrl.trim()
+    : '';
 
   return (
     <div className="space-y-6">
@@ -317,7 +319,7 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
             </h1>
             <p className="text-xs text-[#171513]/65 max-w-3xl">
               Manage global &amp; per-page metadata, 10-category Sigiriya keyword targeting
-              (English, Sinhala &amp; Tamil), 96×96 website favicon (`/favicon.png`), Schema.org
+              (English, Sinhala &amp; Tamil), R2-hosted website favicon &amp; brand logo, Schema.org
               JSON-LD structured data, and Search Console readiness.
             </p>
           </div>
@@ -339,15 +341,6 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
               className="px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] text-xs font-medium hover:border-[#171513] inline-flex items-center gap-1.5"
             >
               <span>/robots.txt</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-            <a
-              href="/favicon.png"
-              target="_blank"
-              rel="noreferrer"
-              className="px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] text-xs font-medium hover:border-[#171513] inline-flex items-center gap-1.5"
-            >
-              <span>/favicon.png</span>
               <ExternalLink className="w-3 h-3" />
             </a>
             <button
@@ -1092,11 +1085,15 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
                 <div className="p-5 bg-[#FFFFFF] border border-[#E7DED3] space-y-2 shadow-2xs">
                   <div className="flex items-center gap-3">
                     <div className="w-7 h-7 rounded-full border border-[#E7DED3] bg-[#F8F4EE] flex items-center justify-center overflow-hidden shrink-0">
-                      <img
-                        src={activeFaviconPreview}
-                        alt="Favicon"
-                        className="w-5 h-5 object-contain"
-                      />
+                      {activeFaviconPreview ? (
+                        <img
+                          src={activeFaviconPreview}
+                          alt="Favicon"
+                          className="w-5 h-5 object-contain"
+                        />
+                      ) : (
+                        <Globe className="w-3.5 h-3.5 text-[#171513]/45" />
+                      )}
                     </div>
                     <div className="min-w-0">
                       <div className="text-[13px] font-medium text-[#202124] truncate">
@@ -1305,88 +1302,171 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
          ===================================================================== */}
       {subTab === 'assets' && (
         <div className="space-y-6 text-xs">
-          {/* 1. Website Favicon (96x96 Local Project File) */}
+          {/* 1. Website Favicon (Cloudflare R2 -> Firestore) */}
           <div className="bg-white border border-[#E7DED3] p-6 space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#E7DED3] pb-4">
               <div>
                 <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-                  Website Favicon · 96×96 Local Project Asset
+                  Website Favicon · Cloudflare R2 + Firestore
                 </div>
                 <h2 className="text-xl font-editorial font-semibold mt-0.5">
-                  Active Website Favicon (`/favicon.png` &amp; `/favicon.ico`)
+                  Site Favicon Icon
                 </h2>
                 <p className="text-xs text-[#171513]/65 mt-0.5 max-w-3xl">
-                  Served directly from local project files at 96×96 resolution (`/favicon.png` and
-                  `/favicon.ico`).
+                  Upload a square icon to Cloudflare R2. Its URL is saved in Firestore and applied
+                  live to the site head.
                 </p>
               </div>
-              <span className="px-2.5 py-1 bg-[#F4F7F2] border border-[#58644E] text-[#58644E] text-[10px] uppercase tracking-wider font-semibold">
-                96×96 Active
-              </span>
+              <div className="flex items-center gap-2">
+                <label className="px-3 py-1.5 bg-[#C65B2B] text-white cursor-pointer inline-flex items-center gap-1.5">
+                  <Upload className="w-3 h-3" />
+                  <span>{uploadingFavicon ? 'Uploading...' : 'Upload Favicon'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploadingFavicon(true);
+                      try {
+                        const r2Url = await uploadMediaFile(
+                          file,
+                          'seo',
+                          globalForm.faviconSourceUrl
+                        );
+                        const next = {
+                          ...globalForm,
+                          faviconSourceUrl: r2Url,
+                          favicon48Url: r2Url,
+                          favicon96Url: r2Url,
+                          favicon192Url: r2Url,
+                          appleTouchIconUrl: r2Url,
+                        };
+                        setGlobalForm(next);
+                        await saveSeoGlobal(next);
+                        onShowToast('Uploaded site favicon to Cloudflare R2 and synced to Firestore.');
+                      } finally {
+                        setUploadingFavicon(false);
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                </label>
+                {activeFaviconPreview && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const next = {
+                        ...globalForm,
+                        faviconSourceUrl: '',
+                        favicon48Url: '',
+                        favicon96Url: '',
+                        favicon192Url: '',
+                        appleTouchIconUrl: '',
+                      };
+                      setGlobalForm(next);
+                      await saveSeoGlobal(next);
+                      onShowToast('Removed website favicon.');
+                    }}
+                    className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF]"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[
-                {
-                  label: 'PNG Favicon (96×96)',
-                  endpoint: '/favicon.png',
-                  src: '/favicon.png',
-                },
-                {
-                  label: 'ICO Favicon (96×96)',
-                  endpoint: '/favicon.ico',
-                  src: '/favicon.ico',
-                },
-              ].map((item) => (
-                <div
-                  key={item.endpoint}
-                  className="p-4 bg-[#F8F4EE] border border-[#E7DED3] flex items-center gap-4"
-                >
-                  <img
-                    src={item.src}
-                    alt={item.label}
-                    width={96}
-                    height={96}
-                    className="w-24 h-24 object-contain border border-[#E7DED3] bg-white p-1"
-                  />
-                  <div>
-                    <div className="font-semibold text-[#171513]">{item.label}</div>
-                    <a
-                      href={item.endpoint}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] font-mono-tabular text-[#C65B2B] hover:underline"
-                    >
-                      {item.endpoint} ↗
-                    </a>
-                  </div>
+            <div className="p-4 bg-[#F8F4EE] border border-[#E7DED3] flex items-center gap-4">
+              {activeFaviconPreview ? (
+                <img
+                  src={activeFaviconPreview}
+                  alt="Site Favicon"
+                  width={64}
+                  height={64}
+                  className="w-16 h-16 object-contain border border-[#E7DED3] bg-white p-1"
+                />
+              ) : (
+                <div className="w-16 h-16 border border-[#E7DED3] bg-white flex items-center justify-center text-[#171513]/40">
+                  <Globe className="w-6 h-6" />
                 </div>
-              ))}
+              )}
+              <div className="min-w-0">
+                <div className="font-semibold text-[#171513]">Active R2 Favicon URL</div>
+                <div className="text-[11px] font-mono-tabular text-[#171513]/60 truncate">
+                  {activeFaviconPreview || 'No favicon uploaded yet'}
+                </div>
+              </div>
             </div>
           </div>
 
           {/* 2. Brand Logo & Default Open Graph Social Sharing Image */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white border border-[#E7DED3] p-6 space-y-4">
-              <div className="border-b border-[#E7DED3] pb-3 flex items-center justify-between">
+              <div className="border-b border-[#E7DED3] pb-3 flex items-center justify-between gap-2">
                 <div>
                   <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
-                    Schema.org Organization Logo · Local Project File
+                    Brand Logo · Cloudflare R2 + Firestore
                   </div>
                   <h3 className="text-base font-editorial font-semibold">
-                    Official Brand Logo (`/logo.png`)
+                    Official Brand Logo
                   </h3>
                 </div>
-                <span className="px-2.5 py-1 bg-[#F4F7F2] border border-[#58644E] text-[#58644E] text-[10px] uppercase tracking-wider font-semibold">
-                  Project File Active
-                </span>
+                <div className="flex items-center gap-2">
+                  <label className="px-3 py-1.5 bg-[#C65B2B] text-white cursor-pointer inline-flex items-center gap-1.5">
+                    <Upload className="w-3 h-3" />
+                    <span>{uploadingBrandLogo ? 'Uploading...' : 'Upload Logo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploadingBrandLogo(true);
+                        try {
+                          const r2Url = await uploadMediaFile(
+                            file,
+                            'seo',
+                            globalForm.brandLogoUrl
+                          );
+                          const next = { ...globalForm, brandLogoUrl: r2Url };
+                          setGlobalForm(next);
+                          await saveSeoGlobal(next);
+                          onShowToast('Uploaded brand logo to Cloudflare R2 and synced to Firestore.');
+                        } finally {
+                          setUploadingBrandLogo(false);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+                  </label>
+                  {globalForm.brandLogoUrl && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const next = { ...globalForm, brandLogoUrl: '' };
+                        setGlobalForm(next);
+                        await saveSeoGlobal(next);
+                        onShowToast('Removed brand logo.');
+                      }}
+                      className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF]"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="h-36 bg-[#F8F4EE] border border-[#E7DED3] flex items-center justify-center p-4">
-                <img
-                  src={DEFAULT_BRAND_LOGO_PATH}
-                  alt="OneLove Café Brand Logo"
-                  className="max-h-28 w-auto object-contain"
-                />
+                {globalForm.brandLogoUrl && /^https?:\/\//i.test(globalForm.brandLogoUrl) ? (
+                  <img
+                    src={globalForm.brandLogoUrl}
+                    alt="OneLove Café Brand Logo"
+                    className="max-h-28 w-auto object-contain"
+                  />
+                ) : (
+                  <span className="text-xs text-[#171513]/45">No brand logo uploaded yet</span>
+                )}
               </div>
             </div>
 
@@ -1446,11 +1526,15 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
                 </div>
               </div>
               <div className="h-36 bg-[#F8F4EE] border border-[#E7DED3] flex items-center justify-center overflow-hidden">
-                <img
-                  src={globalForm.defaultOgImageUrl || DEFAULT_BRAND_FAVICON_PATH}
-                  alt="Default Open Graph Preview"
-                  className="h-full w-auto object-contain"
-                />
+                {globalForm.defaultOgImageUrl && /^https?:\/\//i.test(globalForm.defaultOgImageUrl) ? (
+                  <img
+                    src={globalForm.defaultOgImageUrl}
+                    alt="Default Open Graph Preview"
+                    className="h-full w-auto object-contain"
+                  />
+                ) : (
+                  <span className="text-xs text-[#171513]/45">No social card uploaded yet</span>
+                )}
               </div>
             </div>
           </div>
@@ -1637,12 +1721,12 @@ export const AdminSeoPanel: React.FC<AdminSeoPanelProps> = ({ onShowToast }) => 
               <div className="p-4 bg-[#F8F4EE] border border-[#E7DED3] space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-[#171513]">
-                    Website Favicon (96×96)
+                    Website Favicon (Cloudflare R2)
                   </span>
                   <CheckCircle2 className="w-4 h-4 text-[#58644E]" />
                 </div>
-                <div className="text-[#171513]/70 font-mono-tabular">
-                  /favicon.png · /favicon.ico (96×96) active
+                <div className="text-[#171513]/70 font-mono-tabular truncate">
+                  {activeFaviconPreview || 'Upload in Brand Assets tab'}
                 </div>
               </div>
 

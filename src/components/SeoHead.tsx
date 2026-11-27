@@ -1,10 +1,6 @@
 import React, { useEffect } from 'react';
 import { useCafe } from '../context/CafeContext';
-import {
-  buildStructuredDataGraph,
-  DEFAULT_BRAND_FAVICON_PATH,
-  DEFAULT_PAGE_SEO,
-} from '../data/seoDefaults';
+import { buildStructuredDataGraph, DEFAULT_PAGE_SEO } from '../data/seoDefaults';
 import { SeoPageKey } from '../types/seo';
 
 interface SeoHeadProps {
@@ -55,7 +51,7 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
     let canonicalPath = lockedCanonicalPath;
 
     if (isAdminRoute) {
-      finalTitle = `SEO & Hospitality Admin Console | ${seoGlobal.siteName || 'OneLove Café'}`;
+      finalTitle = `Admin Console | ${seoGlobal.siteName || 'OneLove Café'}`;
       finalDesc = 'Protected administrative console for OneLove Café Sigiriya.';
       canonicalPath = '/admin';
     } else if (isVoucher) {
@@ -89,16 +85,40 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
       }
     };
 
+    const removeMeta = (attrName: 'name' | 'property', attrValue: string) => {
+      const el = document.querySelector(`meta[${attrName}="${attrValue}"]`);
+      if (el) el.remove();
+    };
+
+    const upsertFaviconLink = (rel: string, href: string) => {
+      let el = document.querySelector(`link[rel="${rel}"][data-r2-favicon="1"]`) as HTMLLinkElement | null;
+      if (!href) {
+        if (el) el.remove();
+        return;
+      }
+      if (!el) {
+        el = document.createElement('link');
+        el.rel = rel;
+        el.setAttribute('data-r2-favicon', '1');
+        document.head.appendChild(el);
+      }
+      if (el.getAttribute('href') !== href) {
+        el.setAttribute('href', href);
+      }
+    };
+
     const canonicalUrl = `${domain}${
       canonicalPath.startsWith('/') ? canonicalPath : `/${canonicalPath}`
     }`;
 
-    const rawOgImg =
-      activePageSeo.ogImageUrl || seoGlobal.defaultOgImageUrl || DEFAULT_BRAND_FAVICON_PATH;
-    const ogImgUrl =
-      rawOgImg.startsWith('http') || rawOgImg.startsWith('data:')
-        ? rawOgImg
-        : `${domain}${rawOgImg.startsWith('/') ? rawOgImg : `/${rawOgImg}`}`;
+    const rawOgImg = (activePageSeo.ogImageUrl || seoGlobal.defaultOgImageUrl || '').trim();
+    const ogImgUrl = /^https?:\/\//i.test(rawOgImg) ? rawOgImg : '';
+
+    const faviconUrl = /^https?:\/\//i.test((seoGlobal.faviconSourceUrl || '').trim())
+      ? seoGlobal.faviconSourceUrl.trim()
+      : '';
+    upsertFaviconLink('icon', faviconUrl);
+    upsertFaviconLink('apple-touch-icon', faviconUrl);
 
     const combinedKeywords = Array.from(
       new Set([
@@ -120,13 +140,18 @@ export const SeoHead: React.FC<SeoHeadProps> = ({ currentPage, pathname, voucher
     upsertMeta('property', 'og:title', activePageSeo.ogTitle || finalTitle);
     upsertMeta('property', 'og:description', activePageSeo.ogDescription || finalDesc);
     upsertMeta('property', 'og:url', canonicalUrl);
-    upsertMeta('property', 'og:image', ogImgUrl);
+    if (ogImgUrl) {
+      upsertMeta('property', 'og:image', ogImgUrl);
+      upsertMeta('name', 'twitter:image', ogImgUrl);
+    } else {
+      removeMeta('property', 'og:image');
+      removeMeta('name', 'twitter:image');
+    }
     upsertMeta('property', 'og:locale', 'en_US');
 
     upsertMeta('name', 'twitter:card', 'summary_large_image');
     upsertMeta('name', 'twitter:title', activePageSeo.ogTitle || finalTitle);
     upsertMeta('name', 'twitter:description', activePageSeo.ogDescription || finalDesc);
-    upsertMeta('name', 'twitter:image', ogImgUrl);
 
     if (seoGlobal.googleVerificationTag && seoGlobal.googleVerificationTag.trim()) {
       const cleanToken = seoGlobal.googleVerificationTag

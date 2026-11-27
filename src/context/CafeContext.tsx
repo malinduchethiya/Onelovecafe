@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import {
   User,
   onAuthStateChanged,
@@ -11,7 +11,6 @@ import {
   onSnapshot,
   setDoc,
   deleteDoc,
-  runTransaction,
   serverTimestamp,
   getDoc,
   query,
@@ -45,7 +44,6 @@ import {
   InquiryRecord,
   AdminRecord,
   AuditLogRecord,
-  R2MediaManifest,
 } from '../types/cafe';
 import {
   DEFAULT_SETTINGS,
@@ -140,7 +138,6 @@ interface CafeContextValue {
   availability: AvailabilitySlotRecord[];
   seoGlobal: GlobalSeoConfig;
   seoPages: Record<SeoPageKey, PageSeoConfig>;
-  r2Manifest: R2MediaManifest;
   // Admin-only collections
   reservations: ReservationRecord[];
   inquiries: InquiryRecord[];
@@ -195,7 +192,6 @@ interface CafeContextValue {
     provider: string;
     bucket?: string | null;
     publicUrl?: string | null;
-    manifestUrl?: string | null;
   } | null;
   checkStorageStatus: () => Promise<void>;
 }
@@ -213,103 +209,15 @@ function getOrCreateSessionId(): string {
   return created;
 }
 
-function readLocalCache<T>(key: string, fallback: T): T {
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeLocalCache<T>(key: string, value: T): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const serialized = JSON.stringify(value);
-    // Always remove old entry first so a QuotaExceededError never leaves stale old images in localStorage
-    window.localStorage.removeItem(key);
-    window.localStorage.setItem(key, serialized);
-  } catch {
-    // If localStorage is full, ensure the stale key remains cleared so fresh state/IndexedDB is used
-    try {
-      window.localStorage.removeItem(key);
-    } catch {
-      // ignore
-    }
-  }
-}
-
+/**
+ * Only accept valid remote HTTP(S) CDN URLs (e.g. Cloudflare R2).
+ * Rejects base64 data URLs, local project file paths, and editorial:* keys.
+ */
 function sanitizeCdnUrl(url: string | undefined | null): string {
   if (!url || typeof url !== 'string') return '';
   const trimmed = url.trim();
-  // Never store or read raw base64 image payloads in Firestore — only R2 CDN links or editorial/asset paths
-  if (!trimmed || trimmed.startsWith('data:') || trimmed.startsWith('siteContent:')) return '';
+  if (!/^https?:\/\//i.test(trimmed)) return '';
   return trimmed;
-}
-
-const INITIAL_SETTINGS: CafeSettings = {
-  ...DEFAULT_SETTINGS,
-  heroImages: DEFAULT_SETTINGS.heroImages || [],
-};
-
-const INITIAL_R2_MANIFEST: R2MediaManifest = {
-  version: 1,
-  updatedAt: new Date(0).toISOString(),
-  heroImages: DEFAULT_SETTINGS.heroImages || [],
-  heroSlideshowSpeedSeconds: DEFAULT_SETTINGS.heroSlideshowSpeedSeconds || 5,
-  floorPlanImageUrl: '',
-  menuImages: Object.fromEntries(DEFAULT_MENU_ITEMS.map((m) => [m.id, m.imageUrl])),
-  galleryItems: DEFAULT_GALLERY.map((g) => ({ ...g })),
-  eventImages: Object.fromEntries(DEFAULT_EVENTS.map((e) => [e.id, e.imageUrl])),
-  sectionImages: Object.fromEntries(
-    DEFAULT_SITE_CONTENT.filter((s) => s.imageUrl).map((s) => [s.sectionKey, s.imageUrl])
-  ),
-  seoImages: {},
-};
-
-const INITIAL_MENU_ITEMS: MenuItem[] = DEFAULT_MENU_ITEMS.map((item) => ({
-  ...item,
-  imageUrl: sanitizeCdnUrl(item.imageUrl),
-}));
-
-const INITIAL_GALLERY: GalleryItem[] = DEFAULT_GALLERY.map((g) => ({
-  ...g,
-  imageUrl: sanitizeCdnUrl(g.imageUrl),
-}));
-
-const INITIAL_EVENTS: CafeEvent[] = DEFAULT_EVENTS.map((e) => ({
-  ...e,
-  imageUrl: sanitizeCdnUrl(e.imageUrl),
-}));
-
-const INITIAL_SITE_CONTENT: SiteContentSection[] = DEFAULT_SITE_CONTENT.map((s) => ({
-  ...s,
-  imageUrl: sanitizeCdnUrl(s.imageUrl),
-}));
-
-function mergeSiteContentWithDefaults(cached: SiteContentSection[]): SiteContentSection[] {
-  const map = new Map<string, SiteContentSection>();
-  cached.forEach((sec) =>
-    map.set(sec.sectionKey, { ...sec, imageUrl: sanitizeCdnUrl(sec.imageUrl) })
-  );
-  DEFAULT_SITE_CONTENT.forEach((def) => {
-    const existing = map.get(def.sectionKey);
-    const defImg = sanitizeCdnUrl(def.imageUrl);
-    if (!existing) {
-      map.set(def.sectionKey, {
-        ...def,
-        imageUrl: defImg,
-      });
-    } else if ((!existing.imageUrl || existing.imageUrl.startsWith('editorial:')) && defImg) {
-      map.set(def.sectionKey, {
-        ...existing,
-        imageUrl: defImg,
-      });
-    }
-  });
-  return Array.from(map.values());
 }
 
 function generateReferenceCode(): string {
@@ -327,151 +235,20 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authReady, setAuthReady] = useState(false);
   const [sessionId] = useState<string>(getOrCreateSessionId);
 
-  const [r2Manifest, setR2Manifest] = useState<R2MediaManifest>(() => {
-    const cached = readLocalCache('onelove_cache_r2Manifest', INITIAL_R2_MANIFEST);
-    const hasHttpHero =
-      Array.isArray(cached.heroImages) && cached.heroImages.some((u) => u.startsWith('http'));
-    return {
-      ...INITIAL_R2_MANIFEST,
-      ...cached,
-      heroImages: hasHttpHero ? cached.heroImages : INITIAL_R2_MANIFEST.heroImages,
-      menuImages: { ...INITIAL_R2_MANIFEST.menuImages, ...(cached.menuImages || {}) },
-      eventImages: { ...INITIAL_R2_MANIFEST.eventImages, ...(cached.eventImages || {}) },
-      sectionImages: { ...INITIAL_R2_MANIFEST.sectionImages, ...(cached.sectionImages || {}) },
-    };
-  });
-
-  const [settings, setSettings] = useState<CafeSettings>(() => {
-    const cached = readLocalCache('onelove_cache_settings', INITIAL_SETTINGS);
-    const hasHttpHero =
-      Array.isArray(cached.heroImages) && cached.heroImages.some((u) => u.startsWith('http'));
-    return {
-      ...cached,
-      heroImages: hasHttpHero ? cached.heroImages : DEFAULT_SETTINGS.heroImages,
-      googleMapsEmbedUrl:
-        !cached.googleMapsEmbedUrl || cached.googleMapsEmbedUrl.includes('7.9541,80.7547')
-          ? DEFAULT_SETTINGS.googleMapsEmbedUrl
-          : cached.googleMapsEmbedUrl,
-    };
-  });
-  const [zones, setZones] = useState<SeatingZone[]>(() =>
-    readLocalCache('onelove_cache_zones', DEFAULT_ZONES)
-  );
-  const [tables, setTables] = useState<CafeTable[]>(() =>
-    readLocalCache('onelove_cache_tables', DEFAULT_TABLES)
-  );
+  // Live Firestore state (single source of truth; no localStorage shadow caches)
+  const [settings, setSettings] = useState<CafeSettings>(DEFAULT_SETTINGS);
+  const [zones, setZones] = useState<SeatingZone[]>(DEFAULT_ZONES);
+  const [tables, setTables] = useState<CafeTable[]>(DEFAULT_TABLES);
   const [openingHours, setOpeningHours] = useState<OpeningHoursConfig[]>(DEFAULT_OPENING_HOURS);
   const [blockedDates, setBlockedDates] = useState<BlockedDateRecord[]>([]);
-  const [menuCategories, setMenuCategories] = useState<MenuCategory[]>(() =>
-    readLocalCache('onelove_cache_categories', DEFAULT_MENU_CATEGORIES)
-  );
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(() =>
-    readLocalCache('onelove_cache_menuItems', INITIAL_MENU_ITEMS).map((item) => {
-      const def = INITIAL_MENU_ITEMS.find((d) => d.id === item.id);
-      if ((!item.imageUrl || item.imageUrl.startsWith('editorial:')) && def?.imageUrl) {
-        return { ...item, imageUrl: def.imageUrl };
-      }
-      return item;
-    })
-  );
-  const [gallery, setGallery] = useState<GalleryItem[]>(() =>
-    readLocalCache('onelove_cache_gallery', INITIAL_GALLERY).map((g) => {
-      const def = INITIAL_GALLERY.find((d) => d.id === g.id);
-      if ((!g.imageUrl || g.imageUrl.startsWith('editorial:')) && def?.imageUrl) {
-        return { ...g, imageUrl: def.imageUrl };
-      }
-      return g;
-    })
-  );
-  const [events, setEvents] = useState<CafeEvent[]>(() =>
-    readLocalCache('onelove_cache_events', INITIAL_EVENTS).map((e) => {
-      const def = INITIAL_EVENTS.find((d) => d.id === e.id);
-      if ((!e.imageUrl || e.imageUrl.startsWith('editorial:')) && def?.imageUrl) {
-        return { ...e, imageUrl: def.imageUrl };
-      }
-      return e;
-    })
-  );
-  const [siteContent, setSiteContent] = useState<SiteContentSection[]>(() =>
-    mergeSiteContentWithDefaults(readLocalCache('onelove_cache_siteContent', INITIAL_SITE_CONTENT))
-  );
+  const [menuCategories, setMenuCategories] = useState<MenuCategory[]>(DEFAULT_MENU_CATEGORIES);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [events, setEvents] = useState<CafeEvent[]>([]);
+  const [siteContent, setSiteContent] = useState<SiteContentSection[]>(DEFAULT_SITE_CONTENT);
   const [availability, setAvailability] = useState<AvailabilitySlotRecord[]>([]);
-  const [seoGlobal, setSeoGlobal] = useState<GlobalSeoConfig>(() => {
-    const cached = readLocalCache('onelove_cache_seoGlobal', DEFAULT_GLOBAL_SEO);
-    return {
-      ...DEFAULT_GLOBAL_SEO,
-      ...cached,
-      canonicalDomain: DEFAULT_GLOBAL_SEO.canonicalDomain,
-      brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
-      faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
-      favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
-      favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
-      favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
-      appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
-      defaultTitle:
-        !cached.defaultTitle || cached.defaultTitle.includes('Breakfast, Brunch & Coffee')
-          ? DEFAULT_GLOBAL_SEO.defaultTitle
-          : cached.defaultTitle,
-      defaultDescription:
-        !cached.defaultDescription ||
-        cached.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
-        cached.defaultDescription.includes('Explore our specialty coffee & brunch menu')
-          ? DEFAULT_GLOBAL_SEO.defaultDescription
-          : cached.defaultDescription,
-      telephone:
-        !cached.telephone || cached.telephone === '+94 66 228 6410'
-          ? DEFAULT_GLOBAL_SEO.telephone
-          : cached.telephone,
-      alternateNames: Array.from(
-        new Set([
-          ...(DEFAULT_GLOBAL_SEO.alternateNames || []),
-          ...(cached.alternateNames || []),
-        ])
-      ),
-    };
-  });
-  const [seoPages, setSeoPages] = useState<Record<SeoPageKey, PageSeoConfig>>(() => {
-    const cached = readLocalCache('onelove_cache_seoPages', DEFAULT_PAGE_SEO);
-    const nextPages: Record<SeoPageKey, PageSeoConfig> = { ...DEFAULT_PAGE_SEO };
-    (Object.keys(DEFAULT_PAGE_SEO) as SeoPageKey[]).forEach((key) => {
-      const defPage = DEFAULT_PAGE_SEO[key];
-      const rawPage = cached[key] || defPage;
-      nextPages[key] = {
-        ...defPage,
-        ...rawPage,
-        id: key,
-        routePath: defPage.routePath,
-        canonicalPath: defPage.canonicalPath,
-      };
-    });
-    const homePage = nextPages.home;
-    nextPages.home = {
-      ...homePage,
-      title:
-        !homePage.title || homePage.title.includes('Breakfast, Brunch & Coffee')
-          ? DEFAULT_PAGE_SEO.home.title
-          : homePage.title,
-      ogTitle:
-        !homePage.ogTitle ||
-        homePage.ogTitle.includes('Breakfast, Brunch & Specialty Coffee') ||
-        homePage.ogTitle.includes('Breakfast, Brunch & Coffee')
-          ? DEFAULT_PAGE_SEO.home.ogTitle
-          : homePage.ogTitle,
-      metaDescription:
-        !homePage.metaDescription ||
-        homePage.metaDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
-        homePage.metaDescription.includes('Explore our specialty coffee & brunch menu')
-          ? DEFAULT_PAGE_SEO.home.metaDescription
-          : homePage.metaDescription,
-      ogDescription:
-        !homePage.ogDescription ||
-        homePage.ogDescription.includes('Tropical garden café, specialty Ceylon coffee roastery') ||
-        homePage.ogDescription.includes('Explore our specialty coffee & brunch menu')
-          ? DEFAULT_PAGE_SEO.home.ogDescription
-          : homePage.ogDescription,
-    };
-    return nextPages;
-  });
+  const [seoGlobal, setSeoGlobal] = useState<GlobalSeoConfig>(DEFAULT_GLOBAL_SEO);
+  const [seoPages, setSeoPages] = useState<Record<SeoPageKey, PageSeoConfig>>(DEFAULT_PAGE_SEO);
 
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
   const [inquiries, setInquiries] = useState<InquiryRecord[]>([]);
@@ -479,14 +256,41 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
 
   const autoSeededRef = useRef(false);
-  const autoMigratedLegacyRef = useRef(false);
   const purgingReservationIdsRef = useRef<Set<string>>(new Set());
   const purgingSlotIdsRef = useRef<Set<string>>(new Set());
   const reservationsRef = useRef<ReservationRecord[]>([]);
+  const settingsRef = useRef<CafeSettings>(settings);
+  const menuItemsRef = useRef<MenuItem[]>(menuItems);
+  const galleryRef = useRef<GalleryItem[]>(gallery);
+  const eventsRef = useRef<CafeEvent[]>(events);
+  const siteContentRef = useRef<SiteContentSection[]>(siteContent);
+  const seoGlobalRef = useRef<GlobalSeoConfig>(seoGlobal);
+  const seoPagesRef = useRef<Record<SeoPageKey, PageSeoConfig>>(seoPages);
 
   useEffect(() => {
     reservationsRef.current = reservations;
   }, [reservations]);
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+  useEffect(() => {
+    menuItemsRef.current = menuItems;
+  }, [menuItems]);
+  useEffect(() => {
+    galleryRef.current = gallery;
+  }, [gallery]);
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
+  useEffect(() => {
+    siteContentRef.current = siteContent;
+  }, [siteContent]);
+  useEffect(() => {
+    seoGlobalRef.current = seoGlobal;
+  }, [seoGlobal]);
+  useEffect(() => {
+    seoPagesRef.current = seoPages;
+  }, [seoPages]);
 
   const purgeExpiredReservation = useCallback(async (res: ReservationRecord) => {
     if (!res.id || purgingReservationIdsRef.current.has(res.id)) return;
@@ -502,12 +306,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ]);
       }
     } catch {
-      // Allow retry on next sweep if temporarily offline or concurrent delete failed
       purgingReservationIdsRef.current.delete(res.id);
     }
   }, []);
 
-  // Periodic background sweep: automatically delete reservations from Firestore once their date & time passes
+  // Periodic sweep: automatically delete passed reservations from Firestore
   useEffect(() => {
     const interval = window.setInterval(() => {
       const nowMs = Date.now();
@@ -538,7 +341,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
           if (errMsg.includes('token-service-api') || errMsg.includes('disabled')) {
-            console.warn('Stale auth token detected. Resetting auth session:', errMsg);
             await firebaseSignOut(auth).catch(() => {});
             if (!active) return;
             setUser(null);
@@ -554,7 +356,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!currentUser) {
         autoSeededRef.current = false;
-        r2InitialBackfillDoneRef.current = false;
         setIsAdmin(false);
         setAuthReady(true);
         return;
@@ -570,7 +371,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (isBootstrapAdmin && currentUser.emailVerified) {
-        // Ensure admin document exists in `/admins/${currentUser.uid}` before opening protected listeners
         try {
           const adminDocRef = doc(db, 'admins', currentUser.uid);
           const adminSnap = await getDoc(adminDocRef);
@@ -611,124 +411,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // 2. Cloudflare R2 Media Manifest & Firestore CDN Link Sync
-  const r2ManifestRef = useRef<R2MediaManifest>(r2Manifest);
-  const r2InitialBackfillDoneRef = useRef<boolean>(false);
-  const galleryLoadedFromFirestoreRef = useRef<boolean>(false);
-  useEffect(() => {
-    r2ManifestRef.current = r2Manifest;
-  }, [r2Manifest]);
-
-  const fetchR2Manifest = useCallback(async () => {
-    const applyNormalizedManifest = (m: R2MediaManifest) => {
-      const normalized: R2MediaManifest = {
-        version: typeof m.version === 'number' ? m.version : 1,
-        updatedAt: m.updatedAt || new Date().toISOString(),
-        heroImages: Array.isArray(m.heroImages)
-          ? m.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
-          : [],
-        heroSlideshowSpeedSeconds:
-          typeof m.heroSlideshowSpeedSeconds === 'number' ? m.heroSlideshowSpeedSeconds : 5,
-        floorPlanImageUrl: sanitizeCdnUrl(m.floorPlanImageUrl),
-        menuImages: m.menuImages && typeof m.menuImages === 'object' ? m.menuImages : {},
-        galleryItems: Array.isArray(m.galleryItems) ? m.galleryItems : [],
-        eventImages: m.eventImages && typeof m.eventImages === 'object' ? m.eventImages : {},
-        sectionImages:
-          m.sectionImages && typeof m.sectionImages === 'object' ? m.sectionImages : {},
-        seoImages:
-          m.seoImages && typeof m.seoImages === 'object'
-            ? {
-                defaultOgImageUrl: sanitizeCdnUrl(m.seoImages.defaultOgImageUrl),
-                brandLogoUrl: sanitizeCdnUrl(m.seoImages.brandLogoUrl),
-                pageOgImages: m.seoImages.pageOgImages || {},
-              }
-            : { defaultOgImageUrl: '', brandLogoUrl: '', pageOgImages: {} },
-      };
-      r2ManifestRef.current = normalized;
-      setR2Manifest(normalized);
-      writeLocalCache('onelove_cache_r2Manifest', normalized);
-    };
-
-    try {
-      const res = await fetch('/api/storage/manifest?refresh=1');
-      const contentType = res.headers.get('content-type') || '';
-      if (res.ok && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data?.ok && data?.manifest) {
-          const m = data.manifest as R2MediaManifest;
-          const isBlankMemoryFallback = data.source === 'memory' && (m.version || 1) <= 1;
-          if (!isBlankMemoryFallback) {
-            applyNormalizedManifest(m);
-            return;
-          }
-        }
-      }
-    } catch {
-      // Fall through to direct CDN fetch
-    }
-
-    try {
-      const cdnRes = await fetch(
-        `https://cdn.onelovecafesigiriya.com/manifest/site-media.json?t=${Date.now()}`
-      );
-      if (cdnRes.ok) {
-        const m = (await cdnRes.json()) as R2MediaManifest;
-        if (m && typeof m === 'object') {
-          applyNormalizedManifest(m);
-        }
-      }
-    } catch {
-      // If browser CORS blocks direct JSON fetch, Firestore real-time R2 CDN links handle all images
-    }
-  }, []);
-
-  const updateR2Manifest = useCallback(
-    async (
-      updater: (prev: R2MediaManifest) => R2MediaManifest,
-      deleteUrls: string[] = []
-    ): Promise<R2MediaManifest> => {
-      // Admin writes are authoritative; prevent any boot-time backfill from running after a save
-      r2InitialBackfillDoneRef.current = true;
-
-      const next = updater(r2ManifestRef.current);
-      next.updatedAt = new Date().toISOString();
-      r2ManifestRef.current = next;
-      setR2Manifest(next);
-      writeLocalCache('onelove_cache_r2Manifest', next);
-
-      try {
-        const res = await fetch('/api/storage/manifest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            manifest: next,
-            deleteUrls: deleteUrls.filter(
-              (u) => typeof u === 'string' && u.startsWith('http') && !u.startsWith('editorial:')
-            ),
-          }),
-        });
-        const contentType = res.headers.get('content-type') || '';
-        if (res.ok && contentType.includes('application/json')) {
-          const data = await res.json();
-          if (data.ok && data.manifest) {
-            r2ManifestRef.current = data.manifest;
-            setR2Manifest(data.manifest);
-            writeLocalCache('onelove_cache_r2Manifest', data.manifest);
-          }
-        }
-      } catch (err) {
-        console.warn('R2 manifest sync note:', err);
-      }
-      return next;
-    },
-    []
-  );
-
+  // Direct Cloudflare R2 object cleanup helper
   const deleteMediaFromR2 = useCallback(async (urlOrUrls: string | string[]) => {
     const rawList = Array.isArray(urlOrUrls) ? urlOrUrls : [urlOrUrls];
-    const validUrls = rawList.filter(
-      (u) => typeof u === 'string' && u.startsWith('http') && !u.startsWith('editorial:')
-    );
+    const validUrls = rawList
+      .map((u) => sanitizeCdnUrl(u))
+      .filter((u) => Boolean(u));
     if (validUrls.length === 0) return;
     try {
       await fetch('/api/storage/delete', {
@@ -741,11 +429,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  useEffect(() => {
-    fetchR2Manifest();
-  }, [fetchR2Manifest]);
-
-  // 2b. Real-Time Firestore Listeners (Reads R2 CDN links + Text, Pricing, Tables, Hours & Reservations)
+  // 2. Direct Real-Time Firestore Listeners (Single Source of Truth -> Live Site)
   useEffect(() => {
     const unsubs: (() => void)[] = [];
 
@@ -759,7 +443,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const cleanHeroLinks = Array.isArray(data.heroImages)
               ? data.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
               : [];
-            const nextSettings: CafeSettings = {
+            setSettings({
               ...DEFAULT_SETTINGS,
               id: mainDoc.id,
               ...data,
@@ -773,11 +457,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 !data.googleMapsEmbedUrl || data.googleMapsEmbedUrl.includes('7.9541,80.7547')
                   ? DEFAULT_SETTINGS.googleMapsEmbedUrl
                   : data.googleMapsEmbedUrl,
-            };
-            setSettings(nextSettings);
-            writeLocalCache('onelove_cache_settings', nextSettings);
+            });
           } else if (!snap.metadata.fromCache) {
-            setSettings(INITIAL_SETTINGS);
+            setSettings(DEFAULT_SETTINGS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'settings')
@@ -793,7 +475,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .map((d) => ({ id: d.id, ...(d.data() as Omit<SeatingZone, 'id'>) }))
               .sort((a, b) => a.sortOrder - b.sortOrder);
             setZones(list);
-            writeLocalCache('onelove_cache_zones', list);
+          } else if (!snap.metadata.fromCache) {
+            setZones([]);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'seatingZones')
@@ -809,7 +492,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .map((d) => ({ id: d.id, ...(d.data() as Omit<CafeTable, 'id'>) }))
               .sort((a, b) => a.number - b.number);
             setTables(list);
-            writeLocalCache('onelove_cache_tables', list);
+          } else if (!snap.metadata.fromCache) {
+            setTables([]);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'tables')
@@ -826,6 +510,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...(d.data() as Omit<OpeningHoursConfig, 'id'>),
             }));
             setOpeningHours(list);
+          } else if (!snap.metadata.fromCache) {
+            setOpeningHours(DEFAULT_OPENING_HOURS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'openingHours')
@@ -862,7 +548,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               })
               .sort((a, b) => a.sortOrder - b.sortOrder);
             setMenuCategories(list);
-            writeLocalCache('onelove_cache_categories', list);
+          } else if (!snap.metadata.fromCache) {
+            setMenuCategories([]);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'menuCategories')
@@ -873,30 +560,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'menuItems'),
         (snap) => {
-          if (!snap.empty) {
-            const deletedIds = new Set<string>(
-              readLocalCache<string[]>('onelove_deleted_menu_ids', [])
-            );
-            const list = snap.docs
-              .filter((d) => !deletedIds.has(d.id))
-              .map((d) => {
-                const raw = d.data() as Omit<MenuItem, 'id'>;
-                return {
-                  id: d.id,
-                  ...raw,
-                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
-                };
-              });
-            const existingIds = new Set(list.map((m) => m.id));
-            const missingDefaults = INITIAL_MENU_ITEMS.filter(
-              (def) => !existingIds.has(def.id) && !deletedIds.has(def.id)
-            );
-            const merged = [...list, ...missingDefaults];
-            setMenuItems(merged);
-            writeLocalCache('onelove_cache_menuItems', merged);
-          } else if (!snap.metadata.fromCache) {
-            setMenuItems(INITIAL_MENU_ITEMS);
-          }
+          const list = snap.docs.map((d) => {
+            const raw = d.data() as Omit<MenuItem, 'id'>;
+            return {
+              id: d.id,
+              ...raw,
+              imageUrl: sanitizeCdnUrl(raw.imageUrl),
+            };
+          });
+          setMenuItems(list);
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'menuItems')
       )
@@ -906,29 +578,17 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'gallery'),
         (snap) => {
-          const deletedIds = new Set<string>(
-            readLocalCache<string[]>('onelove_deleted_gallery_ids', [])
-          );
-          if (!snap.empty) {
-            galleryLoadedFromFirestoreRef.current = true;
-            const list = snap.docs
-              .filter((d) => !deletedIds.has(d.id))
-              .map((d) => {
-                const raw = d.data() as Omit<GalleryItem, 'id'>;
-                return {
-                  id: d.id,
-                  ...raw,
-                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
-                };
-              })
-              .sort((a, b) => a.sortOrder - b.sortOrder);
-            setGallery(list);
-            writeLocalCache('onelove_cache_gallery', list);
-          } else if (!snap.metadata.fromCache) {
-            galleryLoadedFromFirestoreRef.current = true;
-            setGallery([]);
-            writeLocalCache('onelove_cache_gallery', []);
-          }
+          const list = snap.docs
+            .map((d) => {
+              const raw = d.data() as Omit<GalleryItem, 'id'>;
+              return {
+                id: d.id,
+                ...raw,
+                imageUrl: sanitizeCdnUrl(raw.imageUrl),
+              };
+            })
+            .sort((a, b) => a.sortOrder - b.sortOrder);
+          setGallery(list);
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'gallery')
       )
@@ -938,30 +598,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'events'),
         (snap) => {
-          if (!snap.empty) {
-            const deletedIds = new Set<string>(
-              readLocalCache<string[]>('onelove_deleted_event_ids', [])
-            );
-            const list = snap.docs
-              .filter((d) => !deletedIds.has(d.id))
-              .map((d) => {
-                const raw = d.data() as Omit<CafeEvent, 'id'>;
-                return {
-                  id: d.id,
-                  ...raw,
-                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
-                };
-              });
-            const existingIds = new Set(list.map((e) => e.id));
-            const missingDefaults = INITIAL_EVENTS.filter(
-              (def) => !existingIds.has(def.id) && !deletedIds.has(def.id)
-            );
-            const merged = [...list, ...missingDefaults];
-            setEvents(merged);
-            writeLocalCache('onelove_cache_events', merged);
-          } else if (!snap.metadata.fromCache) {
-            setEvents(INITIAL_EVENTS);
-          }
+          const list = snap.docs.map((d) => {
+            const raw = d.data() as Omit<CafeEvent, 'id'>;
+            return {
+              id: d.id,
+              ...raw,
+              imageUrl: sanitizeCdnUrl(raw.imageUrl),
+            };
+          });
+          setEvents(list);
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'events')
       )
@@ -971,61 +616,56 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'siteContent'),
         (snap) => {
-          if (!snap.empty) {
-            const byKey = new Map<string, SiteContentSection>();
-            const timestampByKey = new Map<string, { ms: number; isCanonical: boolean }>();
+          const byKey = new Map<string, SiteContentSection>();
+          const timestampByKey = new Map<string, { ms: number; isCanonical: boolean }>();
 
-            INITIAL_SITE_CONTENT.forEach((def) => {
-              byKey.set(def.sectionKey, { ...def, imageUrl: sanitizeCdnUrl(def.imageUrl) });
-              timestampByKey.set(def.sectionKey, { ms: -1, isCanonical: false });
+          // Base structure keys exist for sections not yet edited; Firestore docs always override
+          DEFAULT_SITE_CONTENT.forEach((def) => {
+            byKey.set(def.sectionKey, { ...def, imageUrl: sanitizeCdnUrl(def.imageUrl) });
+            timestampByKey.set(def.sectionKey, { ms: -1, isCanonical: false });
+          });
+
+          snap.docs
+            .filter((d) => !d.id.startsWith('sec_hero_slide_'))
+            .forEach((d) => {
+              const raw = d.data() as Omit<SiteContentSection, 'id'> & {
+                updatedAt?: { toMillis?: () => number; seconds?: number };
+              };
+              const key = raw.sectionKey || d.id.replace(/^sec_/, '');
+              if (key.startsWith('hero_slide_')) return;
+
+              const updatedMs =
+                typeof raw.updatedAt?.toMillis === 'function'
+                  ? raw.updatedAt.toMillis()
+                  : typeof raw.updatedAt?.seconds === 'number'
+                  ? raw.updatedAt.seconds * 1000
+                  : 0;
+              const isCanonical = d.id === key;
+              const prevMeta = timestampByKey.get(key);
+
+              const shouldReplace =
+                !prevMeta ||
+                prevMeta.ms < 0 ||
+                updatedMs > prevMeta.ms ||
+                (updatedMs === prevMeta.ms && isCanonical && !prevMeta.isCanonical);
+
+              if (shouldReplace) {
+                timestampByKey.set(key, { ms: updatedMs, isCanonical });
+                byKey.set(key, {
+                  id: d.id,
+                  sectionKey: key,
+                  kicker: raw.kicker ?? '',
+                  heading: raw.heading ?? '',
+                  subheading: raw.subheading ?? '',
+                  body: raw.body ?? '',
+                  ctaLabel: raw.ctaLabel ?? '',
+                  ctaLink: raw.ctaLink ?? '',
+                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
+                });
+              }
             });
 
-            snap.docs
-              .filter((d) => !d.id.startsWith('sec_hero_slide_'))
-              .forEach((d) => {
-                const raw = d.data() as Omit<SiteContentSection, 'id'> & {
-                  updatedAt?: { toMillis?: () => number; seconds?: number };
-                };
-                const key = raw.sectionKey || d.id.replace(/^sec_/, '');
-                if (key.startsWith('hero_slide_')) return;
-
-                const updatedMs =
-                  typeof raw.updatedAt?.toMillis === 'function'
-                    ? raw.updatedAt.toMillis()
-                    : typeof raw.updatedAt?.seconds === 'number'
-                    ? raw.updatedAt.seconds * 1000
-                    : 0;
-                const isCanonical = d.id === key;
-                const prevMeta = timestampByKey.get(key);
-
-                const shouldReplace =
-                  !prevMeta ||
-                  prevMeta.ms < 0 ||
-                  updatedMs > prevMeta.ms ||
-                  (updatedMs === prevMeta.ms && isCanonical && !prevMeta.isCanonical);
-
-                if (shouldReplace) {
-                  timestampByKey.set(key, { ms: updatedMs, isCanonical });
-                  byKey.set(key, {
-                    id: d.id,
-                    sectionKey: key,
-                    kicker: raw.kicker ?? '',
-                    heading: raw.heading ?? '',
-                    subheading: raw.subheading ?? '',
-                    body: raw.body ?? '',
-                    ctaLabel: raw.ctaLabel ?? '',
-                    ctaLink: raw.ctaLink ?? '',
-                    imageUrl: sanitizeCdnUrl(raw.imageUrl),
-                  });
-                }
-              });
-
-            const merged = Array.from(byKey.values());
-            setSiteContent(merged);
-            writeLocalCache('onelove_cache_siteContent', merged);
-          } else if (!snap.metadata.fromCache) {
-            setSiteContent(INITIAL_SITE_CONTENT);
-          }
+          setSiteContent(Array.from(byKey.values()));
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'siteContent')
       )
@@ -1059,8 +699,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
-    // Real-time Reservations Sync: Automatically deletes passed reservations from Firestore
-    // and frees tables when reservations are cancelled or rejected
     const releasedReservationIds = new Set<string>();
     unsubs.push(
       onSnapshot(
@@ -1138,7 +776,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
-    // 11. Global SEO Configuration Real-Time Listener
     unsubs.push(
       onSnapshot(
         collection(db, 'seoConfig'),
@@ -1146,41 +783,19 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const mainDoc = snap.docs.find((d) => d.id === 'main');
           if (mainDoc) {
             const data = mainDoc.data() as Omit<GlobalSeoConfig, 'id'>;
-            const mergedGlobal: GlobalSeoConfig = {
+            const faviconUrl = sanitizeCdnUrl(data.faviconSourceUrl);
+            setSeoGlobal({
               ...DEFAULT_GLOBAL_SEO,
               ...data,
               id: 'main',
-              defaultOgImageUrl:
-                sanitizeCdnUrl(data.defaultOgImageUrl) || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
-              brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
-              faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
-              favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
-              favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
-              favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
-              appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
-              defaultTitle:
-                !data.defaultTitle || data.defaultTitle.includes('Breakfast, Brunch & Coffee')
-                  ? DEFAULT_GLOBAL_SEO.defaultTitle
-                  : data.defaultTitle,
-              defaultDescription:
-                !data.defaultDescription ||
-                data.defaultDescription.includes('Enjoy specialty coffee, fresh smoothie bowls') ||
-                data.defaultDescription.includes('Explore our specialty coffee & brunch menu')
-                  ? DEFAULT_GLOBAL_SEO.defaultDescription
-                  : data.defaultDescription,
-              telephone:
-                !data.telephone || data.telephone === '+94 66 228 6410'
-                  ? DEFAULT_GLOBAL_SEO.telephone
-                  : data.telephone,
-              alternateNames: Array.from(
-                new Set([
-                  ...(DEFAULT_GLOBAL_SEO.alternateNames || []),
-                  ...(data.alternateNames || []),
-                ])
-              ),
-            };
-            setSeoGlobal(mergedGlobal);
-            writeLocalCache('onelove_cache_seoGlobal', mergedGlobal);
+              defaultOgImageUrl: sanitizeCdnUrl(data.defaultOgImageUrl),
+              brandLogoUrl: sanitizeCdnUrl(data.brandLogoUrl),
+              faviconSourceUrl: faviconUrl,
+              favicon48Url: sanitizeCdnUrl(data.favicon48Url) || faviconUrl,
+              favicon96Url: sanitizeCdnUrl(data.favicon96Url) || faviconUrl,
+              favicon192Url: sanitizeCdnUrl(data.favicon192Url) || faviconUrl,
+              appleTouchIconUrl: sanitizeCdnUrl(data.appleTouchIconUrl) || faviconUrl,
+            });
           } else if (!snap.metadata.fromCache) {
             setSeoGlobal(DEFAULT_GLOBAL_SEO);
           }
@@ -1189,64 +804,27 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
-    // 12. Per-Page SEO Configuration Real-Time Listener
     unsubs.push(
       onSnapshot(
         collection(db, 'seoPages'),
         (snap) => {
           if (!snap.empty) {
-            const nextMap: Record<SeoPageKey, PageSeoConfig> = { ...DEFAULT_PAGE_SEO };
+            const nextPages: Record<SeoPageKey, PageSeoConfig> = { ...DEFAULT_PAGE_SEO };
             snap.docs.forEach((d) => {
               const key = d.id as SeoPageKey;
-              if (key in nextMap) {
-                const rawPage = d.data() as Omit<PageSeoConfig, 'id'>;
-                const mergedPage: PageSeoConfig = {
-                  ...DEFAULT_PAGE_SEO[key],
-                  ...rawPage,
+              if (key in nextPages) {
+                const raw = d.data() as Omit<PageSeoConfig, 'id'>;
+                nextPages[key] = {
+                  ...nextPages[key],
+                  ...raw,
                   id: key,
                   routePath: DEFAULT_PAGE_SEO[key].routePath,
                   canonicalPath: DEFAULT_PAGE_SEO[key].canonicalPath,
-                  ogImageUrl:
-                    sanitizeCdnUrl(rawPage.ogImageUrl) || DEFAULT_PAGE_SEO[key].ogImageUrl,
+                  ogImageUrl: sanitizeCdnUrl(raw.ogImageUrl),
                 };
-                if (key === 'home') {
-                  if (
-                    !mergedPage.title ||
-                    mergedPage.title.includes('Breakfast, Brunch & Coffee')
-                  ) {
-                    mergedPage.title = DEFAULT_PAGE_SEO.home.title;
-                  }
-                  if (
-                    !mergedPage.ogTitle ||
-                    mergedPage.ogTitle.includes('Breakfast, Brunch & Specialty Coffee') ||
-                    mergedPage.ogTitle.includes('Breakfast, Brunch & Coffee')
-                  ) {
-                    mergedPage.ogTitle = DEFAULT_PAGE_SEO.home.ogTitle;
-                  }
-                  if (
-                    !mergedPage.metaDescription ||
-                    mergedPage.metaDescription.includes(
-                      'Enjoy specialty coffee, fresh smoothie bowls'
-                    ) ||
-                    mergedPage.metaDescription.includes('Explore our specialty coffee & brunch menu')
-                  ) {
-                    mergedPage.metaDescription = DEFAULT_PAGE_SEO.home.metaDescription;
-                  }
-                  if (
-                    !mergedPage.ogDescription ||
-                    mergedPage.ogDescription.includes(
-                      'Tropical garden café, specialty Ceylon coffee roastery'
-                    ) ||
-                    mergedPage.ogDescription.includes('Explore our specialty coffee & brunch menu')
-                  ) {
-                    mergedPage.ogDescription = DEFAULT_PAGE_SEO.home.ogDescription;
-                  }
-                }
-                nextMap[key] = mergedPage;
               }
             });
-            setSeoPages(nextMap);
-            writeLocalCache('onelove_cache_seoPages', nextMap);
+            setSeoPages(nextPages);
           } else if (!snap.metadata.fromCache) {
             setSeoPages(DEFAULT_PAGE_SEO);
           }
@@ -1258,7 +836,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       unsubs.forEach((u) => u());
     };
-  }, []);
+  }, [purgeExpiredReservation]);
 
   // Cloudflare R2 Storage Status
   const [storageStatus, setStorageStatus] = useState<{
@@ -1266,7 +844,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     provider: string;
     bucket?: string | null;
     publicUrl?: string | null;
-    manifestUrl?: string | null;
   } | null>(null);
 
   const checkStorageStatus = useCallback(async () => {
@@ -1277,14 +854,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await res.json();
         setStorageStatus({
           configured: Boolean(data.configured),
-          provider: data.provider || 'inline',
+          provider: data.provider || 'unconfigured',
           bucket: data.bucket || null,
           publicUrl: data.publicUrl || null,
-          manifestUrl: data.manifestUrl || null,
         });
       }
     } catch {
-      setStorageStatus({ configured: false, provider: 'inline' });
+      setStorageStatus({ configured: false, provider: 'unconfigured' });
     }
   }, []);
 
@@ -1292,22 +868,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkStorageStatus();
   }, [checkStorageStatus]);
 
-  // Seed initial sanctuary data with R2 CDN links if present in r2Manifest
+  // Seed initial sanctuary data directly to Firestore if empty
   const seedDatabaseIfNeeded = useCallback(async () => {
     if (!isAdmin) return;
     try {
-      const m = r2ManifestRef.current;
       const { id: settingId, ...settingData } = DEFAULT_SETTINGS;
-      const seedHero =
-        Array.isArray(m.heroImages) && m.heroImages.length > 0
-          ? m.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
-          : (settingData.heroImages || []).map((u) => sanitizeCdnUrl(u)).filter(Boolean);
       await setDoc(doc(db, 'settings', settingId), {
         ...settingData,
-        heroImages: seedHero,
-        heroSlideshowSpeedSeconds:
-          m.heroSlideshowSpeedSeconds || settingData.heroSlideshowSpeedSeconds || 5,
-        floorPlanImageUrl: sanitizeCdnUrl(m.floorPlanImageUrl),
+        heroImages: (settingData.heroImages || []).map((u) => sanitizeCdnUrl(u)).filter(Boolean),
+        floorPlanImageUrl: sanitizeCdnUrl(settingData.floorPlanImageUrl),
         updatedAt: serverTimestamp(),
       });
 
@@ -1333,39 +902,20 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       for (const item of DEFAULT_MENU_ITEMS) {
         const { id, ...data } = item;
-        const r2Img = sanitizeCdnUrl(m.menuImages?.[id]) || sanitizeCdnUrl(data.imageUrl);
         await setDoc(doc(db, 'menuItems', id), {
           ...data,
-          imageUrl: r2Img,
+          imageUrl: sanitizeCdnUrl(data.imageUrl),
           updatedAt: serverTimestamp(),
         });
       }
 
-      const gallerySource =
-        Array.isArray(m.galleryItems) && m.galleryItems.length > 0
-          ? m.galleryItems
-          : DEFAULT_GALLERY;
-      for (const gItem of gallerySource) {
-        const validCategories = [
-          'Architecture',
-          'Culinary',
-          'Coffee & Botanicals',
-          'Evening Sanctuary',
-          'Sigiriya Surroundings',
-        ] as const;
-        const safeCat = validCategories.includes(gItem.category as (typeof validCategories)[number])
-          ? gItem.category
-          : 'Architecture';
-        const validRatios = ['16:9', '4:3', '3:4', '1:1'] as const;
-        const safeRatio = validRatios.includes(gItem.aspectRatio as (typeof validRatios)[number])
-          ? gItem.aspectRatio
-          : '4:3';
+      for (const gItem of DEFAULT_GALLERY) {
         await setDoc(doc(db, 'gallery', gItem.id), {
-          title: (gItem.title || 'Sanctuary Moment').slice(0, 100),
-          category: safeCat,
-          caption: (gItem.caption || '').slice(0, 300),
+          title: gItem.title.slice(0, 100),
+          category: gItem.category,
+          caption: gItem.caption.slice(0, 300),
           imageUrl: sanitizeCdnUrl(gItem.imageUrl),
-          aspectRatio: safeRatio,
+          aspectRatio: gItem.aspectRatio,
           isFeatured: Boolean(gItem.isFeatured),
           sortOrder: Number(gItem.sortOrder) || 1,
           createdAt: serverTimestamp(),
@@ -1374,21 +924,18 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       for (const evt of DEFAULT_EVENTS) {
         const { id, ...data } = evt;
-        const r2Img = sanitizeCdnUrl(m.eventImages?.[id]) || sanitizeCdnUrl(data.imageUrl);
         await setDoc(doc(db, 'events', id), {
           ...data,
-          imageUrl: r2Img,
+          imageUrl: sanitizeCdnUrl(data.imageUrl),
           updatedAt: serverTimestamp(),
         });
       }
 
       for (const sc of DEFAULT_SITE_CONTENT) {
         const { id, ...data } = sc;
-        const r2Img =
-          sanitizeCdnUrl(m.sectionImages?.[data.sectionKey]) || sanitizeCdnUrl(data.imageUrl);
         await setDoc(doc(db, 'siteContent', id), {
           ...data,
-          imageUrl: r2Img,
+          imageUrl: sanitizeCdnUrl(data.imageUrl),
           updatedAt: serverTimestamp(),
         });
       }
@@ -1397,14 +944,14 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'SEED_SANCTUARY_DATA',
         'settings',
         'main',
-        'Initialized OneLove Café Sigiriya data with R2 CDN image links in Firestore'
+        'Initialized OneLove Café Sigiriya data in Firestore'
       );
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'seedDatabase');
     }
   }, [isAdmin]);
 
-  // 3. Protected Admin Real-Time Listeners & Auto-Bootstrap Seeding
+  // 3. Protected Admin Real-Time Listeners & First-Time Auto-Bootstrap Seeding
   useEffect(() => {
     if (!authReady || !isAdmin) {
       setInquiries([]);
@@ -1413,41 +960,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Automatically seed initial collections if Firestore is completely empty on first admin login,
-    // and ensure the 4 new default dishes for the 4x4 grid are added once if upgrading from 12 items.
     if (!autoSeededRef.current) {
       autoSeededRef.current = true;
       getDoc(doc(db, 'settings', 'main'))
         .then(async (snap) => {
           if (!snap.exists()) {
             await seedDatabaseIfNeeded().catch(() => {});
-          } else {
-            const newFourIds = [
-              'item_haputale_coldbrew',
-              'item_pol_roti_brunch',
-              'item_seared_modha_fish',
-              'item_passionfruit_curd_tart',
-            ];
-            const checkDoc = await getDoc(doc(db, 'menuItems', newFourIds[0]));
-            const upgradedFlag =
-              typeof window !== 'undefined'
-                ? window.localStorage.getItem('onelove_4x4_grid_seeded')
-                : '1';
-            if (!checkDoc.exists() && !upgradedFlag) {
-              for (const defItem of DEFAULT_MENU_ITEMS) {
-                if (newFourIds.includes(defItem.id)) {
-                  const { id: did, ...ddata } = defItem;
-                  await setDoc(doc(db, 'menuItems', did), {
-                    ...ddata,
-                    imageUrl: '',
-                    updatedAt: serverTimestamp(),
-                  }).catch(() => {});
-                }
-              }
-              if (typeof window !== 'undefined') {
-                window.localStorage.setItem('onelove_4x4_grid_seeded', '1');
-              }
-            }
           }
         })
         .catch(() => {});
@@ -1508,11 +1026,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOutAdmin = useCallback(async () => {
     autoSeededRef.current = false;
-    r2InitialBackfillDoneRef.current = false;
     await firebaseSignOut(auth);
   }, []);
 
-  // Instant 10-minute table hold (validates live in-memory state in 0ms and syncs hold to Firestore in parallel)
+  // Direct Firestore Table Hold
   const holdTableSlot = useCallback(
     async (date: string, time: string, tableId: string): Promise<HoldResult> => {
       const safeDate = (date || '').trim().slice(0, 10);
@@ -1526,7 +1043,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const holdDurationMs = (settings.holdDurationMinutes || 10) * 60 * 1000;
       const expiresAtMs = Math.round(nowMs + holdDurationMs);
 
-      // 1. Instant local check against real-time onSnapshot reservations & availability
       const hasActiveReservation = reservations.some(
         (r) =>
           r.date === safeDate &&
@@ -1552,7 +1068,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('This table is currently being held by another guest.');
       }
 
-      // 2. Optimistically update local availability state immediately
       setAvailability((prev) => {
         const filtered = prev.filter((s) => s.id !== slotId);
         return [
@@ -1570,7 +1085,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ];
       });
 
-      // 3. Persist hold & availability lock to Firestore in the background without blocking Step 4 -> Step 5 UI transition
       Promise.all([
         setDoc(slotRef, {
           date: safeDate,
@@ -1600,7 +1114,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [sessionId, settings.holdDurationMinutes, reservations, availability]
   );
 
-  // Direct Firestore Reservation Confirmation (Fast Parallel Write + Instant Optimistic State)
+  // Direct Firestore Reservation Confirmation
   const confirmReservation = useCallback(
     async (input: ConfirmReservationInput): Promise<ReservationRecord> => {
       const safeDate = (input.date || '').trim().slice(0, 10);
@@ -1661,23 +1175,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'confirmed',
       };
 
-      // 1. Optimistically update local state & cache voucher immediately
-      setReservations((prev) => [
-        confirmedRecord,
-        ...prev.filter((r) => r.id !== reservationId),
-      ]);
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem(
-            `onelove_voucher_${referenceCode}`,
-            JSON.stringify(confirmedRecord)
-          );
-        } catch {
-          // ignore localStorage quota errors
-        }
-      }
-
-      // 2. Write reservation & availability slot to Firestore in parallel
       const reservationWritePromise = setDoc(reservationRef, {
         referenceCode,
         date: safeDate,
@@ -1719,35 +1216,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         handleFirestoreError(error, OperationType.CREATE, `reservations/${reservationId}`);
       }
 
-      // 3. Fire optional Backend API / Notification Call in background (never blocks UI)
-      fetch('/api/reservations/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: safeDate,
-          time: safeTime,
-          servicePeriod: safeServicePeriod,
-          partySize: safePartySize,
-          tableId: safeTableId,
-          tableLabel: safeTableLabel,
-          zoneId: safeZoneId,
-          zoneName: safeZoneName,
-          guestName: safeGuestName,
-          guestEmail: safeGuestEmail,
-          whatsapp: safeWhatsapp,
-          country: safeCountry,
-          occasion: safeOccasion || 'None',
-          dietaryNotes: safeDietaryNotes,
-          specialRequests: safeSpecialRequests,
-        }),
-      }).catch(() => {});
-
       return confirmedRecord;
     },
     [sessionId]
   );
 
-  // Public Concierge Inquiry Submission (Direct Firestore Write + Non-blocking Background API)
+  // Direct Firestore Concierge Inquiry Submission
   const submitInquiry = useCallback(
     async (input: {
       name: string;
@@ -1787,33 +1261,16 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `inquiries/${inquiryId}`);
       }
-
-      // Non-blocking background notification/validation call
-      fetch('/api/inquiries/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: safeName,
-          email: safeEmail,
-          phone: safePhone,
-          subject: safeSubject,
-          message: safeMessage,
-        }),
-      }).catch(() => {});
     },
     []
   );
 
-  // Admin Operations
+  // Admin Operations (Direct Admin Panel -> Firestore & R2 -> Live Site)
   const updateReservationStatus = useCallback(
     async (reservation: ReservationRecord, newStatus: ReservationRecord['status']) => {
       const normalizedTime = reservation.time.replace(/[^a-zA-Z0-9]/g, '-');
       const slotId = `${reservation.date}_${normalizedTime}_${reservation.tableId}`;
       try {
-        setReservations((prev) =>
-          prev.map((r) => (r.id === reservation.id ? { ...r, status: newStatus } : r))
-        );
-
         const existingSnap = await getDoc(doc(db, 'reservations', reservation.id));
         const createdAtVal = existingSnap.exists()
           ? existingSnap.data().createdAt
@@ -1878,16 +1335,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const safeLabel = (data.label || 'Table').trim().slice(0, 30) || 'Table';
       const safeNumber = Math.max(1, Math.round(Number(data.number) || 1));
       const safeCapacity = Math.max(1, Math.round(Number(data.capacity) || 2));
-      const safeMinGuests = Math.max(1, Math.min(safeCapacity, Math.round(Number(data.minGuests) || 1)));
-      const normalizedTable: CafeTable = {
-        ...table,
-        label: safeLabel,
-        number: safeNumber,
-        capacity: safeCapacity,
-        minGuests: safeMinGuests,
-        x: Math.max(0, Math.min(100, Number(data.x) || 50)),
-        y: Math.max(0, Math.min(100, Number(data.y) || 50)),
-      };
+      const safeMinGuests = Math.max(
+        1,
+        Math.min(safeCapacity, Math.round(Number(data.minGuests) || 1))
+      );
 
       await setDoc(doc(db, 'tables', id), {
         label: safeLabel,
@@ -1897,22 +1348,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         zoneId: (data.zoneId || 'zone_garden').trim().slice(0, 40) || 'zone_garden',
         zoneName: (data.zoneName || 'Garden Sanctuary').trim().slice(0, 60) || 'Garden Sanctuary',
         shape: data.shape,
-        x: normalizedTable.x,
-        y: normalizedTable.y,
+        x: Math.max(0, Math.min(100, Number(data.x) || 50)),
+        y: Math.max(0, Math.min(100, Number(data.y) || 50)),
         isVip: Boolean(data.isVip),
         isActive: Boolean(data.isActive),
         notes: (data.notes || '').slice(0, 200),
         updatedAt: serverTimestamp(),
-      });
-
-      setTables((prev) => {
-        const exists = prev.some((t) => t.id === table.id);
-        const updated = exists
-          ? prev.map((t) => (t.id === table.id ? normalizedTable : t))
-          : [...prev, normalizedTable];
-        const sorted = updated.sort((a, b) => a.number - b.number);
-        writeLocalCache('onelove_cache_tables', sorted);
-        return sorted;
       });
 
       await logAdminAction('SAVE_TABLE', 'tables', id, `Updated floor plan table ${safeLabel}`);
@@ -1924,11 +1365,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteTable = useCallback(async (tableId: string) => {
     try {
       await deleteDoc(doc(db, 'tables', tableId));
-      setTables((prev) => {
-        const next = prev.filter((t) => t.id !== tableId);
-        writeLocalCache('onelove_cache_tables', next);
-        return next;
-      });
       await logAdminAction('DELETE_TABLE', 'tables', tableId, `Deleted table ${tableId}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `tables/${tableId}`);
@@ -1940,7 +1376,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { id, ...data } = zone;
       const safeName = (data.name || 'Sanctuary Zone').trim().slice(0, 60) || 'Sanctuary Zone';
       const safeSortOrder = Math.max(0, Math.round(Number(data.sortOrder) || 1));
-      const normalizedZone: SeatingZone = { ...zone, name: safeName, sortOrder: safeSortOrder };
 
       await setDoc(doc(db, 'seatingZones', id), {
         name: safeName,
@@ -1952,16 +1387,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: serverTimestamp(),
       });
 
-      setZones((prev) => {
-        const exists = prev.some((z) => z.id === zone.id);
-        const updated = exists
-          ? prev.map((z) => (z.id === zone.id ? normalizedZone : z))
-          : [...prev, normalizedZone];
-        const sorted = updated.sort((a, b) => a.sortOrder - b.sortOrder);
-        writeLocalCache('onelove_cache_zones', sorted);
-        return sorted;
-      });
-
       await logAdminAction('SAVE_ZONE', 'seatingZones', id, `Updated seating zone ${safeName}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `seatingZones/${zone.id}`);
@@ -1971,11 +1396,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteZone = useCallback(async (zoneId: string) => {
     try {
       await deleteDoc(doc(db, 'seatingZones', zoneId));
-      setZones((prev) => {
-        const next = prev.filter((z) => z.id !== zoneId);
-        writeLocalCache('onelove_cache_zones', next);
-        return next;
-      });
       await logAdminAction('DELETE_ZONE', 'seatingZones', zoneId, `Deleted seating zone ${zoneId}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `seatingZones/${zoneId}`);
@@ -1993,11 +1413,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         60,
         Math.max(5, Math.round(Number(data.gracePeriodMinutes) || 15))
       );
-      const normalizedConfig: OpeningHoursConfig = {
-        ...config,
-        slotDurationMinutes: safeSlotDuration,
-        gracePeriodMinutes: safeGracePeriod,
-      };
 
       await setDoc(doc(db, 'openingHours', id), {
         dayOfWeek: (data.dayOfWeek || 'Monday').trim().slice(0, 20) || 'Monday',
@@ -2008,8 +1423,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         gracePeriodMinutes: safeGracePeriod,
         updatedAt: serverTimestamp(),
       });
-
-      setOpeningHours((prev) => prev.map((oh) => (oh.id === config.id ? normalizedConfig : oh)));
 
       await logAdminAction(
         'SAVE_OPENING_HOURS',
@@ -2033,10 +1446,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         blockedSlots: (data.blockedSlots || []).slice(0, 30),
         createdAt: serverTimestamp(),
       });
-      setBlockedDates((prev) => [
-        ...prev.filter((b) => b.id !== blocked.id),
-        { ...blocked, reason: safeReason },
-      ]);
       await logAdminAction(
         'ADD_BLOCKED_DATE',
         'blockedDates',
@@ -2051,7 +1460,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteBlockedDate = useCallback(async (id: string) => {
     try {
       await deleteDoc(doc(db, 'blockedDates', id));
-      setBlockedDates((prev) => prev.filter((b) => b.id !== id));
       await logAdminAction('REMOVE_BLOCKED_DATE', 'blockedDates', id, `Removed blocked date ${id}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `blockedDates/${id}`);
@@ -2071,15 +1479,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'category'
       ).slice(0, 60);
       const safeSortOrder = Math.max(0, Math.round(Number(data.sortOrder) || 1));
-
       const resolvedSection = resolveMenuCategorySection({ id, ...data, name: safeName });
-      const normalizedCat: MenuCategory = {
-        ...cat,
-        name: safeName,
-        slug: safeSlug,
-        section: resolvedSection,
-        sortOrder: safeSortOrder,
-      };
 
       await setDoc(doc(db, 'menuCategories', id), {
         name: safeName,
@@ -2089,21 +1489,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sortOrder: safeSortOrder,
         isActive: Boolean(data.isActive),
         updatedAt: serverTimestamp(),
-      });
-
-      // Keep menuItems' categoryName in sync if category name changed
-      setMenuItems((prev) =>
-        prev.map((m) => (m.categoryId === cat.id ? { ...m, categoryName: safeName } : m))
-      );
-
-      setMenuCategories((prev) => {
-        const exists = prev.some((c) => c.id === cat.id);
-        const updated = exists
-          ? prev.map((c) => (c.id === cat.id ? normalizedCat : c))
-          : [...prev, normalizedCat];
-        const sorted = updated.sort((a, b) => a.sortOrder - b.sortOrder);
-        writeLocalCache('onelove_cache_categories', sorted);
-        return sorted;
       });
 
       await logAdminAction(
@@ -2120,11 +1505,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteMenuCategory = useCallback(async (id: string) => {
     try {
       await deleteDoc(doc(db, 'menuCategories', id));
-      setMenuCategories((prev) => {
-        const next = prev.filter((c) => c.id !== id);
-        writeLocalCache('onelove_cache_categories', next);
-        return next;
-      });
       await logAdminAction(
         'DELETE_MENU_CATEGORY',
         'menuCategories',
@@ -2141,10 +1521,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { id, ...data } = item;
         const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
-        const r2ManifestUrl = cleanImageUrl.startsWith('editorial:') ? '' : cleanImageUrl;
-        const prevImageUrl = r2ManifestRef.current.menuImages?.[id] || '';
-        const urlsToDelete =
-          prevImageUrl && prevImageUrl !== r2ManifestUrl ? [prevImageUrl] : [];
+        const existing = menuItemsRef.current.find((m) => m.id === id);
+        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
 
         const safeName = (data.name || 'Untitled Dish').trim().slice(0, 100) || 'Untitled Dish';
         const safeCategoryId = (data.categoryId || 'cat_coffee').trim().slice(0, 60) || 'cat_coffee';
@@ -2159,7 +1537,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? data.priceCurrency
             : 'default';
 
-        // 1. Write to Firestore FIRST as single source of truth
         await setDoc(doc(db, 'menuItems', id), {
           name: safeName,
           categoryId: safeCategoryId,
@@ -2169,120 +1546,52 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           priceUsd: Math.max(0, Number(data.priceUsd) || 0),
           priceCurrency: validItemCurrency,
           imageUrl: cleanImageUrl,
-          dietaryTags: (data.dietaryTags || []).filter((t) => typeof t === 'string' && t.trim()).slice(0, 10),
+          dietaryTags: (data.dietaryTags || [])
+            .filter((t) => typeof t === 'string' && t.trim())
+            .slice(0, 10),
           isFeatured: Boolean(data.isFeatured),
           isAvailable: Boolean(data.isAvailable),
           updatedAt: serverTimestamp(),
         });
 
-        // Remove from local deleted cache if re-saving an item ID
-        const prevDeleted = readLocalCache<string[]>('onelove_deleted_menu_ids', []);
-        if (prevDeleted.includes(id)) {
-          writeLocalCache(
-            'onelove_deleted_menu_ids',
-            prevDeleted.filter((dId) => dId !== id)
-          );
+        if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
+          deleteMediaFromR2(prevImageUrl).catch(() => {});
         }
 
-        // 2. Update local state & cache immediately
-        const firestoreItem: MenuItem = {
-          ...item,
-          name: safeName,
-          categoryId: safeCategoryId,
-          categoryName: safeCategoryName,
-          description: safeDescription,
-          priceLkr: Math.max(0, Number(data.priceLkr) || 0),
-          priceUsd: Math.max(0, Number(data.priceUsd) || 0),
-          priceCurrency: validItemCurrency,
-          imageUrl: cleanImageUrl,
-          isFeatured: Boolean(data.isFeatured),
-          isAvailable: Boolean(data.isAvailable),
-        };
-        setMenuItems((prev) => {
-          const exists = prev.some((m) => m.id === item.id);
-          const next = exists
-            ? prev.map((m) => (m.id === item.id ? firestoreItem : m))
-            : [firestoreItem, ...prev];
-          writeLocalCache('onelove_cache_menuItems', next);
-          return next;
-        });
-
-        // 3. Mirror image link to Cloudflare R2 manifest (non-blocking)
-        updateR2Manifest((prev) => {
-          const nextMenuImages = { ...(prev.menuImages || {}) };
-          if (r2ManifestUrl) {
-            nextMenuImages[id] = r2ManifestUrl;
-          } else {
-            delete nextMenuImages[id];
-          }
-          return {
-            ...prev,
-            menuImages: nextMenuImages,
-          };
-        }, urlsToDelete).catch(() => {});
-
-        await logAdminAction(
-          'SAVE_MENU_ITEM',
-          'menuItems',
-          id,
-          `Saved menu item ${safeName}`
-        );
+        await logAdminAction('SAVE_MENU_ITEM', 'menuItems', id, `Saved menu item ${safeName}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `menuItems/${item.id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const deleteMenuItem = useCallback(
     async (id: string) => {
       try {
-        const prevImageUrl = r2ManifestRef.current.menuImages?.[id] || '';
+        const existing = menuItemsRef.current.find((m) => m.id === id);
+        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
+
         await deleteDoc(doc(db, 'menuItems', id));
 
-        const prevDeleted = readLocalCache<string[]>('onelove_deleted_menu_ids', []);
-        if (!prevDeleted.includes(id)) {
-          writeLocalCache('onelove_deleted_menu_ids', [...prevDeleted, id]);
+        if (prevImageUrl) {
+          deleteMediaFromR2(prevImageUrl).catch(() => {});
         }
 
-        setMenuItems((prev) => {
-          const next = prev.filter((m) => m.id !== id);
-          writeLocalCache('onelove_cache_menuItems', next);
-          return next;
-        });
-
-        updateR2Manifest(
-          (prev) => {
-            const nextMenuImages = { ...(prev.menuImages || {}) };
-            delete nextMenuImages[id];
-            return {
-              ...prev,
-              menuImages: nextMenuImages,
-            };
-          },
-          prevImageUrl ? [prevImageUrl] : []
-        ).catch(() => {});
-
-        await logAdminAction(
-          'DELETE_MENU_ITEM',
-          'menuItems',
-          id,
-          `Deleted menu item ${id}`
-        );
+        await logAdminAction('DELETE_MENU_ITEM', 'menuItems', id, `Deleted menu item ${id}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `menuItems/${id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const saveGalleryItem = useCallback(
     async (item: GalleryItem) => {
       try {
-        const existing = r2ManifestRef.current.galleryItems.find((g) => g.id === item.id);
-        const prevUrl = existing?.imageUrl || '';
+        const existing = galleryRef.current.find((g) => g.id === item.id);
+        const prevUrl = sanitizeCdnUrl(existing?.imageUrl);
         const nextUrl = sanitizeCdnUrl(item.imageUrl);
-        const urlsToDelete = prevUrl && prevUrl !== nextUrl ? [prevUrl] : [];
 
         const validCategories = [
           'Architecture',
@@ -2304,13 +1613,19 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? item.aspectRatio
           : '4:3';
 
-        const safeTitle = (item.title || 'Sanctuary Moment').trim().slice(0, 100) || 'Sanctuary Moment';
+        const safeTitle =
+          (item.title || 'Sanctuary Moment').trim().slice(0, 100) || 'Sanctuary Moment';
         const safeSortOrder = Number.isFinite(Number(item.sortOrder))
           ? Math.round(Number(item.sortOrder))
           : 1;
 
-        const normalizedItem: GalleryItem = {
-          id: item.id,
+        const existingSnap = await getDoc(doc(db, 'gallery', item.id));
+        const createdAtVal =
+          existingSnap.exists() && existingSnap.data()?.createdAt
+            ? existingSnap.data().createdAt
+            : serverTimestamp();
+
+        await setDoc(doc(db, 'gallery', item.id), {
           title: safeTitle,
           category: safeCategory,
           caption: (item.caption || '').slice(0, 300),
@@ -2318,113 +1633,44 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           aspectRatio: safeAspectRatio,
           isFeatured: Boolean(item.isFeatured),
           sortOrder: safeSortOrder,
-        };
-
-        // 1. Write to Firestore FIRST as single source of truth
-        const existingSnap = await getDoc(doc(db, 'gallery', normalizedItem.id));
-        const createdAtVal =
-          existingSnap.exists() && existingSnap.data()?.createdAt
-            ? existingSnap.data().createdAt
-            : serverTimestamp();
-
-        await setDoc(doc(db, 'gallery', normalizedItem.id), {
-          title: normalizedItem.title,
-          category: safeCategory,
-          caption: normalizedItem.caption,
-          imageUrl: nextUrl,
-          aspectRatio: safeAspectRatio,
-          isFeatured: normalizedItem.isFeatured,
-          sortOrder: normalizedItem.sortOrder,
           createdAt: createdAtVal,
         });
 
-        galleryLoadedFromFirestoreRef.current = true;
-        const prevDeleted = readLocalCache<string[]>('onelove_deleted_gallery_ids', []);
-        if (prevDeleted.includes(normalizedItem.id)) {
-          writeLocalCache(
-            'onelove_deleted_gallery_ids',
-            prevDeleted.filter((dId) => dId !== normalizedItem.id)
-          );
+        if (prevUrl && prevUrl !== nextUrl) {
+          deleteMediaFromR2(prevUrl).catch(() => {});
         }
-
-        // 2. Update local state & cache immediately
-        setGallery((prev) => {
-          const exists = prev.some((g) => g.id === normalizedItem.id);
-          const nextList = (
-            exists
-              ? prev.map((g) => (g.id === normalizedItem.id ? normalizedItem : g))
-              : [normalizedItem, ...prev]
-          ).sort((a, b) => a.sortOrder - b.sortOrder);
-          writeLocalCache('onelove_cache_gallery', nextList);
-          return nextList;
-        });
-
-        // 3. Mirror to Cloudflare R2 manifest (non-blocking)
-        updateR2Manifest((prev) => {
-          const list = Array.isArray(prev.galleryItems) ? prev.galleryItems : [];
-          const exists = list.some((g) => g.id === normalizedItem.id);
-          const nextList = (
-            exists
-              ? list.map((g) => (g.id === normalizedItem.id ? normalizedItem : g))
-              : [...list, normalizedItem]
-          ).sort((a, b) => a.sortOrder - b.sortOrder);
-          return {
-            ...prev,
-            galleryItems: nextList,
-          };
-        }, urlsToDelete).catch(() => {});
 
         await logAdminAction(
           'SAVE_GALLERY_ITEM',
           'gallery',
-          normalizedItem.id,
-          `Saved gallery photo "${normalizedItem.title}"`
+          item.id,
+          `Saved gallery photo "${safeTitle}"`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `gallery/${item.id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const deleteGalleryItem = useCallback(
     async (id: string) => {
       try {
-        const existing = r2ManifestRef.current.galleryItems.find((g) => g.id === id);
-        const prevUrl = existing?.imageUrl || '';
+        const existing = galleryRef.current.find((g) => g.id === id);
+        const prevUrl = sanitizeCdnUrl(existing?.imageUrl);
 
         await deleteDoc(doc(db, 'gallery', id));
 
-        const prevDeleted = readLocalCache<string[]>('onelove_deleted_gallery_ids', []);
-        if (!prevDeleted.includes(id)) {
-          writeLocalCache('onelove_deleted_gallery_ids', [...prevDeleted, id]);
+        if (prevUrl) {
+          deleteMediaFromR2(prevUrl).catch(() => {});
         }
 
-        setGallery((prev) => {
-          const next = prev.filter((g) => g.id !== id);
-          writeLocalCache('onelove_cache_gallery', next);
-          return next;
-        });
-
-        updateR2Manifest(
-          (prev) => ({
-            ...prev,
-            galleryItems: (prev.galleryItems || []).filter((g) => g.id !== id),
-          }),
-          prevUrl ? [prevUrl] : []
-        ).catch(() => {});
-
-        await logAdminAction(
-          'DELETE_GALLERY_ITEM',
-          'gallery',
-          id,
-          `Deleted gallery item ${id}`
-        );
+        await logAdminAction('DELETE_GALLERY_ITEM', 'gallery', id, `Deleted gallery item ${id}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `gallery/${id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const saveEvent = useCallback(
@@ -2432,20 +1678,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { id, ...data } = evt;
         const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
-        const r2ManifestUrl = cleanImageUrl.startsWith('editorial:') ? '' : cleanImageUrl;
-        const prevImageUrl = r2ManifestRef.current.eventImages?.[id] || '';
-        const urlsToDelete =
-          prevImageUrl && prevImageUrl !== r2ManifestUrl ? [prevImageUrl] : [];
+        const existing = eventsRef.current.find((e) => e.id === id);
+        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
 
-        const safeTitle = (data.title || 'Sanctuary Gathering').trim().slice(0, 120) || 'Sanctuary Gathering';
-        const safeDate = (data.date || 'Weekly').trim().slice(0, 40) || 'Weekly';
-        const safeTime = (data.time || '18:00').trim().slice(0, 40) || '18:00';
+        const safeTitle = (data.title || 'Sanctuary Event').trim().slice(0, 120) || 'Sanctuary Event';
+        const safeDate = (data.date || 'Weekly').trim().slice(0, 60) || 'Weekly';
+        const safeTime = (data.time || '18:30').trim().slice(0, 40) || '18:30';
         const safeCategory = (data.category || 'Evening Ritual').trim().slice(0, 60) || 'Evening Ritual';
-        const safeDescription =
-          (data.description || 'Curated experience at OneLove Café.').trim().slice(0, 600) ||
-          'Curated experience at OneLove Café.';
+        const safeDescription = (data.description || '').slice(0, 600);
 
-        // 1. Write to Firestore FIRST as single source of truth
         await setDoc(doc(db, 'events', id), {
           title: safeTitle,
           subtitle: (data.subtitle || '').slice(0, 140),
@@ -2460,102 +1701,36 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatedAt: serverTimestamp(),
         });
 
-        const prevDeleted = readLocalCache<string[]>('onelove_deleted_event_ids', []);
-        if (prevDeleted.includes(id)) {
-          writeLocalCache(
-            'onelove_deleted_event_ids',
-            prevDeleted.filter((dId) => dId !== id)
-          );
+        if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
+          deleteMediaFromR2(prevImageUrl).catch(() => {});
         }
 
-        // 2. Update local state & cache immediately
-        const firestoreEvt: CafeEvent = {
-          ...evt,
-          title: safeTitle,
-          date: safeDate,
-          time: safeTime,
-          category: safeCategory,
-          description: safeDescription,
-          imageUrl: cleanImageUrl,
-          isFeatured: Boolean(data.isFeatured),
-          isActive: Boolean(data.isActive),
-        };
-        setEvents((prev) => {
-          const exists = prev.some((e) => e.id === evt.id);
-          const next = exists
-            ? prev.map((e) => (e.id === evt.id ? firestoreEvt : e))
-            : [firestoreEvt, ...prev];
-          writeLocalCache('onelove_cache_events', next);
-          return next;
-        });
-
-        // 3. Mirror event image link to Cloudflare R2 manifest (non-blocking)
-        updateR2Manifest((prev) => {
-          const nextEventImages = { ...(prev.eventImages || {}) };
-          if (r2ManifestUrl) {
-            nextEventImages[id] = r2ManifestUrl;
-          } else {
-            delete nextEventImages[id];
-          }
-          return {
-            ...prev,
-            eventImages: nextEventImages,
-          };
-        }, urlsToDelete).catch(() => {});
-
-        await logAdminAction(
-          'SAVE_EVENT',
-          'events',
-          id,
-          `Saved event ${safeTitle}`
-        );
+        await logAdminAction('SAVE_EVENT', 'events', id, `Saved event ${safeTitle}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `events/${evt.id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const deleteEvent = useCallback(
     async (id: string) => {
       try {
-        const prevImageUrl = r2ManifestRef.current.eventImages?.[id] || '';
+        const existing = eventsRef.current.find((e) => e.id === id);
+        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
+
         await deleteDoc(doc(db, 'events', id));
 
-        const prevDeleted = readLocalCache<string[]>('onelove_deleted_event_ids', []);
-        if (!prevDeleted.includes(id)) {
-          writeLocalCache('onelove_deleted_event_ids', [...prevDeleted, id]);
+        if (prevImageUrl) {
+          deleteMediaFromR2(prevImageUrl).catch(() => {});
         }
 
-        setEvents((prev) => {
-          const next = prev.filter((e) => e.id !== id);
-          writeLocalCache('onelove_cache_events', next);
-          return next;
-        });
-
-        updateR2Manifest(
-          (prev) => {
-            const nextEventImages = { ...(prev.eventImages || {}) };
-            delete nextEventImages[id];
-            return {
-              ...prev,
-              eventImages: nextEventImages,
-            };
-          },
-          prevImageUrl ? [prevImageUrl] : []
-        ).catch(() => {});
-
-        await logAdminAction(
-          'DELETE_EVENT',
-          'events',
-          id,
-          `Deleted event ${id}`
-        );
+        await logAdminAction('DELETE_EVENT', 'events', id, `Deleted event ${id}`);
       } catch (error) {
         handleFirestoreError(error, OperationType.DELETE, `events/${id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const saveSiteContent = useCallback(
@@ -2565,16 +1740,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const sectionKey = (data.sectionKey || id || 'section').trim().slice(0, 60) || 'section';
         const canonicalId = sectionKey;
         const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
-        const r2ManifestUrl = cleanImageUrl.startsWith('editorial:') ? '' : cleanImageUrl;
-        const prevImageUrl = r2ManifestRef.current.sectionImages?.[sectionKey] || '';
-        const urlsToDelete =
-          prevImageUrl && prevImageUrl !== r2ManifestUrl ? [prevImageUrl] : [];
+        const existing = siteContentRef.current.find((s) => s.sectionKey === sectionKey);
+        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
 
         const safeHeading =
           (data.heading || 'OneLove Café Sigiriya').trim().slice(0, 160) ||
           'OneLove Café Sigiriya';
 
-        // 1. Write to Firestore FIRST using the canonical document ID (= sectionKey)
         await setDoc(doc(db, 'siteContent', canonicalId), {
           sectionKey,
           kicker: (data.kicker || '').slice(0, 100),
@@ -2587,7 +1759,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatedAt: serverTimestamp(),
         });
 
-        // Clean up any legacy duplicate doc (e.g. sec_${sectionKey}) so it never shadows canonical edits
+        // Clean up any legacy duplicate doc (e.g. sec_${sectionKey})
         const duplicateIds = new Set<string>();
         if (id && id !== canonicalId) duplicateIds.add(id);
         duplicateIds.add(`sec_${sectionKey}`);
@@ -2596,42 +1768,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           deleteDoc(doc(db, 'siteContent', dupId)).catch(() => {});
         }
 
-        // 2. Update local state & cache immediately
-        const firestoreSection: SiteContentSection = {
-          ...section,
-          id: canonicalId,
-          sectionKey,
-          heading: safeHeading,
-          imageUrl: cleanImageUrl,
-        };
-        setSiteContent((prev) => {
-          const exists = prev.some(
-            (s) => s.id === canonicalId || s.id === section.id || s.sectionKey === sectionKey
-          );
-          const next = exists
-            ? prev.map((s) =>
-                s.id === canonicalId || s.id === section.id || s.sectionKey === sectionKey
-                  ? firestoreSection
-                  : s
-              )
-            : [...prev, firestoreSection];
-          writeLocalCache('onelove_cache_siteContent', next);
-          return next;
-        });
-
-        // 3. Mirror section image link to Cloudflare R2 manifest (non-blocking)
-        updateR2Manifest((prev) => {
-          const nextSectionImages = { ...(prev.sectionImages || {}) };
-          if (r2ManifestUrl) {
-            nextSectionImages[sectionKey] = r2ManifestUrl;
-          } else {
-            delete nextSectionImages[sectionKey];
-          }
-          return {
-            ...prev,
-            sectionImages: nextSectionImages,
-          };
-        }, urlsToDelete).catch(() => {});
+        if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
+          deleteMediaFromR2(prevImageUrl).catch(() => {});
+        }
 
         await logAdminAction(
           'SAVE_SITE_CONTENT',
@@ -2643,7 +1782,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         handleFirestoreError(error, OperationType.WRITE, `siteContent/${section.id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const saveSettings = useCallback(
@@ -2662,14 +1801,14 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
         const nextFloorPlanUrl = sanitizeCdnUrl(data.floorPlanImageUrl);
 
-        const prevHeroImages = r2ManifestRef.current.heroImages || [];
-        const prevFloorPlanUrl = r2ManifestRef.current.floorPlanImageUrl || '';
-        const removedHeroUrls = prevHeroImages.filter(
-          (oldUrl) => oldUrl && !nextHeroImages.includes(oldUrl)
-        );
-        const removedFloorPlanUrls =
-          prevFloorPlanUrl && prevFloorPlanUrl !== nextFloorPlanUrl ? [prevFloorPlanUrl] : [];
-        const urlsToDelete = [...removedHeroUrls, ...removedFloorPlanUrls];
+        const prevHeroImages = (settingsRef.current.heroImages || [])
+          .map((u) => sanitizeCdnUrl(u))
+          .filter(Boolean);
+        const prevFloorPlanUrl = sanitizeCdnUrl(settingsRef.current.floorPlanImageUrl);
+        const removedUrls = [
+          ...prevHeroImages.filter((oldUrl) => !nextHeroImages.includes(oldUrl)),
+          ...(prevFloorPlanUrl && prevFloorPlanUrl !== nextFloorPlanUrl ? [prevFloorPlanUrl] : []),
+        ];
 
         const validMenuCurrency =
           data.menuCurrencyDisplay && ['both', 'lkr', 'usd'].includes(data.menuCurrencyDisplay)
@@ -2677,7 +1816,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             : 'both';
         const safeCafeName = (data.cafeName || 'OneLove Café').trim().slice(0, 80) || 'OneLove Café';
 
-        // 1. Write to Firestore FIRST as single source of truth
         await setDoc(doc(db, 'settings', id || 'main'), {
           cafeName: safeCafeName,
           tagline: (data.tagline || '').slice(0, 160),
@@ -2711,28 +1849,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatedAt: serverTimestamp(),
         });
 
-        // 2. Update local state & cache immediately
-        const updatedSettings: CafeSettings = {
-          ...newSettings,
-          cafeName: safeCafeName,
-          heroImages: nextHeroImages,
-          heroSlideshowSpeedSeconds: speedSec,
-          floorPlanImageUrl: nextFloorPlanUrl,
-          menuCurrencyDisplay: validMenuCurrency,
-        };
-        setSettings(updatedSettings);
-        writeLocalCache('onelove_cache_settings', updatedSettings);
-
-        // 3. Mirror Hero Slideshow & Floor Plan links to Cloudflare R2 manifest (non-blocking)
-        updateR2Manifest(
-          (prev) => ({
-            ...prev,
-            heroImages: nextHeroImages,
-            heroSlideshowSpeedSeconds: speedSec,
-            floorPlanImageUrl: nextFloorPlanUrl,
-          }),
-          urlsToDelete
-        ).catch(() => {});
+        if (removedUrls.length > 0) {
+          deleteMediaFromR2(removedUrls).catch(() => {});
+        }
 
         await logAdminAction(
           'SAVE_SETTINGS',
@@ -2744,15 +1863,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         handleFirestoreError(error, OperationType.WRITE, `settings/${newSettings.id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const updateInquiryStatus = useCallback(
     async (inquiry: InquiryRecord, status: InquiryRecord['status']) => {
       try {
-        setInquiries((prev) =>
-          prev.map((i) => (i.id === inquiry.id ? { ...i, status } : i))
-        );
         const existingSnap = await getDoc(doc(db, 'inquiries', inquiry.id));
         const createdAtVal = existingSnap.exists()
           ? existingSnap.data().createdAt
@@ -2780,7 +1896,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   );
 
-  // Upload image directly to Cloudflare R2 bucket (and automatically delete previousUrl if replacing)
+  // Direct Admin -> Cloudflare R2 Image Upload (returns public R2 CDN URL to save in Firestore)
   const uploadMediaFile = useCallback(
     async (file: File, folder = 'menu', previousUrl?: string): Promise<string> => {
       const isHeroSlideshow = folder === 'hero';
@@ -2798,6 +1914,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         maxBase64Length
       );
 
+      const cleanPrevUrl = sanitizeCdnUrl(previousUrl);
       const res = await fetch('/api/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2805,10 +1922,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           dataUrl: base64DataUrl,
           filename: file.name,
           folder,
-          previousUrl:
-            previousUrl && previousUrl.startsWith('http') && !previousUrl.startsWith('editorial:')
-              ? previousUrl
-              : undefined,
+          previousUrl: cleanPrevUrl || undefined,
         }),
       });
 
@@ -2830,12 +1944,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const data = await res.json();
-      if (
-        !data.ok ||
-        typeof data.url !== 'string' ||
-        !data.url.startsWith('http') ||
-        data.url.startsWith('data:')
-      ) {
+      const uploadedUrl = sanitizeCdnUrl(data?.url);
+      if (!data?.ok || !uploadedUrl) {
         throw new Error('Cloudflare R2 upload did not return a valid R2 CDN URL');
       }
 
@@ -2843,27 +1953,25 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'R2_OBJECT_UPLOAD',
         folder,
         file.name.slice(0, 60),
-        `Uploaded image to Cloudflare R2 bucket (${data.url})`
+        `Uploaded image to Cloudflare R2 bucket (${uploadedUrl})`
       );
-      return data.url;
+      return uploadedUrl;
     },
     []
   );
 
-  // Update any of the 5 Laterite Earth, Teak & Monsoon Light collage frames in R2 + Firestore
+  // Story collage image upload: R2 -> Firestore siteContent
   const updateCollageImageFromDevice = useCallback(
     async (slotIndex: number, file: File) => {
       const sectionKey = `story_collage_${slotIndex}`;
       const existingSec =
-        siteContent.find((s) => s.sectionKey === sectionKey) ||
+        siteContentRef.current.find((s) => s.sectionKey === sectionKey) ||
         DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
-      const prevUrl =
-        r2ManifestRef.current.sectionImages?.[sectionKey] ||
-        (existingSec?.imageUrl?.startsWith('http') ? existingSec.imageUrl : '');
+      const prevUrl = sanitizeCdnUrl(existingSec?.imageUrl);
       const uploadedR2Url = await uploadMediaFile(file, 'collage', prevUrl);
 
       await saveSiteContent({
-        id: existingSec?.id || `sec_story_collage_${slotIndex}`,
+        id: sectionKey,
         sectionKey,
         kicker: existingSec?.kicker || `Story Collage Frame 0${slotIndex}`,
         heading: existingSec?.heading || `Story Collage Photo ${slotIndex}`,
@@ -2874,24 +1982,18 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         imageUrl: uploadedR2Url,
       });
     },
-    [siteContent, uploadMediaFile, saveSiteContent]
+    [uploadMediaFile, saveSiteContent]
   );
 
   const resetCollageImage = useCallback(
     async (slotIndex: number) => {
       const sectionKey = `story_collage_${slotIndex}`;
-      const defaultSec = DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
-      const existingSec = siteContent.find((s) => s.sectionKey === sectionKey) || defaultSec;
-      const prevUrl =
-        r2ManifestRef.current.sectionImages?.[sectionKey] ||
-        (existingSec?.imageUrl?.startsWith('http') ? existingSec.imageUrl : '');
-
-      if (prevUrl) {
-        await deleteMediaFromR2(prevUrl);
-      }
+      const existingSec =
+        siteContentRef.current.find((s) => s.sectionKey === sectionKey) ||
+        DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
 
       await saveSiteContent({
-        id: existingSec?.id || `sec_story_collage_${slotIndex}`,
+        id: sectionKey,
         sectionKey,
         kicker: existingSec?.kicker || `Story Collage Frame 0${slotIndex}`,
         heading: existingSec?.heading || `Story Collage Photo ${slotIndex}`,
@@ -2899,175 +2001,123 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: existingSec?.body || '',
         ctaLabel: existingSec?.ctaLabel || '',
         ctaLink: existingSec?.ctaLink || '/story',
-        imageUrl: defaultSec?.imageUrl || '',
+        imageUrl: '',
       });
     },
-    [siteContent, deleteMediaFromR2, saveSiteContent]
+    [saveSiteContent]
   );
 
   const saveSeoGlobal = useCallback(
     async (config: GlobalSeoConfig) => {
       try {
         const cleanOgUrl = sanitizeCdnUrl(config.defaultOgImageUrl);
-        const prevOgUrl = r2ManifestRef.current.seoImages?.defaultOgImageUrl || '';
-        const prevLogoUrl = r2ManifestRef.current.seoImages?.brandLogoUrl || '';
+        const cleanLogoUrl = sanitizeCdnUrl(config.brandLogoUrl);
+        const cleanFaviconUrl = sanitizeCdnUrl(config.faviconSourceUrl);
+
+        const prevOgUrl = sanitizeCdnUrl(seoGlobalRef.current.defaultOgImageUrl);
+        const prevLogoUrl = sanitizeCdnUrl(seoGlobalRef.current.brandLogoUrl);
+        const prevFaviconUrl = sanitizeCdnUrl(seoGlobalRef.current.faviconSourceUrl);
 
         const urlsToDelete: string[] = [];
-        if (prevOgUrl && prevOgUrl !== cleanOgUrl && !prevOgUrl.startsWith('/assets/')) {
-          urlsToDelete.push(prevOgUrl);
-        }
-        if (prevLogoUrl && prevLogoUrl.startsWith('http')) {
-          urlsToDelete.push(prevLogoUrl);
-        }
+        if (prevOgUrl && prevOgUrl !== cleanOgUrl) urlsToDelete.push(prevOgUrl);
+        if (prevLogoUrl && prevLogoUrl !== cleanLogoUrl) urlsToDelete.push(prevLogoUrl);
+        if (prevFaviconUrl && prevFaviconUrl !== cleanFaviconUrl) urlsToDelete.push(prevFaviconUrl);
 
-        const merged: GlobalSeoConfig = {
-          ...DEFAULT_GLOBAL_SEO,
-          ...config,
-          id: 'main',
-          defaultOgImageUrl: cleanOgUrl || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
-          brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
-          faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
-          favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
-          favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
-          favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
-          appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
-        };
-
-        // 1. Write to Firestore FIRST as single source of truth
-        const { id, ...data } = merged;
-        await setDoc(doc(db, 'seoConfig', id || 'main'), {
-          siteName: (data.siteName || 'OneLove Café').slice(0, 100),
-          alternateNames: (data.alternateNames || []).slice(0, 15),
-          defaultTitle: (data.defaultTitle || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
-          titleTemplate: (data.titleTemplate || '%s | OneLove Café Sigiriya').slice(0, 120),
+        await setDoc(doc(db, 'seoConfig', config.id || 'main'), {
+          siteName: (config.siteName || 'OneLove Café').slice(0, 100),
+          alternateNames: (config.alternateNames || []).slice(0, 15),
+          defaultTitle: (config.defaultTitle || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
+          titleTemplate: (config.titleTemplate || '%s | OneLove Café Sigiriya').slice(0, 120),
           defaultDescription: (
-            data.defaultDescription || DEFAULT_GLOBAL_SEO.defaultDescription
+            config.defaultDescription || DEFAULT_GLOBAL_SEO.defaultDescription
           ).slice(0, 500),
-          canonicalDomain: (data.canonicalDomain || 'https://onelovecafesigiriya.com')
+          canonicalDomain: (config.canonicalDomain || 'https://onelovecafesigiriya.com')
             .replace(/\/+$/, '')
             .slice(0, 200),
-          language: (data.language || 'en').slice(0, 16),
-          googleVerificationTag: (data.googleVerificationTag || '').slice(0, 200),
+          language: (config.language || 'en').slice(0, 16),
+          googleVerificationTag: (config.googleVerificationTag || '').slice(0, 200),
           defaultOgImageUrl: cleanOgUrl,
-          brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
-          faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
-          favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
-          favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
-          favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
-          appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
-          allowIndexing: Boolean(data.allowIndexing),
-          noindexPreviewDomains: Boolean(data.noindexPreviewDomains),
-          businessType: data.businessType === 'Restaurant' ? 'Restaurant' : 'CafeOrCoffeeShop',
-          streetAddress: (data.streetAddress || '').slice(0, 200),
-          addressLocality: (data.addressLocality || 'Sigiriya').slice(0, 80),
-          addressRegion: (data.addressRegion || 'Central Province').slice(0, 80),
-          postalCode: (data.postalCode || '21120').slice(0, 20),
-          addressCountry: (data.addressCountry || 'LK').slice(0, 10),
-          latitude: Number(data.latitude) || 7.9541,
-          longitude: Number(data.longitude) || 80.7547,
-          telephone: (data.telephone || '').slice(0, 40),
-          whatsapp: (data.whatsapp || '').slice(0, 40),
-          email: (data.email || '').slice(0, 120),
-          priceRange: (data.priceRange || '$$').slice(0, 16),
-          servesCuisine: (data.servesCuisine || []).slice(0, 20),
-          openingHoursSpec: (data.openingHoursSpec || 'Mo-Su 07:30-22:30').slice(0, 120),
-          socialLinks: (data.socialLinks || []).slice(0, 20),
-          customKeywords: (data.customKeywords || []).slice(0, 200),
-          imageAltOverrides: data.imageAltOverrides || {},
+          brandLogoUrl: cleanLogoUrl,
+          faviconSourceUrl: cleanFaviconUrl,
+          favicon48Url: cleanFaviconUrl,
+          favicon96Url: cleanFaviconUrl,
+          favicon192Url: cleanFaviconUrl,
+          appleTouchIconUrl: cleanFaviconUrl,
+          allowIndexing: Boolean(config.allowIndexing),
+          noindexPreviewDomains: Boolean(config.noindexPreviewDomains),
+          businessType: config.businessType === 'Restaurant' ? 'Restaurant' : 'CafeOrCoffeeShop',
+          streetAddress: (config.streetAddress || '').slice(0, 200),
+          addressLocality: (config.addressLocality || 'Sigiriya').slice(0, 80),
+          addressRegion: (config.addressRegion || 'Central Province').slice(0, 80),
+          postalCode: (config.postalCode || '21120').slice(0, 20),
+          addressCountry: (config.addressCountry || 'LK').slice(0, 10),
+          latitude: Number(config.latitude) || 7.9541,
+          longitude: Number(config.longitude) || 80.7547,
+          telephone: (config.telephone || '').slice(0, 40),
+          whatsapp: (config.whatsapp || '').slice(0, 40),
+          email: (config.email || '').slice(0, 120),
+          priceRange: (config.priceRange || '$$').slice(0, 16),
+          servesCuisine: (config.servesCuisine || []).slice(0, 20),
+          openingHoursSpec: (config.openingHoursSpec || 'Mo-Su 07:30-22:30').slice(0, 120),
+          socialLinks: (config.socialLinks || []).slice(0, 20),
+          customKeywords: (config.customKeywords || []).slice(0, 200),
+          imageAltOverrides: config.imageAltOverrides || {},
           updatedAt: serverTimestamp(),
         });
 
-        setSeoGlobal(merged);
-        writeLocalCache('onelove_cache_seoGlobal', merged);
-
-        // 2. Mirror SEO OG image to Cloudflare R2 manifest (non-blocking)
-        updateR2Manifest(
-          (prev) => ({
-            ...prev,
-            seoImages: {
-              defaultOgImageUrl: cleanOgUrl,
-              brandLogoUrl: '',
-              pageOgImages: prev.seoImages?.pageOgImages || {},
-            },
-          }),
-          urlsToDelete
-        ).catch(() => {});
+        if (urlsToDelete.length > 0) {
+          deleteMediaFromR2(urlsToDelete).catch(() => {});
+        }
 
         await logAdminAction(
           'SAVE_SEO_GLOBAL',
           'seoConfig',
           'main',
-          `Updated global SEO configuration (${data.siteName})`
+          `Updated global SEO configuration (${config.siteName})`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, 'seoConfig/main');
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const saveSeoPage = useCallback(
     async (page: PageSeoConfig) => {
       try {
         const cleanOgUrl = sanitizeCdnUrl(page.ogImageUrl);
-        const prevOgUrl = r2ManifestRef.current.seoImages?.pageOgImages?.[page.id] || '';
-        const urlsToDelete =
-          prevOgUrl && prevOgUrl !== cleanOgUrl && !prevOgUrl.startsWith('/assets/')
-            ? [prevOgUrl]
-            : [];
+        const prevOgUrl = sanitizeCdnUrl(seoPagesRef.current[page.id]?.ogImageUrl);
 
-        const updatedPage: PageSeoConfig = { ...page, ogImageUrl: cleanOgUrl };
-        const { id, ...data } = updatedPage;
-
-        // 1. Write to Firestore FIRST as single source of truth
-        await setDoc(doc(db, 'seoPages', id), {
-          routePath: (data.routePath || '/').slice(0, 120),
-          pageLabel: (data.pageLabel || id).slice(0, 120),
-          title: (data.title || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
-          metaDescription: (data.metaDescription || '').slice(0, 500),
-          canonicalPath: (data.canonicalPath || data.routePath || '/').slice(0, 120),
-          primaryKeyword: (data.primaryKeyword || '').slice(0, 120),
-          supportingKeywords: (data.supportingKeywords || []).slice(0, 40),
-          ogTitle: (data.ogTitle || data.title || '').slice(0, 160),
-          ogDescription: (data.ogDescription || data.metaDescription || '').slice(0, 500),
+        await setDoc(doc(db, 'seoPages', page.id), {
+          routePath: (page.routePath || '/').slice(0, 120),
+          pageLabel: (page.pageLabel || page.id).slice(0, 120),
+          title: (page.title || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
+          metaDescription: (page.metaDescription || '').slice(0, 500),
+          canonicalPath: (page.canonicalPath || page.routePath || '/').slice(0, 120),
+          primaryKeyword: (page.primaryKeyword || '').slice(0, 120),
+          supportingKeywords: (page.supportingKeywords || []).slice(0, 40),
+          ogTitle: (page.ogTitle || page.title || '').slice(0, 160),
+          ogDescription: (page.ogDescription || page.metaDescription || '').slice(0, 500),
           ogImageUrl: cleanOgUrl,
-          indexable: Boolean(data.indexable),
+          indexable: Boolean(page.indexable),
           updatedAt: serverTimestamp(),
         });
 
-        setSeoPages((prev) => {
-          const next = { ...prev, [page.id]: updatedPage };
-          writeLocalCache('onelove_cache_seoPages', next);
-          return next;
-        });
-
-        // 2. Mirror page OG image to Cloudflare R2 manifest (non-blocking)
-        updateR2Manifest(
-          (prev) => ({
-            ...prev,
-            seoImages: {
-              defaultOgImageUrl: prev.seoImages?.defaultOgImageUrl || '',
-              brandLogoUrl: prev.seoImages?.brandLogoUrl || '',
-              pageOgImages: {
-                ...(prev.seoImages?.pageOgImages || {}),
-                [page.id]: cleanOgUrl,
-              },
-            },
-          }),
-          urlsToDelete
-        ).catch(() => {});
+        if (prevOgUrl && prevOgUrl !== cleanOgUrl) {
+          deleteMediaFromR2(prevOgUrl).catch(() => {});
+        }
 
         await logAdminAction(
           'SAVE_SEO_PAGE',
           'seoPages',
-          id,
-          `Updated page SEO metadata for ${data.routePath}`
+          page.id,
+          `Updated page SEO metadata for ${page.routePath}`
         );
       } catch (error) {
         handleFirestoreError(error, OperationType.WRITE, `seoPages/${page.id}`);
       }
     },
-    [updateR2Manifest]
+    [deleteMediaFromR2]
   );
 
   const resetSeoToDefaults = useCallback(async () => {
@@ -3077,270 +2127,6 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [saveSeoGlobal, saveSeoPage]);
 
-  // One-time-per-session legacy cleanup (purges pre-R2 base64 docs only; never overwrites live admin edits)
-  useEffect(() => {
-    if (!authReady || !isAdmin) return;
-    if (r2InitialBackfillDoneRef.current) return;
-    r2InitialBackfillDoneRef.current = true;
-
-    const cleanupLegacyBase64Docs = async () => {
-      try {
-        const legacySlideIds = [
-          'sec_hero_slide_0',
-          'sec_hero_slide_1',
-          'sec_hero_slide_2',
-          'sec_hero_slide_3',
-        ];
-        for (const slideId of legacySlideIds) {
-          await deleteDoc(doc(db, 'siteContent', slideId)).catch(() => {});
-        }
-        for (const legacyDocId of ['hero', 'footer']) {
-          const snap = await getDoc(doc(db, 'siteContent', legacyDocId));
-          if (snap.exists()) {
-            const raw = snap.data();
-            if (typeof raw.imageUrl === 'string' && raw.imageUrl.startsWith('data:')) {
-              await setDoc(doc(db, 'siteContent', legacyDocId), {
-                sectionKey: (raw.sectionKey || legacyDocId).slice(0, 60),
-                kicker: (raw.kicker || '').slice(0, 100),
-                heading: (raw.heading || 'OneLove Café Sigiriya').slice(0, 160),
-                subheading: (raw.subheading || '').slice(0, 400),
-                body: (raw.body || '').slice(0, 1200),
-                ctaLabel: (raw.ctaLabel || '').slice(0, 60),
-                ctaLink: (raw.ctaLink || '/').slice(0, 120),
-                imageUrl: '',
-                updatedAt: serverTimestamp(),
-              }).catch(() => {});
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('Legacy cleanup note:', err);
-      }
-    };
-
-    cleanupLegacyBase64Docs();
-  }, [authReady, isAdmin]);
-
-  // Resolved State: Combines real-time Firestore R2 CDN links with r2Manifest & editorial fallbacks
-  const resolvedSettings = useMemo<CafeSettings>(() => {
-    const fsHero = Array.isArray(settings.heroImages)
-      ? settings.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
-      : [];
-    const r2Hero = Array.isArray(r2Manifest.heroImages)
-      ? r2Manifest.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
-      : [];
-    const fsHasHttp = fsHero.some((u) => u.startsWith('http'));
-    const r2HasHttp = r2Hero.some((u) => u.startsWith('http'));
-    const activeHero = fsHasHttp
-      ? fsHero
-      : r2HasHttp
-      ? r2Hero
-      : fsHero.length > 0
-      ? fsHero
-      : r2Hero.length > 0
-      ? r2Hero
-      : DEFAULT_SETTINGS.heroImages || ['editorial:hero-sanctuary'];
-
-    return {
-      ...settings,
-      heroImages: activeHero,
-      heroSlideshowSpeedSeconds:
-        settings.heroSlideshowSpeedSeconds ||
-        r2Manifest.heroSlideshowSpeedSeconds ||
-        5,
-      floorPlanImageUrl:
-        sanitizeCdnUrl(settings.floorPlanImageUrl) ||
-        sanitizeCdnUrl(r2Manifest.floorPlanImageUrl) ||
-        '',
-    };
-  }, [settings, r2Manifest]);
-
-  const resolvedMenuItems = useMemo<MenuItem[]>(() => {
-    const map = r2Manifest.menuImages || {};
-    return menuItems.map((item) => {
-      const fsUrl = sanitizeCdnUrl(item.imageUrl);
-      const r2Url = sanitizeCdnUrl(map[item.id]);
-      const defaultUrl =
-        DEFAULT_MENU_ITEMS.find((d) => d.id === item.id)?.imageUrl || 'editorial:hopper-bowl';
-      const activeUrl = fsUrl.startsWith('http')
-        ? fsUrl
-        : r2Url.startsWith('http')
-        ? r2Url
-        : defaultUrl.startsWith('http')
-        ? defaultUrl
-        : fsUrl || r2Url || defaultUrl;
-      return {
-        ...item,
-        imageUrl: activeUrl,
-      };
-    });
-  }, [menuItems, r2Manifest.menuImages]);
-
-  const resolvedGallery = useMemo<GalleryItem[]>(() => {
-    const r2List = Array.isArray(r2Manifest.galleryItems) ? r2Manifest.galleryItems : [];
-    const fsList = Array.isArray(gallery) ? gallery : [];
-
-    // Once Firestore gallery has loaded (or has items), treat Firestore as authoritative so deleted items never resurrect from R2 manifest
-    if (fsList.length === 0) {
-      return galleryLoadedFromFirestoreRef.current ? [] : r2List;
-    }
-
-    const r2ById = new Map<string, GalleryItem>();
-    r2List.forEach((g) => r2ById.set(g.id, { ...g, imageUrl: sanitizeCdnUrl(g.imageUrl) }));
-
-    return fsList
-      .map((fsItem) => {
-        const r2Item = r2ById.get(fsItem.id);
-        const fsUrl = sanitizeCdnUrl(fsItem.imageUrl);
-        const r2Url = sanitizeCdnUrl(r2Item?.imageUrl);
-        const defaultUrl =
-          DEFAULT_GALLERY.find((d) => d.id === fsItem.id)?.imageUrl || 'editorial:hero-sanctuary';
-        const activeUrl = fsUrl.startsWith('http')
-          ? fsUrl
-          : r2Url.startsWith('http')
-          ? r2Url
-          : defaultUrl.startsWith('http')
-          ? defaultUrl
-          : fsUrl || r2Url || defaultUrl;
-        return {
-          ...fsItem,
-          imageUrl: activeUrl,
-        };
-      })
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [gallery, r2Manifest.galleryItems]);
-
-  const resolvedEvents = useMemo<CafeEvent[]>(() => {
-    const map = r2Manifest.eventImages || {};
-    return events.map((evt) => {
-      const fsUrl = sanitizeCdnUrl(evt.imageUrl);
-      const r2Url = sanitizeCdnUrl(map[evt.id]);
-      const defaultUrl =
-        DEFAULT_EVENTS.find((d) => d.id === evt.id)?.imageUrl || 'editorial:evening-hearth';
-      const activeUrl = fsUrl.startsWith('http')
-        ? fsUrl
-        : r2Url.startsWith('http')
-        ? r2Url
-        : defaultUrl.startsWith('http')
-        ? defaultUrl
-        : fsUrl || r2Url || defaultUrl;
-      return {
-        ...evt,
-        imageUrl: activeUrl,
-      };
-    });
-  }, [events, r2Manifest.eventImages]);
-
-  const resolvedSiteContent = useMemo<SiteContentSection[]>(() => {
-    const map = r2Manifest.sectionImages || {};
-    const byKey = new Map<string, SiteContentSection>();
-
-    DEFAULT_SITE_CONTENT.forEach((def) => {
-      byKey.set(def.sectionKey, { ...def });
-    });
-
-    siteContent.forEach((sec) => {
-      if (!sec.sectionKey || sec.sectionKey.startsWith('hero_slide_')) return;
-      byKey.set(sec.sectionKey, { ...sec });
-    });
-
-    Object.keys(map).forEach((sectionKey) => {
-      if (!byKey.has(sectionKey)) {
-        const def = DEFAULT_SITE_CONTENT.find((d) => d.sectionKey === sectionKey);
-        byKey.set(
-          sectionKey,
-          def || {
-            id: `sec_${sectionKey}`,
-            sectionKey,
-            kicker: sectionKey,
-            heading: sectionKey,
-            subheading: '',
-            body: '',
-            ctaLabel: '',
-            ctaLink: '',
-            imageUrl: '',
-          }
-        );
-      }
-    });
-
-    return Array.from(byKey.values()).map((sec) => {
-      const fsImg = sanitizeCdnUrl(sec.imageUrl);
-      const r2Img = sanitizeCdnUrl(map[sec.sectionKey]);
-      const defaultSecImg =
-        DEFAULT_SITE_CONTENT.find((d) => d.sectionKey === sec.sectionKey)?.imageUrl || '';
-      const activeImg = fsImg.startsWith('http')
-        ? fsImg
-        : r2Img.startsWith('http')
-        ? r2Img
-        : defaultSecImg.startsWith('http')
-        ? defaultSecImg
-        : fsImg || r2Img || defaultSecImg;
-      return {
-        ...sec,
-        imageUrl: activeImg,
-      };
-    });
-  }, [siteContent, r2Manifest.sectionImages]);
-
-  const resolvedSeoGlobal = useMemo<GlobalSeoConfig>(() => {
-    const fsOg = sanitizeCdnUrl(seoGlobal.defaultOgImageUrl);
-    const r2Og = sanitizeCdnUrl(r2Manifest.seoImages?.defaultOgImageUrl);
-    return {
-      ...seoGlobal,
-      defaultOgImageUrl: fsOg.startsWith('http')
-        ? fsOg
-        : r2Og.startsWith('http')
-        ? r2Og
-        : fsOg || r2Og || DEFAULT_GLOBAL_SEO.defaultOgImageUrl,
-      brandLogoUrl: DEFAULT_GLOBAL_SEO.brandLogoUrl,
-      faviconSourceUrl: DEFAULT_GLOBAL_SEO.faviconSourceUrl,
-      favicon48Url: DEFAULT_GLOBAL_SEO.favicon48Url,
-      favicon96Url: DEFAULT_GLOBAL_SEO.favicon96Url,
-      favicon192Url: DEFAULT_GLOBAL_SEO.favicon192Url,
-      appleTouchIconUrl: DEFAULT_GLOBAL_SEO.appleTouchIconUrl,
-    };
-  }, [seoGlobal, r2Manifest.seoImages]);
-
-  const resolvedSeoPages = useMemo<Record<SeoPageKey, PageSeoConfig>>(() => {
-    const pageOgMap = r2Manifest.seoImages?.pageOgImages || {};
-    const next = { ...seoPages };
-    (Object.keys(next) as SeoPageKey[]).forEach((key) => {
-      const fsPageOg = sanitizeCdnUrl(next[key]?.ogImageUrl);
-      const r2PageOg = sanitizeCdnUrl(pageOgMap[key]);
-      next[key] = {
-        ...next[key],
-        routePath: DEFAULT_PAGE_SEO[key].routePath,
-        canonicalPath: DEFAULT_PAGE_SEO[key].canonicalPath,
-        ogImageUrl: fsPageOg.startsWith('http')
-          ? fsPageOg
-          : r2PageOg.startsWith('http')
-          ? r2PageOg
-          : fsPageOg ||
-            r2PageOg ||
-            resolvedSeoGlobal.defaultOgImageUrl ||
-            DEFAULT_PAGE_SEO[key].ogImageUrl,
-      };
-    });
-    return next;
-  }, [seoPages, r2Manifest.seoImages, resolvedSeoGlobal.defaultOgImageUrl]);
-
-  // Sync live SEO configuration (with R2-resolved OG/brand images) to the Express server
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const timer = window.setTimeout(() => {
-      fetch('/api/seo/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          global: resolvedSeoGlobal,
-          pages: resolvedSeoPages,
-        }),
-      }).catch(() => {});
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [resolvedSeoGlobal, resolvedSeoPages]);
-
   return (
     <CafeContext.Provider
       value={{
@@ -3348,20 +2134,19 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin,
         authReady,
         sessionId,
-        settings: resolvedSettings,
+        settings,
         zones,
         tables,
         openingHours,
         blockedDates,
         menuCategories,
-        menuItems: resolvedMenuItems,
-        gallery: resolvedGallery,
-        events: resolvedEvents,
-        siteContent: resolvedSiteContent,
+        menuItems,
+        gallery,
+        events,
+        siteContent,
         availability,
-        seoGlobal: resolvedSeoGlobal,
-        seoPages: resolvedSeoPages,
-        r2Manifest,
+        seoGlobal,
+        seoPages,
         reservations,
         inquiries,
         admins,

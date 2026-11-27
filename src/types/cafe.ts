@@ -243,21 +243,4 @@ export interface AuditLogRecord {
   createdAt?: unknown;
 }
 
-export interface R2MediaManifest {
-  version: number;
-  updatedAt: string;
-  heroImages: string[];
-  heroSlideshowSpeedSeconds: number;
-  floorPlanImageUrl: string;
-  menuImages: Record<string, string>;
-  galleryItems: GalleryItem[];
-  eventImages: Record<string, string>;
-  sectionImages: Record<string, string>;
-  seoImages: {
-    logoUrl?: string;
-    brandLogoUrl?: string;
-    defaultOgImageUrl?: string;
-    pageOgImages?: Record<string, string>;
-  };
-}
 
