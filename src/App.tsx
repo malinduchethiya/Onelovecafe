@@ -144,9 +144,38 @@ const OneLoveRouter: React.FC = () => {
     gallery,
     events,
     siteContent,
+    siteImages,
     seoGlobal,
     submitInquiry,
   } = useCafe();
+
+  const resolveSectionImageUrl = (sectionKey: string, fallbackKey?: string): string => {
+    const imgDoc = siteImages.find((si) => si.id === sectionKey || si.sectionKey === sectionKey);
+    if (imgDoc?.imageUrl && /^https?:\/\//i.test(imgDoc.imageUrl.trim())) {
+      return imgDoc.imageUrl.trim();
+    }
+    const contentDoc = siteContent.find(
+      (s) => s.sectionKey === sectionKey || s.id === sectionKey
+    );
+    if (contentDoc?.imageUrl && /^https?:\/\//i.test(contentDoc.imageUrl.trim())) {
+      return contentDoc.imageUrl.trim();
+    }
+    if (fallbackKey) {
+      const fbImg = siteImages.find(
+        (si) => si.id === fallbackKey || si.sectionKey === fallbackKey
+      );
+      if (fbImg?.imageUrl && /^https?:\/\//i.test(fbImg.imageUrl.trim())) {
+        return fbImg.imageUrl.trim();
+      }
+      const fbContent = siteContent.find(
+        (s) => s.sectionKey === fallbackKey || s.id === fallbackKey
+      );
+      if (fbContent?.imageUrl && /^https?:\/\//i.test(fbContent.imageUrl.trim())) {
+        return fbContent.imageUrl.trim();
+      }
+    }
+    return '';
+  };
 
   const resolveMenuPriceCurrency = (item: MenuItem): 'both' | 'lkr' | 'usd' => {
     if (item.priceCurrency && item.priceCurrency !== 'default') {
@@ -1393,7 +1422,7 @@ const OneLoveRouter: React.FC = () => {
                 <div className="lg:col-span-6">
                   <div className="rounded-[24px] overflow-hidden border border-white/10 bg-[#1C1612] aspect-[4/3] shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
                     <EditorialVisual
-                      src={goldenHourContent?.imageUrl || ''}
+                      src={resolveSectionImageUrl('golden_hour')}
                       alt={goldenHourContent?.heading || 'OneLove Café Sigiriya culinary showcase'}
                       className="w-full h-full object-cover"
                     />
@@ -1446,7 +1475,7 @@ const OneLoveRouter: React.FC = () => {
                 <div className="lg:col-span-7">
                   <div className="rounded-[24px] border-[4px] border-white shadow-[0_20px_50px_rgba(20,16,12,0.09)] overflow-hidden aspect-[16/10] bg-[#EAE2D6]">
                     <EditorialVisual
-                      src={atmosphereContent?.imageUrl || ''}
+                      src={resolveSectionImageUrl('atmosphere')}
                       alt={
                         atmosphereContent?.heading ||
                         'OneLove Café Sigiriya warm teak and tropical light atmosphere'
@@ -1889,7 +1918,7 @@ const OneLoveRouter: React.FC = () => {
               >
                 <div className="lg:col-span-7 min-h-[260px] sm:min-h-[420px] bg-white border border-[#E7DED3] p-2.5 sm:p-3">
                   <EditorialVisual
-                    src={storyContent?.imageUrl || ''}
+                    src={resolveSectionImageUrl('story', 'story_collage_1')}
                     alt={storyContent?.heading || 'Sigiriya sanctuary architecture at dusk'}
                     className="h-full"
                   />
@@ -1954,7 +1983,7 @@ const OneLoveRouter: React.FC = () => {
                 </div>
                 <div className="lg:col-span-6 aspect-[16/10] border border-[#E7DED3] overflow-hidden bg-[#F8F4EE]">
                   <EditorialVisual
-                    src={conciergeContent.imageUrl || ''}
+                    src={resolveSectionImageUrl('concierge', 'story_collage_2')}
                     alt={conciergeContent.heading}
                   />
                 </div>

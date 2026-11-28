@@ -15,16 +15,33 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
   onReadMonograph,
   showMonographButton = true,
 }) => {
-  const { siteContent } = useCafe();
+  const { siteContent, siteImages } = useCafe();
   const sectionRef = useRef<HTMLElement | null>(null);
 
   const storyContent = siteContent.find((s) => s.sectionKey === 'story');
 
   const getSlotImage = (slotIndex: number): string => {
     const key = `story_collage_${slotIndex}`;
-    const found = siteContent.find((s) => s.sectionKey === key);
+    const fromSiteImages = siteImages.find((si) => si.id === key || si.sectionKey === key);
+    if (
+      fromSiteImages &&
+      fromSiteImages.imageUrl &&
+      /^https?:\/\//i.test(fromSiteImages.imageUrl.trim())
+    ) {
+      return fromSiteImages.imageUrl.trim();
+    }
+    const found = siteContent.find((s) => s.sectionKey === key || s.id === key);
     if (found && found.imageUrl && /^https?:\/\//i.test(found.imageUrl.trim())) {
       return found.imageUrl.trim();
+    }
+    if (slotIndex === 1) {
+      const storyImg = siteImages.find((si) => si.id === 'story' || si.sectionKey === 'story');
+      if (storyImg?.imageUrl && /^https?:\/\//i.test(storyImg.imageUrl.trim())) {
+        return storyImg.imageUrl.trim();
+      }
+      if (storyContent?.imageUrl && /^https?:\/\//i.test(storyContent.imageUrl.trim())) {
+        return storyContent.imageUrl.trim();
+      }
     }
     return '';
   };

@@ -89,6 +89,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     gallery,
     events,
     siteContent,
+    siteImages,
     availability,
     reservations,
     inquiries,
@@ -3619,10 +3620,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     },
                   ].map((slot) => {
                     const sec = siteContent.find((s) => s.sectionKey === slot.key);
-                    const currentSrc =
-                      sec?.imageUrl && /^https?:\/\//i.test(sec.imageUrl.trim())
-                        ? sec.imageUrl.trim()
-                        : '';
+                    const imgRec = siteImages.find((img) => img.id === slot.key || img.sectionKey === slot.key);
+                    const rawUrl = (sec?.imageUrl && sec.imageUrl.trim()) || (imgRec?.imageUrl && imgRec.imageUrl.trim()) || '';
+                    const currentSrc = /^https?:\/\//i.test(rawUrl) ? rawUrl : '';
                     const isCustom = Boolean(currentSrc);
                     const isBusy = uploadingCollageSlot === slot.index;
 
@@ -3699,7 +3699,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       sec.sectionKey !== 'menu_gallery_bg'
                   )
                   .map((sec) => {
-                  const draft = contentDrafts[sec.id] || contentDrafts[sec.sectionKey] || sec;
+                  const imgRec = siteImages.find((img) => img.id === sec.sectionKey || img.sectionKey === sec.sectionKey);
+                  const baseDraft = contentDrafts[sec.id] || contentDrafts[sec.sectionKey] || sec;
+                  const draft = {
+                    ...baseDraft,
+                    imageUrl: (baseDraft.imageUrl && baseDraft.imageUrl.trim()) || (imgRec?.imageUrl && imgRec.imageUrl.trim()) || '',
+                  };
                   const isFooterSec = sec.sectionKey === 'footer';
                   const isHeroSec = sec.sectionKey === 'hero';
                   const hasImageUpload =
@@ -4091,7 +4096,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {sec.heading}
                             </div>
                             <div className="aspect-[16/10] bg-white border border-[#E7DED3] overflow-hidden">
-                              <EditorialVisual src={sec.imageUrl} alt={sec.heading} />
+                              <EditorialVisual
+                                src={
+                                  (sec.imageUrl && sec.imageUrl.trim()) ||
+                                  (siteImages.find((img) => img.id === sec.sectionKey || img.sectionKey === sec.sectionKey)?.imageUrl ?? '')
+                                }
+                                alt={sec.heading}
+                              />
                             </div>
                           </div>
                           <div className="flex items-center gap-2">

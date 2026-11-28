@@ -571,35 +571,52 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'siteContent'),
         (snap) => {
-          const mergedMap = new Map<string, SiteContentSection>();
-          DEFAULT_SITE_CONTENT.forEach((sec) => {
-            mergedMap.set(sec.sectionKey, { ...sec, imageUrl: '' });
-          });
+          setSiteContent((prev) => {
+            const prevImagesByKey = new Map<string, string>();
+            prev.forEach((sec) => {
+              const clean = sanitizeCdnUrl(sec.imageUrl);
+              if (clean) {
+                prevImagesByKey.set(sec.sectionKey, clean);
+                prevImagesByKey.set(sec.id, clean);
+              }
+            });
 
-          snap.docs.forEach((d) => {
-            const raw = d.data() as SiteContentSection;
-            const key = raw.sectionKey || d.id;
-            const existing = mergedMap.get(key);
-            mergedMap.set(key, {
-              ...(existing || {
+            const mergedMap = new Map<string, SiteContentSection>();
+            DEFAULT_SITE_CONTENT.forEach((sec) => {
+              mergedMap.set(sec.sectionKey, {
+                ...sec,
+                imageUrl: prevImagesByKey.get(sec.sectionKey) || '',
+              });
+            });
+
+            snap.docs.forEach((d) => {
+              const raw = d.data() as SiteContentSection;
+              const key = raw.sectionKey || d.id;
+              const existing = mergedMap.get(key);
+              const rawCleanUrl = sanitizeCdnUrl(raw.imageUrl);
+              const fallbackUrl = prevImagesByKey.get(key) || prevImagesByKey.get(d.id) || '';
+
+              mergedMap.set(key, {
+                ...(existing || {
+                  id: d.id,
+                  sectionKey: key,
+                  kicker: '',
+                  heading: '',
+                  subheading: '',
+                  body: '',
+                  ctaLabel: '',
+                  ctaLink: '',
+                  imageUrl: '',
+                }),
+                ...raw,
                 id: d.id,
                 sectionKey: key,
-                kicker: '',
-                heading: '',
-                subheading: '',
-                body: '',
-                ctaLabel: '',
-                ctaLink: '',
-                imageUrl: '',
-              }),
-              ...raw,
-              id: d.id,
-              sectionKey: key,
-              imageUrl: sanitizeCdnUrl(raw.imageUrl),
+                imageUrl: rawCleanUrl || fallbackUrl,
+              });
             });
-          });
 
-          setSiteContent(Array.from(mergedMap.values()));
+            return Array.from(mergedMap.values());
+          });
         },
         (err) => console.warn('Firestore siteContent listener notice:', err.message)
       )
