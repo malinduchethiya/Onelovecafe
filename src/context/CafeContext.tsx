@@ -1733,18 +1733,31 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const slotMeta = DEFAULT_SITE_IMAGES.find(
         (si) => si.id === normalized.sectionKey || si.id === safeId
       );
+      const imageSlotId = normalized.sectionKey || safeId;
+      const imageRecord: SiteImageRecord = {
+        id: imageSlotId,
+        sectionKey: imageSlotId,
+        label: slotMeta?.label || normalized.heading || normalized.sectionKey,
+        imageUrl: normalized.imageUrl,
+        targetCollection: 'siteContent',
+        targetDocId: safeId,
+      };
+      setSiteImages((prev) => {
+        const exists = prev.some((img) => img.id === imageSlotId || img.sectionKey === imageSlotId);
+        return exists
+          ? prev.map((img) =>
+              img.id === imageSlotId || img.sectionKey === imageSlotId ? imageRecord : img
+            )
+          : [...prev, imageRecord];
+      });
+
       await commitFirestoreWrite(
-        setDoc(doc(db, 'siteImages', normalized.sectionKey || safeId), {
-          id: normalized.sectionKey || safeId,
-          sectionKey: normalized.sectionKey || safeId,
-          label: slotMeta?.label || normalized.heading || normalized.sectionKey,
-          imageUrl: normalized.imageUrl,
-          targetCollection: 'siteContent',
-          targetDocId: safeId,
+        setDoc(doc(db, 'siteImages', imageSlotId), {
+          ...imageRecord,
           updatedAt: serverTimestamp(),
         }),
         OperationType.WRITE,
-        `siteImages/${normalized.sectionKey || safeId}`
+        `siteImages/${imageSlotId}`
       );
 
       await logAdminAction(

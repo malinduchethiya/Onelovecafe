@@ -973,6 +973,133 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
+              {/* Quick Section Photo Uploader for Our Story, The Golden Hour & Atmosphere & Spaces */}
+              <div className="bg-white border border-[#E7DED3] p-6 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7DED3] pb-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
+                      Homepage Feature Section Photos · Direct Cloudflare R2 &amp; Firestore Sync
+                    </div>
+                    <h2 className="text-lg font-editorial font-semibold mt-0.5">
+                      Our Story, The Golden Hour &amp; Atmosphere &amp; Spaces Section Images
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange('content')}
+                    className="text-xs text-[#C65B2B] font-medium hover:underline cursor-pointer"
+                  >
+                    Open Full Section &amp; Image Manager →
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                  {[
+                    {
+                      id: 'story_collage_1',
+                      label: 'Our Story · Main Vertical Photo',
+                      subtitle: 'Right-side 4:5 vertical frame',
+                    },
+                    {
+                      id: 'story_collage_2',
+                      label: 'Our Story · Overlapping Inset Photo',
+                      subtitle: 'Bottom-left 1:1 square frame',
+                    },
+                    {
+                      id: 'golden_hour',
+                      label: 'The Golden Hour Section Photo',
+                      subtitle: 'Left 4:3 photo ("Fresh from the Sigiriya valley.")',
+                    },
+                    {
+                      id: 'atmosphere',
+                      label: 'Atmosphere & Spaces Section Photo',
+                      subtitle: 'Right 16:10 photo ("Teak, Woven Textures, and Tropical Light")',
+                    },
+                  ].map((slot) => {
+                    const imgRec = siteImages.find((s) => s.id === slot.id || s.sectionKey === slot.id);
+                    const secRec = siteContent.find((s) => s.sectionKey === slot.id || s.id === slot.id);
+                    const currentUrl =
+                      (secRec?.imageUrl && secRec.imageUrl.trim()) ||
+                      (imgRec?.imageUrl && imgRec.imageUrl.trim()) ||
+                      '';
+                    const isBusy = uploadingAuditKey === `ov_${slot.id}`;
+
+                    return (
+                      <div
+                        key={slot.id}
+                        className="bg-[#F8F4EE] border border-[#E7DED3] p-3.5 flex flex-col justify-between space-y-3"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
+                            {slot.label}
+                          </div>
+                          <div className="text-[11px] text-[#171513]/65 truncate">{slot.subtitle}</div>
+                          <div className="aspect-[16/10] bg-white border border-[#E7DED3] overflow-hidden">
+                            <EditorialVisual src={currentUrl} alt={slot.label} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <label className="flex-1 py-2 px-2.5 bg-[#171513] hover:bg-[#C65B2B] text-[#F8F4EE] text-[11px] font-medium uppercase tracking-wider inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+                            <Upload className="w-3 h-3" />
+                            <span>{isBusy ? 'Uploading...' : currentUrl ? 'Replace Photo' : 'Upload Photo'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = '';
+                                if (!file) return;
+                                setUploadingAuditKey(`ov_${slot.id}`);
+                                try {
+                                  const r2Url = await updateSiteImageSlot(slot.id, file);
+                                  setContentDrafts((prev) => {
+                                    const existing = prev[slot.id] || secRec;
+                                    if (!existing) return prev;
+                                    return {
+                                      ...prev,
+                                      [slot.id]: { ...existing, imageUrl: r2Url },
+                                    };
+                                  });
+                                  showToast(`Uploaded "${slot.label}" to Cloudflare R2 & Firestore.`);
+                                } catch (err) {
+                                  showToast(
+                                    err instanceof Error ? err.message : `Failed to upload ${slot.label}.`
+                                  );
+                                } finally {
+                                  setUploadingAuditKey(null);
+                                }
+                              }}
+                            />
+                          </label>
+                          {currentUrl && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await clearSiteImageSlot(slot.id);
+                                setContentDrafts((prev) => {
+                                  const existing = prev[slot.id] || secRec;
+                                  if (!existing) return prev;
+                                  return {
+                                    ...prev,
+                                    [slot.id]: { ...existing, imageUrl: '' },
+                                  };
+                                });
+                                showToast(`Removed photo from "${slot.label}".`);
+                              }}
+                              className="px-2.5 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Recent Reservations Table */}
               <div className="bg-white border border-[#E7DED3]">
                 <div className="px-6 py-4 border-b border-[#E7DED3] flex items-center justify-between">
@@ -3712,6 +3839,137 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
+              {/* The Golden Hour & Atmosphere & Spaces Section Photography Manager (Home Page) */}
+              <div className="bg-white border border-[#E7DED3] p-6 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7DED3] pb-4">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
+                      Homepage Feature Sections · The Golden Hour &amp; Atmosphere &amp; Spaces
+                    </div>
+                    <h2 className="text-xl font-editorial font-semibold text-[#171513] mt-0.5">
+                      The Golden Hour &amp; Atmosphere &amp; Spaces Photography (Home Page)
+                    </h2>
+                    <p className="text-xs text-[#171513]/65">
+                      Upload custom photographs for the dark &ldquo;The Golden Hour&rdquo; section
+                      (&ldquo;Fresh from the Sigiriya valley.&rdquo;) and the warm sand
+                      &ldquo;Atmosphere &amp; Spaces&rdquo; section (&ldquo;Teak, Woven Textures,
+                      and Tropical Light&rdquo;) on the Home Page.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl">
+                  {[
+                    {
+                      key: 'golden_hour',
+                      label: '01 · The Golden Hour Section Photo (4:3 Left Feature)',
+                      title: 'Fresh from the Sigiriya valley.',
+                    },
+                    {
+                      key: 'atmosphere',
+                      label: '02 · Atmosphere & Spaces Section Photo (16:10 Right Framed)',
+                      title: 'Teak, Woven Textures, and Tropical Light',
+                    },
+                  ].map((slot) => {
+                    const sec = siteContent.find((s) => s.sectionKey === slot.key || s.id === slot.key);
+                    const imgRec = siteImages.find((img) => img.id === slot.key || img.sectionKey === slot.key);
+                    const rawUrl =
+                      (sec?.imageUrl && sec.imageUrl.trim()) ||
+                      (imgRec?.imageUrl && imgRec.imageUrl.trim()) ||
+                      '';
+                    const currentSrc = /^https?:\/\//i.test(rawUrl) ? rawUrl : '';
+                    const isBusy = uploadingSectionId === `featured_${slot.key}`;
+
+                    return (
+                      <div
+                        key={slot.key}
+                        className="bg-[#F8F4EE] border border-[#E7DED3] p-4 flex flex-col justify-between space-y-3"
+                      >
+                        <div className="space-y-1.5">
+                          <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
+                            {slot.label}
+                          </div>
+                          <div className="text-xs font-semibold text-[#171513] truncate">
+                            {sec?.heading || slot.title}
+                          </div>
+                          <div className="aspect-[4/3] bg-white border border-[#E7DED3] overflow-hidden">
+                            <EditorialVisual src={currentSrc} alt={slot.title} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <label className="flex-1 py-2 px-2.5 bg-[#171513] hover:bg-[#C65B2B] text-[#F8F4EE] text-[11px] font-medium uppercase tracking-wider inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+                            <Upload className="w-3 h-3" />
+                            <span>
+                              {isBusy
+                                ? 'Uploading to R2...'
+                                : currentSrc
+                                ? 'Replace Photo'
+                                : 'Upload Photo'}
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = '';
+                                if (!file) return;
+                                setUploadingSectionId(`featured_${slot.key}`);
+                                try {
+                                  const r2Url = await updateSiteImageSlot(slot.key, file);
+                                  setContentDrafts((prev) => {
+                                    const existing = prev[slot.key] || sec;
+                                    if (!existing) return prev;
+                                    return {
+                                      ...prev,
+                                      [slot.key]: { ...existing, imageUrl: r2Url },
+                                    };
+                                  });
+                                  showToast(
+                                    `Uploaded & synced "${slot.title}" photo to Cloudflare R2 and Firestore.`
+                                  );
+                                } catch (err) {
+                                  showToast(
+                                    err instanceof Error
+                                      ? err.message
+                                      : `Failed to upload ${slot.title} photo to R2.`
+                                  );
+                                } finally {
+                                  setUploadingSectionId(null);
+                                }
+                              }}
+                            />
+                          </label>
+
+                          {currentSrc && (
+                            <button
+                              type="button"
+                              title="Remove photo from R2"
+                              onClick={async () => {
+                                await clearSiteImageSlot(slot.key);
+                                setContentDrafts((prev) => {
+                                  const existing = prev[slot.key] || sec;
+                                  if (!existing) return prev;
+                                  return {
+                                    ...prev,
+                                    [slot.key]: { ...existing, imageUrl: '' },
+                                  };
+                                });
+                                showToast(`Removed photo from "${slot.title}".`);
+                              }}
+                              className="px-2.5 py-2 border border-[#E7DED3] bg-white text-[#9E3F16] hover:bg-[#FDF3EF] transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Editorial Website Content Sections (Hero, Story, Golden Hour, Atmosphere, Reservation, Find Us, Concierge, Footer) */}
               <div className="space-y-6">
                 <h2 className="text-xl font-editorial font-semibold">
@@ -3729,7 +3987,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   const baseDraft = contentDrafts[sec.id] || contentDrafts[sec.sectionKey] || sec;
                   const draft = {
                     ...baseDraft,
-                    imageUrl: (baseDraft.imageUrl && baseDraft.imageUrl.trim()) || (imgRec?.imageUrl && imgRec.imageUrl.trim()) || '',
+                    imageUrl:
+                      (sec.imageUrl && sec.imageUrl.trim()) ||
+                      (imgRec?.imageUrl && imgRec.imageUrl.trim()) ||
+                      (baseDraft.imageUrl && baseDraft.imageUrl.trim()) ||
+                      '',
                   };
                   const isFooterSec = sec.sectionKey === 'footer';
                   const isHeroSec = sec.sectionKey === 'hero';
