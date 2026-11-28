@@ -19,6 +19,7 @@ import {
   extractDietaryFlags,
   resolveMenuCategorySection,
 } from '../lib/menuSections';
+import { EditorialVisual } from './EditorialVisual';
 
 interface MenuPageProps {
   settings: CafeSettings;
@@ -553,7 +554,7 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                   )}
                 </div>
 
-                {/* 4-in-a-Row Fancy Square Cards (No Images) */}
+                {/* 4-in-a-Row Fancy Square Cards (With R2 Image when uploaded) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 sm:gap-6">
                   {items.map((item) => {
                     const flags = extractDietaryFlags(item);
@@ -566,12 +567,15 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                       flags.isGlutenFree ? '[GF]' : null,
                       flags.isSeafood ? '[SF]' : null,
                     ].filter(Boolean);
+                    const hasPhoto =
+                      typeof item.imageUrl === 'string' &&
+                      /^https?:\/\//i.test(item.imageUrl.trim());
 
                     return (
                       <article
                         key={item.id}
                         onClick={() => setSelectedItem(item)}
-                        className="group bg-white rounded-[22px] border border-[#120E0B]/10 shadow-[0_8px_28px_rgba(18,14,11,0.06)] hover:shadow-[0_18px_40px_rgba(18,14,11,0.11)] hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col justify-between aspect-square cursor-pointer"
+                        className="group bg-white rounded-[22px] border border-[#120E0B]/10 shadow-[0_8px_28px_rgba(18,14,11,0.06)] hover:shadow-[0_18px_40px_rgba(18,14,11,0.11)] hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col justify-between aspect-square cursor-pointer overflow-hidden"
                       >
                         {/* Top Tag + Dietary Shorthand */}
                         <div className="flex items-center justify-between gap-2">
@@ -585,13 +589,28 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                           )}
                         </div>
 
+                        {/* Optional R2 Dish / Drink Photo */}
+                        {hasPhoto && (
+                          <div className="mt-3 rounded-xl overflow-hidden aspect-[16/10] w-full bg-[#EAE2D6] border border-[#120E0B]/8 shrink-0">
+                            <EditorialVisual
+                              src={item.imageUrl}
+                              alt={item.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            />
+                          </div>
+                        )}
+
                         {/* Center Editorial Title & Description */}
-                        <div className="my-auto py-3 space-y-2.5">
+                        <div className="my-auto py-3 space-y-2">
                           <h3 className="font-outfit text-xl font-normal text-[#120E0B] leading-snug tracking-tight group-hover:text-[#C65B2B] transition-colors line-clamp-2">
                             {item.name}
                           </h3>
                           {item.description && (
-                            <p className="text-[13px] text-[#120E0B]/65 font-light leading-relaxed line-clamp-3">
+                            <p
+                              className={`text-[13px] text-[#120E0B]/65 font-light leading-relaxed ${
+                                hasPhoto ? 'line-clamp-2' : 'line-clamp-3'
+                              }`}
+                            >
                               {item.description}
                             </p>
                           )}
@@ -715,6 +734,16 @@ export const MenuPage: React.FC<MenuPageProps> = ({
                 )}
               </div>
             </div>
+
+            {selectedItem.imageUrl && /^https?:\/\//i.test(selectedItem.imageUrl.trim()) && (
+              <div className="rounded-2xl overflow-hidden aspect-[16/10] w-full bg-[#EAE2D6] border border-[#120E0B]/10">
+                <EditorialVisual
+                  src={selectedItem.imageUrl}
+                  alt={selectedItem.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <span className="text-[10px] font-mono-tabular uppercase tracking-[0.2em] text-[#120E0B]/50 font-semibold block">

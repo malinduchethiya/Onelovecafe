@@ -2240,6 +2240,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             }`}
                           >
                             <div className="flex items-start gap-3.5 max-w-md">
+                              <div className="w-16 h-12 border border-[#E7DED3] overflow-hidden shrink-0 bg-[#F8F4EE]">
+                                <EditorialVisual src={item.imageUrl} alt={item.name} />
+                              </div>
                               <div className="space-y-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-semibold text-sm text-[#171513]">
@@ -2283,6 +2286,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
+                              {/* Direct 1-Click R2 Photo Upload on Row */}
+                              <label className="px-2.5 py-1.5 border border-[#E7DED3] bg-[#F8F4EE] hover:border-[#171513] cursor-pointer inline-flex items-center gap-1 font-medium">
+                                <Upload className="w-3 h-3 text-[#C65B2B]" />
+                                <span>{item.imageUrl ? 'Replace Photo' : 'Upload Photo'}</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    e.target.value = '';
+                                    if (!file) return;
+                                    try {
+                                      showToast(`Uploading "${item.name}" photo to Cloudflare R2...`);
+                                      const r2Url = await uploadMediaFile(file, 'menu', item.imageUrl);
+                                      const updated = { ...item, imageUrl: r2Url };
+                                      await saveMenuItem(updated);
+                                      if (editingMenuItem?.id === item.id) {
+                                        setEditingMenuItem(updated);
+                                      }
+                                      showToast(`Uploaded & synced photo for "${item.name}" to R2 and Firestore.`);
+                                    } catch (err) {
+                                      showToast(
+                                        err instanceof Error ? err.message : 'Failed to upload photo to R2.'
+                                      );
+                                    }
+                                  }}
+                                />
+                              </label>
+
                               {/* Per-Item Currency Selector right on row */}
                               <select
                                 aria-label={`Price currency display for ${item.name}`}
@@ -2806,17 +2839,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   'menu',
                                   editingMenuItem.imageUrl
                                 );
-                                const updated = { ...editingMenuItem, imageUrl: r2Url };
+                                const updated = {
+                                  ...editingMenuItem,
+                                  name: editingMenuItem.name.trim() || file.name.replace(/\.[^/.]+$/, ''),
+                                  imageUrl: r2Url,
+                                };
                                 setEditingMenuItem(updated);
-                                if (
-                                  menuItems.some((m) => m.id === updated.id) &&
-                                  updated.name.trim()
-                                ) {
-                                  await saveMenuItem(updated);
-                                  showToast(`Uploaded & saved photo for "${updated.name}".`);
-                                } else {
-                                  showToast('Photo uploaded to R2. Click Save Item to finish.');
-                                }
+                                await saveMenuItem(updated);
+                                showToast(
+                                  `Uploaded photo to Cloudflare R2 & synced "${updated.name}" to Firestore.`
+                                );
                               } catch (err) {
                                 showToast(
                                   err instanceof Error
@@ -3193,24 +3225,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 );
                                 const updatedGallery = {
                                   ...editingGalleryItem,
+                                  title:
+                                    editingGalleryItem.title.trim() ||
+                                    file.name.replace(/\.[^/.]+$/, ''),
                                   imageUrl: r2Url,
                                 };
                                 setEditingGalleryItem(updatedGallery);
-                                if (
-                                  gallery.some((g) => g.id === updatedGallery.id) ||
-                                  updatedGallery.title.trim().length > 0
-                                ) {
-                                  await saveGalleryItem(updatedGallery);
-                                  showToast(
-                                    `Uploaded & saved gallery photo "${
-                                      updatedGallery.title || 'Sanctuary Moment'
-                                    }" directly to Cloudflare R2.`
-                                  );
-                                } else {
-                                  showToast(
-                                    'Gallery image uploaded to Cloudflare R2. Enter title and click Save.'
-                                  );
-                                }
+                                await saveGalleryItem(updatedGallery);
+                                showToast(
+                                  `Uploaded photo to Cloudflare R2 & synced "${updatedGallery.title}" to Firestore.`
+                                );
                               } finally {
                                 setUploadingGalleryImg(false);
                                 e.target.value = '';
@@ -3507,23 +3531,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   'events',
                                   editingEvent.imageUrl
                                 );
-                                const updatedEvent = { ...editingEvent, imageUrl: r2Url };
+                                const updatedEvent = {
+                                  ...editingEvent,
+                                  title:
+                                    editingEvent.title.trim() || file.name.replace(/\.[^/.]+$/, ''),
+                                  imageUrl: r2Url,
+                                };
                                 setEditingEvent(updatedEvent);
-                                if (
-                                  events.some((ev) => ev.id === updatedEvent.id) ||
-                                  updatedEvent.title.trim().length > 0
-                                ) {
-                                  await saveEvent(updatedEvent);
-                                  showToast(
-                                    `Uploaded & saved event photo for "${
-                                      updatedEvent.title || 'Sanctuary Gathering'
-                                    }" directly to Cloudflare R2.`
-                                  );
-                                } else {
-                                  showToast(
-                                    'Event image uploaded to Cloudflare R2. Enter title and click Save.'
-                                  );
-                                }
+                                await saveEvent(updatedEvent);
+                                showToast(
+                                  `Uploaded photo to Cloudflare R2 & synced "${updatedEvent.title}" to Firestore.`
+                                );
                               } finally {
                                 setUploadingEventImg(false);
                                 e.target.value = '';

@@ -1132,12 +1132,16 @@ const OneLoveRouter: React.FC = () => {
                             ? `$${dish.priceUsd.toFixed(2)}`
                             : `LKR ${dish.priceLkr.toLocaleString()}`;
 
+                        const hasPhoto =
+                          typeof dish.imageUrl === 'string' &&
+                          /^https?:\/\//i.test(dish.imageUrl.trim());
+
                         return (
                           <article
                             key={dish.id}
                             data-gsap-menu-card
                             onClick={() => setHomeMenuDetailItem(dish)}
-                            className="group bg-white rounded-[22px] border border-[#14110E]/10 shadow-[0_8px_28px_rgba(18,14,11,0.06)] hover:shadow-[0_18px_40px_rgba(18,14,11,0.11)] hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col justify-between aspect-square cursor-pointer"
+                            className="group bg-white rounded-[22px] border border-[#14110E]/10 shadow-[0_8px_28px_rgba(18,14,11,0.06)] hover:shadow-[0_18px_40px_rgba(18,14,11,0.11)] hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col justify-between aspect-square cursor-pointer overflow-hidden"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#181512] text-white text-[9px] font-mono-tabular uppercase tracking-[0.16em] font-medium truncate max-w-[75%]">
@@ -1150,11 +1154,25 @@ const OneLoveRouter: React.FC = () => {
                               )}
                             </div>
 
-                            <div className="my-auto py-3 space-y-2.5">
+                            {hasPhoto && (
+                              <div className="mt-3 rounded-xl overflow-hidden aspect-[16/10] w-full bg-[#EAE2D6] border border-[#14110E]/8 shrink-0">
+                                <EditorialVisual
+                                  src={dish.imageUrl}
+                                  alt={dish.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                />
+                              </div>
+                            )}
+
+                            <div className="my-auto py-3 space-y-2">
                               <h4 className="font-outfit text-xl font-normal text-[#14110E] leading-snug tracking-tight group-hover:text-[#C65B2B] transition-colors line-clamp-2">
                                 {dish.name}
                               </h4>
-                              <p className="text-[13px] text-[#14110E]/65 font-light leading-relaxed line-clamp-3">
+                              <p
+                                className={`text-[13px] text-[#14110E]/65 font-light leading-relaxed ${
+                                  hasPhoto ? 'line-clamp-2' : 'line-clamp-3'
+                                }`}
+                              >
                                 {dish.description}
                               </p>
                             </div>
@@ -1204,12 +1222,16 @@ const OneLoveRouter: React.FC = () => {
                             ? `$${drink.priceUsd.toFixed(2)}`
                             : `LKR ${drink.priceLkr.toLocaleString()}`;
 
+                        const hasPhoto =
+                          typeof drink.imageUrl === 'string' &&
+                          /^https?:\/\//i.test(drink.imageUrl.trim());
+
                         return (
                           <article
                             key={drink.id}
                             data-gsap-menu-card
                             onClick={() => setHomeMenuDetailItem(drink)}
-                            className="group bg-white rounded-[22px] border border-[#14110E]/10 shadow-[0_8px_28px_rgba(18,14,11,0.06)] hover:shadow-[0_18px_40px_rgba(18,14,11,0.11)] hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col justify-between aspect-square cursor-pointer"
+                            className="group bg-white rounded-[22px] border border-[#14110E]/10 shadow-[0_8px_28px_rgba(18,14,11,0.06)] hover:shadow-[0_18px_40px_rgba(18,14,11,0.11)] hover:-translate-y-1 transition-all duration-300 p-6 flex flex-col justify-between aspect-square cursor-pointer overflow-hidden"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="inline-flex items-center px-3 py-1 rounded-full bg-[#181512] text-white text-[9px] font-mono-tabular uppercase tracking-[0.16em] font-medium truncate max-w-[75%]">
@@ -1222,11 +1244,25 @@ const OneLoveRouter: React.FC = () => {
                               )}
                             </div>
 
-                            <div className="my-auto py-3 space-y-2.5">
+                            {hasPhoto && (
+                              <div className="mt-3 rounded-xl overflow-hidden aspect-[16/10] w-full bg-[#EAE2D6] border border-[#14110E]/8 shrink-0">
+                                <EditorialVisual
+                                  src={drink.imageUrl}
+                                  alt={drink.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                />
+                              </div>
+                            )}
+
+                            <div className="my-auto py-3 space-y-2">
                               <h4 className="font-outfit text-xl font-normal text-[#14110E] leading-snug tracking-tight group-hover:text-[#C65B2B] transition-colors line-clamp-2">
                                 {drink.name}
                               </h4>
-                              <p className="text-[13px] text-[#14110E]/65 font-light leading-relaxed line-clamp-3">
+                              <p
+                                className={`text-[13px] text-[#14110E]/65 font-light leading-relaxed ${
+                                  hasPhoto ? 'line-clamp-2' : 'line-clamp-3'
+                                }`}
+                              >
                                 {drink.description}
                               </p>
                             </div>
@@ -1291,6 +1327,17 @@ const OneLoveRouter: React.FC = () => {
                         )}
                       </div>
                     </div>
+
+                    {homeMenuDetailItem.imageUrl &&
+                      /^https?:\/\//i.test(homeMenuDetailItem.imageUrl.trim()) && (
+                        <div className="rounded-2xl overflow-hidden aspect-[16/10] w-full bg-[#EAE2D6] border border-[#120E0B]/10">
+                          <EditorialVisual
+                            src={homeMenuDetailItem.imageUrl}
+                            alt={homeMenuDetailItem.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
 
                     <p className="text-sm text-[#120E0B]/80 font-light leading-relaxed">
                       {homeMenuDetailItem.description}
