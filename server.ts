@@ -534,7 +534,6 @@ ${indexablePages
   if (!isProd) {
     app.use(express.static(path.join(__dirname, 'public'), { index: false }));
 
-    // Bind port 3000 immediately so dev server readiness checks never time out while Vite initializes
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`OneLove Café server listening on http://0.0.0.0:${PORT}`);
     });

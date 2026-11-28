@@ -123,6 +123,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     checkStorageStatus,
   } = useCafe();
   const [uploadingCollageSlot, setUploadingCollageSlot] = useState<number | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSubmitting, setAuthSubmitting] = useState<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<AdminTab>(initialTab);
   const [seeding, setSeeding] = useState(false);
@@ -643,44 +645,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               OneLove Café Sigiriya · Hospitality Console
             </div>
             <h1 className="text-3xl font-editorial font-semibold text-[#171513]">
-              Administrator Sign In
+              Administrator Access
             </h1>
             <p className="text-xs text-[#171513]/65 leading-relaxed">
-              Protected administrative interface backed by Firebase Authentication and role-verified
-              Firestore security rules.
+              Sign in with an authorized administrator Google account to manage menu items,
+              categories, site texts, Cloudflare R2 media, and live Firestore synchronization.
             </p>
           </div>
 
           {user && !isAdmin && (
-            <div className="p-4 bg-[#FDF3EF] border border-[#C65B2B] text-xs text-[#9E3F16] space-y-1">
-              <div className="font-semibold">Access Restricted</div>
-              <div>
-                Signed in as{' '}
-                <span className="font-mono-tabular">
-                  {getPrimaryUserEmail(user) || user.email || 'Unknown account'}
-                </span>
-                {!user.emailVerified
-                  ? ', whose email address is not yet verified by Google.'
-                  : ', which is not registered in the `/admins` collection.'}
-              </div>
+            <div className="p-3.5 bg-[#FDF3EF] border border-[#C65B2B] text-xs text-[#9E3F16]">
+              Signed in as <strong>{getPrimaryUserEmail(user) || user.email}</strong>, which does
+              not have administrator privileges.
+            </div>
+          )}
+
+          {authError && (
+            <div className="p-3.5 bg-[#FDF3EF] border border-[#C65B2B] text-xs text-[#9E3F16]">
+              {authError}
             </div>
           )}
 
           <div className="space-y-3 pt-2">
             <button
               type="button"
-              onClick={signInAdmin}
-              className="w-full py-3 px-4 bg-[#171513] text-[#F8F4EE] text-xs uppercase tracking-widest font-medium hover:bg-[#C65B2B] transition-colors"
+              disabled={authSubmitting}
+              onClick={async () => {
+                setAuthError(null);
+                setAuthSubmitting(true);
+                try {
+                  await signInAdmin();
+                } catch (err) {
+                  setAuthError(err instanceof Error ? err.message : 'Google Sign-In failed.');
+                } finally {
+                  setAuthSubmitting(false);
+                }
+              }}
+              className="w-full py-3 px-4 bg-[#171513] text-[#F8F4EE] text-xs uppercase tracking-widest font-medium hover:bg-[#C65B2B] transition-colors disabled:opacity-50"
             >
-              Sign In with Google
+              {authSubmitting ? 'Connecting with Google...' : 'Sign In with Google'}
             </button>
             {user && (
               <button
                 type="button"
                 onClick={signOutAdmin}
-                className="w-full py-2.5 px-4 border border-[#E7DED3] text-xs uppercase tracking-wider text-[#171513]/70 hover:text-[#171513]"
+                className="w-full py-2.5 px-4 border border-[#E7DED3] text-xs uppercase tracking-widest text-[#171513] hover:bg-[#F8F4EE] transition-colors"
               >
-                Sign Out Current Account
+                Switch Account
               </button>
             )}
             <button
@@ -814,12 +825,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 setSeeding(true);
                 await seedDatabaseIfNeeded();
                 setSeeding(false);
-                showToast('Synced default Sigiriya sanctuary data to Firestore.');
+                showToast('Synced baseline configuration to Firebase Firestore.');
               }}
               className="px-3.5 py-2 bg-[#F8F4EE] border border-[#E7DED3] text-xs font-medium hover:border-[#171513] inline-flex items-center gap-2 whitespace-nowrap shrink-0"
             >
               <Database className="w-3.5 h-3.5 text-[#C65B2B]" />
-              {seeding ? 'Syncing Firestore...' : 'Reset / Sync Default Data'}
+              {seeding ? 'Syncing R2...' : 'Reset / Sync Default Data'}
             </button>
           </div>
         </header>
@@ -3579,16 +3590,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       key: 'story_collage_1',
                       label: '01 · Main Right Feature Photo (4:5 Vertical)',
                       title: 'Open-Air Pavilion & Teak Dining Sanctuary',
-                      defaultSrc:
-                        'https://cdn.onelovecafesigiriya.com/collage/1793182269079-wp11877848-cozy-rain-wallpapers.webp',
+                      defaultSrc: '',
                     },
                     {
                       index: 2,
                       key: 'story_collage_2',
                       label: '02 · Overlapping Inset Photo (1:1 Square)',
                       title: 'Sanctuary Interior & Natural Light',
-                      defaultSrc:
-                        'https://cdn.onelovecafesigiriya.com/collage/1793182271989-wp2352856-coffee-shop-wallpapers.webp',
+                      defaultSrc: '',
                     },
                   ].map((slot) => {
                     const sec = siteContent.find((s) => s.sectionKey === slot.key);

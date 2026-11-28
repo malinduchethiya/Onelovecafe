@@ -1,367 +1,295 @@
 {
   "entities": {
-    "Admin": {
-      "title": "Admin",
-      "description": "Authorized café administrator record",
+    "CafeSettings": {
+      "title": "CafeSettings",
+      "description": "Global identity, contact, hero slideshow, floor plan, and reservation policy settings for OneLove Cafe Sigiriya.",
       "type": "object",
       "properties": {
-        "email": { "type": "string", "format": "email", "maxLength": 120 },
-        "name": { "type": "string", "maxLength": 100 },
-        "role": { "type": "string", "enum": ["super_admin", "manager", "host"] },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "id": { "type": "string", "maxLength": 100 },
+        "cafeName": { "type": "string", "maxLength": 120 },
+        "tagline": { "type": "string", "maxLength": 300 },
+        "address": { "type": "string", "maxLength": 300 },
+        "phone": { "type": "string", "maxLength": 60 },
+        "whatsapp": { "type": "string", "maxLength": 60 },
+        "email": { "type": "string", "maxLength": 140 },
+        "instagram": { "type": "string", "maxLength": 120 },
+        "coordinates": { "type": "string", "maxLength": 120 },
+        "gracePeriodMinutes": { "type": "number" },
+        "holdDurationMinutes": { "type": "number" },
+        "maxPartySize": { "type": "number" },
+        "sameDayCutoffHour": { "type": "number" },
+        "bookingPolicy": { "type": "string", "maxLength": 2000 },
+        "heroImages": { "type": "array" },
+        "heroSlideshowSpeedSeconds": { "type": "number" },
+        "floorPlanImageUrl": { "type": "string", "maxLength": 1500 },
+        "googleMapsEmbedUrl": { "type": "string", "maxLength": 2500 },
+        "mapTitle": { "type": "string", "maxLength": 200 },
+        "mapSubtitle": { "type": "string", "maxLength": 500 },
+        "menuCurrencyDisplay": { "type": "string", "enum": ["both", "lkr", "usd"] }
       },
-      "required": ["email", "name", "role", "createdAt"]
+      "required": ["id", "cafeName"]
     },
-    "Reservation": {
-      "title": "Reservation",
-      "description": "Confirmed or pending guest table reservation with contact details",
+    "MenuCategory": {
+      "title": "MenuCategory",
+      "description": "Food and drink categories for the cafe menu.",
       "type": "object",
       "properties": {
-        "referenceCode": { "type": "string", "maxLength": 24, "pattern": "^[A-Z0-9\\-]+$" },
-        "date": { "type": "string", "maxLength": 10, "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
-        "time": { "type": "string", "maxLength": 10 },
-        "servicePeriod": { "type": "string", "maxLength": 40 },
-        "partySize": { "type": "number" },
-        "tableId": { "type": "string", "maxLength": 40 },
-        "tableLabel": { "type": "string", "maxLength": 40 },
-        "zoneId": { "type": "string", "maxLength": 40 },
-        "zoneName": { "type": "string", "maxLength": 60 },
-        "guestName": { "type": "string", "minLength": 2, "maxLength": 100 },
-        "guestEmail": { "type": "string", "format": "email", "maxLength": 120 },
-        "whatsapp": { "type": "string", "minLength": 5, "maxLength": 30 },
-        "country": { "type": "string", "maxLength": 80 },
-        "occasion": { "type": "string", "maxLength": 60 },
-        "dietaryNotes": { "type": "string", "maxLength": 500 },
-        "specialRequests": { "type": "string", "maxLength": 500 },
-        "status": { "type": "string", "enum": ["confirmed", "seated", "completed", "cancelled", "rejected", "no_show"] },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "id": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 120 },
+        "slug": { "type": "string", "maxLength": 120 },
+        "subtitle": { "type": "string", "maxLength": 300 },
+        "section": { "type": "string", "enum": ["food", "drinks"] },
+        "sortOrder": { "type": "number" },
+        "isActive": { "type": "boolean" }
       },
-      "required": [
-        "referenceCode",
-        "date",
-        "time",
-        "partySize",
-        "tableId",
-        "tableLabel",
-        "zoneId",
-        "zoneName",
-        "guestName",
-        "guestEmail",
-        "whatsapp",
-        "country",
-        "status",
-        "createdAt",
-        "updatedAt"
-      ]
+      "required": ["id", "name", "slug", "sortOrder", "isActive"]
     },
-    "ReservationHold": {
-      "title": "ReservationHold",
-      "description": "Time-limited 10-minute table hold during active checkout",
+    "MenuItem": {
+      "title": "MenuItem",
+      "description": "Individual food or beverage dish on the menu.",
       "type": "object",
       "properties": {
-        "slotId": { "type": "string", "maxLength": 80 },
-        "date": { "type": "string", "maxLength": 10 },
-        "time": { "type": "string", "maxLength": 10 },
-        "tableId": { "type": "string", "maxLength": 40 },
-        "sessionId": { "type": "string", "maxLength": 80 },
-        "expiresAtMs": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "id": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 160 },
+        "categoryId": { "type": "string", "maxLength": 100 },
+        "categoryName": { "type": "string", "maxLength": 120 },
+        "description": { "type": "string", "maxLength": 1500 },
+        "priceLkr": { "type": "number" },
+        "priceUsd": { "type": "number" },
+        "priceCurrency": { "type": "string", "enum": ["default", "both", "lkr", "usd"] },
+        "imageUrl": { "type": "string", "maxLength": 1500 },
+        "dietaryTags": { "type": "array" },
+        "isFeatured": { "type": "boolean" },
+        "isAvailable": { "type": "boolean" }
       },
-      "required": ["slotId", "date", "time", "tableId", "sessionId", "expiresAtMs", "createdAt"]
+      "required": ["id", "name", "categoryId", "categoryName", "priceLkr", "priceUsd", "isFeatured", "isAvailable"]
     },
-    "AvailabilitySlot": {
-      "title": "AvailabilitySlot",
-      "description": "Publicly readable non-PII slot lock state for deterministic double-booking prevention",
+    "GalleryItem": {
+      "title": "GalleryItem",
+      "description": "Photography gallery item stored in Cloudflare R2 and indexed in Firestore.",
       "type": "object",
       "properties": {
-        "date": { "type": "string", "maxLength": 10 },
-        "time": { "type": "string", "maxLength": 10 },
-        "tableId": { "type": "string", "maxLength": 40 },
-        "status": { "type": "string", "enum": ["available", "held", "reserved", "occupied"] },
-        "holdExpiresAtMs": { "type": "number" },
-        "sessionId": { "type": "string", "maxLength": 80 },
-        "referenceCode": { "type": "string", "maxLength": 24 },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "id": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 160 },
+        "category": { "type": "string", "maxLength": 80 },
+        "caption": { "type": "string", "maxLength": 800 },
+        "imageUrl": { "type": "string", "maxLength": 1500 },
+        "aspectRatio": { "type": "string", "enum": ["16:9", "4:3", "3:4", "1:1"] },
+        "isFeatured": { "type": "boolean" },
+        "sortOrder": { "type": "number" }
       },
-      "required": ["date", "time", "tableId", "status", "updatedAt"]
+      "required": ["id", "title", "category", "imageUrl", "aspectRatio", "isFeatured", "sortOrder"]
     },
-    "Table": {
-      "title": "Table",
-      "description": "Café table node on the interactive floor plan",
+    "CafeEvent": {
+      "title": "CafeEvent",
+      "description": "Curated event, acoustic evening, or coffee cupping experience.",
       "type": "object",
       "properties": {
-        "label": { "type": "string", "maxLength": 30 },
+        "id": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 180 },
+        "subtitle": { "type": "string", "maxLength": 260 },
+        "date": { "type": "string", "maxLength": 100 },
+        "time": { "type": "string", "maxLength": 100 },
+        "category": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 2500 },
+        "imageUrl": { "type": "string", "maxLength": 1500 },
+        "priceInfo": { "type": "string", "maxLength": 160 },
+        "isFeatured": { "type": "boolean" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "title", "date", "time", "category", "isFeatured", "isActive"]
+    },
+    "SiteContentSection": {
+      "title": "SiteContentSection",
+      "description": "Editable copy and Cloudflare R2 image URL for each website section.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "sectionKey": { "type": "string", "maxLength": 80 },
+        "kicker": { "type": "string", "maxLength": 200 },
+        "heading": { "type": "string", "maxLength": 300 },
+        "subheading": { "type": "string", "maxLength": 500 },
+        "body": { "type": "string", "maxLength": 4000 },
+        "ctaLabel": { "type": "string", "maxLength": 120 },
+        "ctaLink": { "type": "string", "maxLength": 300 },
+        "imageUrl": { "type": "string", "maxLength": 1500 }
+      },
+      "required": ["id", "sectionKey"]
+    },
+    "SeatingZone": {
+      "title": "SeatingZone",
+      "description": "Dining zone on the cafe floor plan.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 120 },
+        "subtitle": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "atmosphere": { "type": "string", "maxLength": 200 },
+        "isActive": { "type": "boolean" },
+        "sortOrder": { "type": "number" }
+      },
+      "required": ["id", "name", "isActive", "sortOrder"]
+    },
+    "CafeTable": {
+      "title": "CafeTable",
+      "description": "Individual reservable table on the interactive floor plan.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "label": { "type": "string", "maxLength": 60 },
         "number": { "type": "number" },
         "capacity": { "type": "number" },
         "minGuests": { "type": "number" },
-        "zoneId": { "type": "string", "maxLength": 40 },
-        "zoneName": { "type": "string", "maxLength": 60 },
+        "zoneId": { "type": "string", "maxLength": 100 },
+        "zoneName": { "type": "string", "maxLength": 120 },
         "shape": { "type": "string", "enum": ["round", "square", "diamond", "rectangle"] },
         "x": { "type": "number" },
         "y": { "type": "number" },
         "isVip": { "type": "boolean" },
         "isActive": { "type": "boolean" },
-        "notes": { "type": "string", "maxLength": 200 },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "notes": { "type": "string", "maxLength": 300 }
       },
-      "required": ["label", "number", "capacity", "minGuests", "zoneId", "zoneName", "shape", "x", "y", "isVip", "isActive", "updatedAt"]
+      "required": ["id", "label", "number", "capacity", "zoneId", "zoneName", "shape", "x", "y", "isActive"]
     },
-    "SeatingZone": {
-      "title": "SeatingZone",
-      "description": "Architectural dining zone within OneLove Café",
+    "OpeningHoursConfig": {
+      "title": "OpeningHoursConfig",
+      "description": "Daily service schedule and slot duration.",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "maxLength": 60 },
-        "subtitle": { "type": "string", "maxLength": 120 },
-        "description": { "type": "string", "maxLength": 300 },
-        "atmosphere": { "type": "string", "maxLength": 100 },
-        "isActive": { "type": "boolean" },
-        "sortOrder": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["name", "subtitle", "description", "isActive", "sortOrder", "updatedAt"]
-    },
-    "OpeningHours": {
-      "title": "OpeningHours",
-      "description": "Operating hours and slot configuration per day of week",
-      "type": "object",
-      "properties": {
-        "dayOfWeek": { "type": "string", "maxLength": 20 },
+        "id": { "type": "string", "maxLength": 100 },
+        "dayOfWeek": { "type": "string", "maxLength": 30 },
         "isOpen": { "type": "boolean" },
-        "openTime": { "type": "string", "maxLength": 10 },
-        "closeTime": { "type": "string", "maxLength": 10 },
+        "openTime": { "type": "string", "maxLength": 20 },
+        "closeTime": { "type": "string", "maxLength": 20 },
         "slotDurationMinutes": { "type": "number" },
-        "gracePeriodMinutes": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "gracePeriodMinutes": { "type": "number" }
       },
-      "required": ["dayOfWeek", "isOpen", "openTime", "closeTime", "slotDurationMinutes", "gracePeriodMinutes", "updatedAt"]
+      "required": ["id", "dayOfWeek", "isOpen", "openTime", "closeTime"]
     },
-    "BlockedDate": {
-      "title": "BlockedDate",
-      "description": "Special closure or private sanctuary buyout date",
+    "BlockedDateRecord": {
+      "title": "BlockedDateRecord",
+      "description": "Special closure or private event blackout date.",
       "type": "object",
       "properties": {
-        "date": { "type": "string", "maxLength": 10 },
-        "reason": { "type": "string", "maxLength": 160 },
+        "id": { "type": "string", "maxLength": 100 },
+        "date": { "type": "string", "maxLength": 20 },
+        "reason": { "type": "string", "maxLength": 300 },
         "isFullDay": { "type": "boolean" },
-        "blockedSlots": { "type": "array" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "blockedSlots": { "type": "array" }
       },
-      "required": ["date", "reason", "isFullDay", "createdAt"]
+      "required": ["id", "date", "reason", "isFullDay"]
     },
-    "MenuCategory": {
-      "title": "MenuCategory",
-      "description": "Culinary or beverage category on the café menu",
+    "AvailabilitySlotRecord": {
+      "title": "AvailabilitySlotRecord",
+      "description": "Public table slot lock or reservation status without guest PII.",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "maxLength": 60 },
-        "slug": { "type": "string", "maxLength": 60 },
-        "subtitle": { "type": "string", "maxLength": 140 },
-        "sortOrder": { "type": "number" },
-        "isActive": { "type": "boolean" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "id": { "type": "string", "maxLength": 120 },
+        "date": { "type": "string", "maxLength": 20 },
+        "time": { "type": "string", "maxLength": 20 },
+        "tableId": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["available", "held", "reserved", "occupied"] },
+        "holdExpiresAtMs": { "type": "number" },
+        "sessionId": { "type": "string", "maxLength": 100 },
+        "referenceCode": { "type": "string", "maxLength": 40 }
       },
-      "required": ["name", "slug", "subtitle", "sortOrder", "isActive", "updatedAt"]
+      "required": ["id", "date", "time", "tableId", "status"]
     },
-    "MenuItem": {
-      "title": "MenuItem",
-      "description": "Dish or beverage item in OneLove Café menu",
+    "ReservationRecord": {
+      "title": "ReservationRecord",
+      "description": "Confirmed guest table reservation record.",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "maxLength": 100 },
-        "categoryId": { "type": "string", "maxLength": 60 },
-        "categoryName": { "type": "string", "maxLength": 60 },
-        "description": { "type": "string", "maxLength": 400 },
-        "priceLkr": { "type": "number" },
-        "priceUsd": { "type": "number" },
-        "priceCurrency": { "type": "string", "enum": ["default", "both", "lkr", "usd"] },
-        "imageUrl": { "type": "string", "maxLength": 2000 },
-        "dietaryTags": { "type": "array" },
-        "isFeatured": { "type": "boolean" },
-        "isAvailable": { "type": "boolean" },
-        "UpdatedAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "id": { "type": "string", "maxLength": 100 },
+        "referenceCode": { "type": "string", "maxLength": 40 },
+        "date": { "type": "string", "maxLength": 20 },
+        "time": { "type": "string", "maxLength": 20 },
+        "servicePeriod": { "type": "string", "maxLength": 60 },
+        "partySize": { "type": "number" },
+        "tableId": { "type": "string", "maxLength": 100 },
+        "tableLabel": { "type": "string", "maxLength": 60 },
+        "zoneId": { "type": "string", "maxLength": 100 },
+        "zoneName": { "type": "string", "maxLength": 120 },
+        "guestName": { "type": "string", "maxLength": 120 },
+        "guestEmail": { "type": "string", "maxLength": 140 },
+        "whatsapp": { "type": "string", "maxLength": 60 },
+        "country": { "type": "string", "maxLength": 80 },
+        "occasion": { "type": "string", "maxLength": 80 },
+        "dietaryNotes": { "type": "string", "maxLength": 500 },
+        "specialRequests": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["confirmed", "seated", "completed", "cancelled", "rejected", "no_show"] }
       },
-      "required": ["name", "categoryId", "categoryName", "description", "priceLkr", "priceUsd", "imageUrl", "isFeatured", "isAvailable", "updatedAt"]
+      "required": ["id", "referenceCode", "date", "time", "partySize", "tableId", "guestName", "guestEmail", "status"]
     },
-    "GalleryItem": {
-      "title": "GalleryItem",
-      "description": "Curated editorial photograph in the café gallery",
+    "InquiryRecord": {
+      "title": "InquiryRecord",
+      "description": "Guest contact and private dining inquiry message.",
       "type": "object",
       "properties": {
-        "title": { "type": "string", "maxLength": 100 },
-        "category": { "type": "string", "enum": ["Architecture", "Culinary", "Coffee & Botanicals", "Evening Sanctuary", "Sigiriya Surroundings"] },
-        "caption": { "type": "string", "maxLength": 300 },
-        "imageUrl": { "type": "string", "maxLength": 2000 },
-        "aspectRatio": { "type": "string", "enum": ["16:9", "4:3", "3:4", "1:1"] },
-        "isFeatured": { "type": "boolean" },
-        "sortOrder": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "id": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 140 },
+        "phone": { "type": "string", "maxLength": 60 },
+        "subject": { "type": "string", "maxLength": 160 },
+        "message": { "type": "string", "maxLength": 2500 },
+        "status": { "type": "string", "enum": ["new", "in_progress", "resolved", "archived"] }
       },
-      "required": ["title", "category", "caption", "imageUrl", "aspectRatio", "isFeatured", "sortOrder", "createdAt"]
-    },
-    "CafeEvent": {
-      "title": "CafeEvent",
-      "description": "Curated gathering, acoustic session, or tasting ritual",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string", "maxLength": 120 },
-        "subtitle": { "type": "string", "maxLength": 140 },
-        "date": { "type": "string", "maxLength": 40 },
-        "time": { "type": "string", "maxLength": 40 },
-        "category": { "type": "string", "maxLength": 60 },
-        "description": { "type": "string", "maxLength": 600 },
-        "imageUrl": { "type": "string", "maxLength": 2000 },
-        "priceInfo": { "type": "string", "maxLength": 80 },
-        "isFeatured": { "type": "boolean" },
-        "isActive": { "type": "boolean" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["title", "subtitle", "date", "time", "category", "description", "imageUrl", "priceInfo", "isFeatured", "isActive", "updatedAt"]
-    },
-    "SiteContent": {
-      "title": "SiteContent",
-      "description": "Editable website section copy, headings, and CTAs",
-      "type": "object",
-      "properties": {
-        "sectionKey": { "type": "string", "maxLength": 60 },
-        "kicker": { "type": "string", "maxLength": 100 },
-        "heading": { "type": "string", "maxLength": 160 },
-        "subheading": { "type": "string", "maxLength": 400 },
-        "body": { "type": "string", "maxLength": 1200 },
-        "ctaLabel": { "type": "string", "maxLength": 60 },
-        "ctaLink": { "type": "string", "maxLength": 120 },
-        "imageUrl": { "type": "string", "maxLength": 2000 },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["sectionKey", "kicker", "heading", "subheading", "updatedAt"]
-    },
-    "CafeSettings": {
-      "title": "CafeSettings",
-      "description": "Global café contact details, policies, and operational parameters",
-      "type": "object",
-      "properties": {
-        "cafeName": { "type": "string", "maxLength": 80 },
-        "tagline": { "type": "string", "maxLength": 160 },
-        "address": { "type": "string", "maxLength": 200 },
-        "phone": { "type": "string", "maxLength": 40 },
-        "whatsapp": { "type": "string", "maxLength": 40 },
-        "email": { "type": "string", "maxLength": 120 },
-        "instagram": { "type": "string", "maxLength": 100 },
-        "coordinates": { "type": "string", "maxLength": 60 },
-        "gracePeriodMinutes": { "type": "number" },
-        "holdDurationMinutes": { "type": "number" },
-        "maxPartySize": { "type": "number" },
-        "sameDayCutoffHour": { "type": "number" },
-        "bookingPolicy": { "type": "string", "maxLength": 600 },
-        "heroImages": { "type": "array" },
-        "heroSlideshowSpeedSeconds": { "type": "number" },
-        "floorPlanImageUrl": { "type": "string", "maxLength": 2000 },
-        "googleMapsEmbedUrl": { "type": "string", "maxLength": 2000 },
-        "mapTitle": { "type": "string", "maxLength": 120 },
-        "mapSubtitle": { "type": "string", "maxLength": 250 },
-        "menuCurrencyDisplay": { "type": "string", "enum": ["both", "lkr", "usd"] },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["cafeName", "tagline", "address", "phone", "whatsapp", "email", "gracePeriodMinutes", "holdDurationMinutes", "maxPartySize", "bookingPolicy", "updatedAt"]
-    },
-    "Inquiry": {
-      "title": "Inquiry",
-      "description": "Customer inquiry, private dining request, or concierge message",
-      "type": "object",
-      "properties": {
-        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
-        "email": { "type": "string", "format": "email", "maxLength": 120 },
-        "phone": { "type": "string", "maxLength": 40 },
-        "subject": { "type": "string", "maxLength": 120 },
-        "message": { "type": "string", "minLength": 5, "maxLength": 1000 },
-        "status": { "type": "string", "enum": ["new", "in_progress", "resolved", "archived"] },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["name", "email", "subject", "message", "status", "createdAt", "updatedAt"]
-    },
-    "AuditLog": {
-      "title": "AuditLog",
-      "description": "Immutable administrative action log entry",
-      "type": "object",
-      "properties": {
-        "actorEmail": { "type": "string", "maxLength": 120 },
-        "actorUid": { "type": "string", "maxLength": 80 },
-        "action": { "type": "string", "maxLength": 80 },
-        "targetCollection": { "type": "string", "maxLength": 60 },
-        "targetId": { "type": "string", "maxLength": 80 },
-        "summary": { "type": "string", "maxLength": 300 },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["actorEmail", "actorUid", "action", "targetCollection", "targetId", "summary", "createdAt"]
+      "required": ["id", "name", "email", "message", "status"]
     }
   },
   "firestore": {
-    "/admins/{adminId}": {
-      "schema": { "$ref": "#/entities/Admin" },
-      "description": "Administrator role registry"
-    },
-    "/reservations/{reservationId}": {
-      "schema": { "$ref": "#/entities/Reservation" },
-      "description": "Guest table reservations (PII isolated to admin access after creation)"
-    },
-    "/reservationHolds/{holdId}": {
-      "schema": { "$ref": "#/entities/ReservationHold" },
-      "description": "Temporary 10-minute table holds during active booking flow"
-    },
-    "/availability/{slotId}": {
-      "schema": { "$ref": "#/entities/AvailabilitySlot" },
-      "description": "Non-PII deterministic table slot locks for real-time floor plan availability"
-    },
-    "/tables/{tableId}": {
-      "schema": { "$ref": "#/entities/Table" },
-      "description": "Interactive floor plan table definitions and coordinates"
+    "/settings/{settingId}": {
+      "schema": "CafeSettings",
+      "description": "Global cafe configuration and hero slideshow settings."
     },
     "/seatingZones/{zoneId}": {
-      "schema": { "$ref": "#/entities/SeatingZone" },
-      "description": "Café seating zones (Jungle Verandah, Stone Courtyard, Roastery Bar, Lotus Pavilion)"
+      "schema": "SeatingZone",
+      "description": "Dining zones for table reservations."
+    },
+    "/tables/{tableId}": {
+      "schema": "CafeTable",
+      "description": "Floor plan tables."
     },
     "/openingHours/{dayId}": {
-      "schema": { "$ref": "#/entities/OpeningHours" },
-      "description": "Weekly opening hours and slot durations"
+      "schema": "OpeningHoursConfig",
+      "description": "Weekly opening hours schedule."
     },
-    "/blockedDates/{dateId}": {
-      "schema": { "$ref": "#/entities/BlockedDate" },
-      "description": "Blocked dates and private sanctuary buyouts"
+    "/blockedDates/{blockId}": {
+      "schema": "BlockedDateRecord",
+      "description": "Blocked dates and closures."
     },
     "/menuCategories/{categoryId}": {
-      "schema": { "$ref": "#/entities/MenuCategory" },
-      "description": "Menu categories managed by admins"
+      "schema": "MenuCategory",
+      "description": "Food and beverage menu categories."
     },
     "/menuItems/{itemId}": {
-      "schema": { "$ref": "#/entities/MenuItem" },
-      "description": "Dishes, specialty coffees, and botanical beverages"
+      "schema": "MenuItem",
+      "description": "Food and beverage menu items."
     },
-    "/gallery/{imageId}": {
-      "schema": { "$ref": "#/entities/GalleryItem" },
-      "description": "Curated architectural and culinary photography"
+    "/gallery/{galleryId}": {
+      "schema": "GalleryItem",
+      "description": "Gallery photographs hosted on Cloudflare R2."
     },
     "/events/{eventId}": {
-      "schema": { "$ref": "#/entities/CafeEvent" },
-      "description": "Upcoming acoustic nights, tastings, and cultural gatherings"
+      "schema": "CafeEvent",
+      "description": "Cafe events and experiences."
     },
     "/siteContent/{sectionId}": {
-      "schema": { "$ref": "#/entities/SiteContent" },
-      "description": "Dynamic editorial copy and hero configurations"
+      "schema": "SiteContentSection",
+      "description": "Dynamic page copy and Cloudflare R2 section images."
     },
-    "/settings/{settingId}": {
-      "schema": { "$ref": "#/entities/CafeSettings" },
-      "description": "Global café settings and booking policies"
+    "/availability/{slotId}": {
+      "schema": "AvailabilitySlotRecord",
+      "description": "Real-time table availability slots."
+    },
+    "/reservations/{reservationId}": {
+      "schema": "ReservationRecord",
+      "description": "Guest table reservations."
     },
     "/inquiries/{inquiryId}": {
-      "schema": { "$ref": "#/entities/Inquiry" },
-      "description": "Public contact and concierge inquiries (PII restricted to admins)"
-    },
-    "/auditLogs/{logId}": {
-      "schema": { "$ref": "#/entities/AuditLog" },
-      "description": "Administrative audit trail"
+      "schema": "InquiryRecord",
+      "description": "Guest concierge inquiries."
     }
   }
 }

@@ -15,19 +15,23 @@ import {
 import { getStorage } from 'firebase/storage';
 import rawFirebaseConfig from '../../firebase-applet-config.json';
 
-const firebaseConfig = {
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || rawFirebaseConfig.projectId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || rawFirebaseConfig.appId,
+export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || rawFirebaseConfig.apiKey,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || rawFirebaseConfig.authDomain,
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || rawFirebaseConfig.firestoreDatabaseId || '(default)',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || rawFirebaseConfig.projectId,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || rawFirebaseConfig.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || rawFirebaseConfig.messagingSenderId,
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || rawFirebaseConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || rawFirebaseConfig.appId,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || rawFirebaseConfig.measurementId,
+  firestoreDatabaseId:
+    import.meta.env.VITE_FIREBASE_DATABASE_ID ||
+    rawFirebaseConfig.firestoreDatabaseId ||
+    '(default)',
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
-// Suppress transient WebChannel transport fallback warnings in iframe preview environments
 try {
   setLogLevel('silent');
 } catch {
@@ -35,6 +39,7 @@ try {
 }
 
 function initDb() {
+  const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
   try {
     return initializeFirestore(
       app,
@@ -42,7 +47,7 @@ function initDb() {
         experimentalAutoDetectLongPolling: true,
         localCache: persistentLocalCache(),
       },
-      firebaseConfig.firestoreDatabaseId
+      dbId
     );
   } catch {
     try {
@@ -52,10 +57,10 @@ function initDb() {
           experimentalAutoDetectLongPolling: true,
           localCache: memoryLocalCache(),
         },
-        firebaseConfig.firestoreDatabaseId
+        dbId
       );
     } catch {
-      return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+      return getFirestore(app, dbId);
     }
   }
 }
@@ -148,16 +153,6 @@ export function handleFirestoreError(
     operationType,
     path,
   };
-
-  // If Firestore free-tier daily quota is temporarily exhausted, keep local cache active without throwing uncaught listener errors
-  if (
-    rawMessage.toLowerCase().includes('quota') ||
-    rawMessage.toLowerCase().includes('resource-exhausted')
-  ) {
-    console.warn('Firestore quota notice (serving cached sanctuary data):', errInfo);
-    return;
-  }
-
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
@@ -168,13 +163,13 @@ async function testConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firestore connection initializing via long-polling fallback.');
+      console.error('Please check your Firebase configuration.');
     }
   }
 }
 testConnection();
 
-// Helper to record admin audit log entries (non-blocking if quota is reached)
+// Record admin audit log entries in Firestore
 export async function logAdminAction(
   action: string,
   targetCollection: string,
@@ -196,7 +191,6 @@ export async function logAdminAction(
       createdAt: serverTimestamp(),
     });
   } catch {
-    // Non-fatal if audit log write is skipped due to quota
+    // Non-fatal if audit log write is skipped
   }
 }
-
