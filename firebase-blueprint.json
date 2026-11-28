@@ -25,7 +25,8 @@
         "googleMapsEmbedUrl": { "type": "string", "maxLength": 2500 },
         "mapTitle": { "type": "string", "maxLength": 200 },
         "mapSubtitle": { "type": "string", "maxLength": 500 },
-        "menuCurrencyDisplay": { "type": "string", "enum": ["both", "lkr", "usd"] }
+        "menuCurrencyDisplay": { "type": "string", "enum": ["both", "lkr", "usd"] },
+        "adminEmails": { "type": "array" }
       },
       "required": ["id", "cafeName"]
     },
@@ -236,12 +237,76 @@
         "status": { "type": "string", "enum": ["new", "in_progress", "resolved", "archived"] }
       },
       "required": ["id", "name", "email", "message", "status"]
+    },
+    "SiteImageRecord": {
+      "title": "SiteImageRecord",
+      "description": "Cloudflare R2 image record for every section and item slot across the website.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "sectionKey": { "type": "string", "maxLength": 100 },
+        "label": { "type": "string", "maxLength": 240 },
+        "imageUrl": { "type": "string", "maxLength": 2000 },
+        "imageUrls": { "type": "array" },
+        "targetCollection": { "type": "string", "maxLength": 100 },
+        "targetDocId": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "sectionKey"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Authorized administrator account record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 140 },
+        "name": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "enum": ["super_admin", "manager", "host"] }
+      },
+      "required": ["id", "email", "name", "role"]
+    },
+    "AuditLogRecord": {
+      "title": "AuditLogRecord",
+      "description": "Immutable audit trail record for administrator mutations.",
+      "type": "object",
+      "properties": {
+        "actorEmail": { "type": "string", "maxLength": 140 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 100 },
+        "targetCollection": { "type": "string", "maxLength": 80 },
+        "targetId": { "type": "string", "maxLength": 120 },
+        "summary": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["actorEmail", "actorUid", "action", "targetCollection", "targetId", "summary"]
+    },
+    "GlobalSeoConfig": {
+      "title": "GlobalSeoConfig",
+      "description": "Global SEO, OpenGraph, Schema.org, and brand asset configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "siteName": { "type": "string", "maxLength": 160 },
+        "canonicalBaseUrl": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id"]
+    },
+    "PageSeoConfig": {
+      "title": "PageSeoConfig",
+      "description": "Per-route SEO metadata configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 100 },
+        "routePath": { "type": "string", "maxLength": 200 },
+        "title": { "type": "string", "maxLength": 240 },
+        "description": { "type": "string", "maxLength": 600 }
+      },
+      "required": ["id"]
     }
   },
   "firestore": {
     "/settings/{settingId}": {
       "schema": "CafeSettings",
-      "description": "Global cafe configuration and hero slideshow settings."
+      "description": "Global cafe configuration, authorized admin emails, and hero slideshow settings."
     },
     "/seatingZones/{zoneId}": {
       "schema": "SeatingZone",
@@ -279,6 +344,18 @@
       "schema": "SiteContentSection",
       "description": "Dynamic page copy and Cloudflare R2 section images."
     },
+    "/siteImages/{imageId}": {
+      "schema": "SiteImageRecord",
+      "description": "Dedicated Cloudflare R2 image collection for every website section and item."
+    },
+    "/seoGlobal/{docId}": {
+      "schema": "GlobalSeoConfig",
+      "description": "Global SEO and OpenGraph configuration."
+    },
+    "/seoPages/{pageId}": {
+      "schema": "PageSeoConfig",
+      "description": "Per-page SEO metadata configuration."
+    },
     "/availability/{slotId}": {
       "schema": "AvailabilitySlotRecord",
       "description": "Real-time table availability slots."
@@ -290,6 +367,14 @@
     "/inquiries/{inquiryId}": {
       "schema": "InquiryRecord",
       "description": "Guest concierge inquiries."
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminRecord",
+      "description": "Authorized administrator directory."
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLogRecord",
+      "description": "Immutable administrator audit trail."
     }
   }
 }

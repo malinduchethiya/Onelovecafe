@@ -226,6 +226,7 @@ export interface CafeSettings {
   mapTitle?: string; // Section title for the map
   mapSubtitle?: string; // Section subtitle or location description
   menuCurrencyDisplay?: MenuCurrencyDisplay; // Global currency display mode for menu items ('both' | 'lkr' | 'usd')
+  adminEmails?: string[]; // Shared list of authorized administrator emails across all devices
   updatedAt?: unknown;
 }
 

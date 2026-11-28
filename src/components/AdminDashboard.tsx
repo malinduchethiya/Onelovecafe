@@ -94,6 +94,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     reservations,
     inquiries,
     auditLogs,
+    admins,
+    seoGlobal,
     sessionId,
     signInAdmin,
     signOutAdmin,
@@ -116,6 +118,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     deleteEvent,
     saveSiteContent,
     saveSettings,
+    addAdminEmail,
+    removeAdminEmail,
     updateInquiryStatus,
     uploadMediaFile,
     updateCollageImageFromDevice,
@@ -126,6 +130,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     checkStorageStatus,
   } = useCafe();
   const [uploadingCollageSlot, setUploadingCollageSlot] = useState<number | null>(null);
+  const [newAdminEmailInput, setNewAdminEmailInput] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState<boolean>(false);
 
@@ -375,10 +380,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Seating Zone editor state (used in Footer, Floor Plan & Story page)
   const [editingZone, setEditingZone] = useState<SeatingZone | null>(null);
 
-  // SEO Domain state for Google Search Console Sitemap & Robots generator
-  const [seoDomain, setSeoDomain] = useState<string>(() =>
-    typeof window !== 'undefined' ? window.location.origin : 'https://onelovecafe.lk'
+  // SEO Domain state for Google Search Console Sitemap & Robots generator (shared across all admins)
+  const [seoDomain, setSeoDomain] = useState<string>(
+    () => seoGlobal?.canonicalDomain || 'https://onelovecafesigiriya.com'
   );
+
+  useEffect(() => {
+    if (seoGlobal?.canonicalDomain) {
+      setSeoDomain(seoGlobal.canonicalDomain);
+    }
+  }, [seoGlobal?.canonicalDomain]);
 
   // Settings local form state
   const [settingsForm, setSettingsForm] = useState(settings);
@@ -5402,6 +5413,110 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         )}
                       </button>
                     )}
+                  </div>
+                </div>
+
+                {/* Authorized Administrators Card (Shared Admin Panel Access) */}
+                <div className="bg-white border border-[#E7DED3] p-6 space-y-4 text-xs lg:col-span-2">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E7DED3] pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <ShieldCheck className="w-5 h-5 text-[#C65B2B]" />
+                      <div>
+                        <div className="text-[11px] uppercase tracking-widest text-[#C65B2B] font-semibold">
+                          Shared Real-Time Firestore &amp; R2 Console
+                        </div>
+                        <h2 className="text-xl font-editorial font-semibold mt-0.5">
+                          Authorized Administrators (Identical Shared Admin Panel)
+                        </h2>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold uppercase tracking-wider">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      Live Multi-Admin Sync Active
+                    </span>
+                  </div>
+
+                  <p className="text-[#171513]/70">
+                    All administrator accounts listed below connect to the exact same Firebase
+                    Firestore database (<code className="bg-[#F8F4EE] px-1 py-0.5 border border-[#E7DED3]">onelovecafe-6a0fa / (default)</code>) and Cloudflare R2 CDN (<code className="bg-[#F8F4EE] px-1 py-0.5 border border-[#E7DED3]">https://cdn.onelovecafesigiriya.com</code>). Any image upload, menu update, floor plan edit, or reservation status change made by one admin immediately appears identically for all other admins.
+                  </p>
+
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const clean = newAdminEmailInput.trim().toLowerCase();
+                      if (!clean || !clean.includes('@')) return;
+                      await addAdminEmail(clean);
+                      setNewAdminEmailInput('');
+                      showToast(`Added ${clean} to shared Authorized Administrators.`);
+                    }}
+                    className="flex flex-col sm:flex-row gap-2"
+                  >
+                    <input
+                      type="email"
+                      value={newAdminEmailInput}
+                      onChange={(e) => setNewAdminEmailInput(e.target.value)}
+                      placeholder="Add Google account email (e.g. manager@gmail.com)"
+                      className="flex-1 px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] font-mono-tabular"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-[#171513] text-[#F8F4EE] uppercase tracking-wider font-medium shrink-0 inline-flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Authorize Admin Email
+                    </button>
+                  </form>
+
+                  <div className="divide-y divide-[#E7DED3] border border-[#E7DED3] bg-[#F8F4EE]">
+                    {Array.from(
+                      new Set([
+                        'merlinfiverr0@gmail.com',
+                        'onelovecafesigiriya@gmail.com',
+                        'manojmadurangasadaruwan@gmail.com',
+                        ...(Array.isArray(settings.adminEmails) ? settings.adminEmails : []),
+                        ...admins.map((a) => (a.email || '').trim().toLowerCase()).filter(Boolean),
+                      ])
+                    ).map((email) => {
+                      const isPrimaryOwner =
+                        email === 'merlinfiverr0@gmail.com' ||
+                        email === 'onelovecafesigiriya@gmail.com' ||
+                        email === 'manojmadurangasadaruwan@gmail.com';
+                      const isCurrentUser =
+                        getPrimaryUserEmail(user) === email;
+                      return (
+                        <div
+                          key={email}
+                          className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2"
+                        >
+                          <div className="flex items-center gap-2 font-mono-tabular">
+                            <span className="font-semibold text-[#171513]">{email}</span>
+                            {isPrimaryOwner && (
+                              <span className="px-2 py-0.5 text-[10px] uppercase tracking-wider bg-white border border-[#E7DED3] text-[#58644E] font-sans font-semibold">
+                                Core Owner
+                              </span>
+                            )}
+                            {isCurrentUser && (
+                              <span className="px-2 py-0.5 text-[10px] uppercase tracking-wider bg-[#C65B2B]/10 border border-[#C65B2B]/30 text-[#C65B2B] font-sans font-semibold">
+                                Signed In (You)
+                              </span>
+                            )}
+                          </div>
+                          {!isPrimaryOwner && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await removeAdminEmail(email);
+                                showToast(`Removed ${email} from Authorized Administrators.`);
+                              }}
+                              className="text-[#9E3F16] hover:underline text-[11px] font-medium"
+                            >
+                              Remove Access
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

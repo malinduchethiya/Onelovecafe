@@ -28,6 +28,7 @@ import {
   auth,
   db,
   googleProvider,
+  BOOTSTRAP_ADMIN_EMAILS,
   getPrimaryUserEmail,
   isAuthorizedAdminUser,
   handleFirestoreError,
@@ -52,6 +53,7 @@ import {
   ReservationRecord,
   InquiryRecord,
   AdminRecord,
+  AdminRole,
   AuditLogRecord,
 } from '../types/cafe';
 import {
@@ -196,6 +198,8 @@ interface CafeContextValue {
   resetCollageImage: (slotIndex: number) => Promise<void>;
   updateSiteImageSlot: (slotId: string, file: File) => Promise<string>;
   clearSiteImageSlot: (slotId: string) => Promise<void>;
+  addAdminEmail: (email: string, name?: string, role?: AdminRole) => Promise<void>;
+  removeAdminEmail: (email: string) => Promise<void>;
   storageStatus: {
     configured: boolean;
     provider: string;
@@ -231,6 +235,20 @@ function sanitizeDocId(rawId: string | undefined | null, prefix: string): string
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .slice(0, 100);
   return cleaned || `${prefix}_${Date.now()}`;
+}
+
+function normalizeAdminEmailList(rawList?: unknown): string[] {
+  const merged = new Set<string>(
+    BOOTSTRAP_ADMIN_EMAILS.map((e) => e.trim().toLowerCase()).filter(Boolean)
+  );
+  if (Array.isArray(rawList)) {
+    rawList.forEach((item) => {
+      if (typeof item === 'string' && item.includes('@')) {
+        merged.add(item.trim().toLowerCase());
+      }
+    });
+  }
+  return Array.from(merged);
 }
 
 function generateReferenceCode(): string {
@@ -289,6 +307,130 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
 
   const bootstrappedRef = useRef<boolean>(false);
+
+  // Raw Firestore snapshot refs for deterministic order-independent reconciliation across all admin browsers
+  const rawSettingsRef = useRef<Partial<CafeSettings>>({});
+  const rawSiteContentRef = useRef<Map<string, SiteContentSection>>(new Map());
+  const rawSiteImagesRef = useRef<Map<string, SiteImageRecord>>(new Map());
+
+  const reconcileSharedSiteState = useCallback(() => {
+    const rawSettings = rawSettingsRef.current;
+    const rawContentMap = rawSiteContentRef.current;
+    const rawImagesMap = rawSiteImagesRef.current;
+
+    // 1. Build merged siteImages map
+    const mergedImages = new Map<string, SiteImageRecord>();
+    DEFAULT_SITE_IMAGES.forEach((slot) => {
+      mergedImages.set(slot.id, { ...slot });
+    });
+    rawImagesMap.forEach((raw, docId) => {
+      const cleanUrl = sanitizeCdnUrl(raw.imageUrl);
+      const cleanUrls = Array.isArray(raw.imageUrls)
+        ? raw.imageUrls.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+        : cleanUrl
+        ? [cleanUrl]
+        : [];
+      mergedImages.set(docId, {
+        ...(mergedImages.get(docId) || {
+          id: docId,
+          sectionKey: raw.sectionKey || docId,
+          label: raw.label || docId,
+          imageUrl: '',
+        }),
+        ...raw,
+        id: docId,
+        sectionKey: raw.sectionKey || docId,
+        imageUrl: cleanUrl,
+        imageUrls: cleanUrls,
+      });
+    });
+
+    // 2. Build merged siteContent map
+    const mergedContent = new Map<string, SiteContentSection>();
+    DEFAULT_SITE_CONTENT.forEach((sec) => {
+      mergedContent.set(sec.sectionKey, { ...sec });
+    });
+    rawContentMap.forEach((raw, key) => {
+      const existing = mergedContent.get(key);
+      mergedContent.set(key, {
+        ...(existing || {
+          id: raw.id || key,
+          sectionKey: key,
+          kicker: '',
+          heading: '',
+          subheading: '',
+          body: '',
+          ctaLabel: '',
+          ctaLink: '',
+          imageUrl: '',
+        }),
+        ...raw,
+        id: raw.id || key,
+        sectionKey: key,
+        imageUrl: sanitizeCdnUrl(raw.imageUrl),
+      });
+    });
+
+    // 3. Cross-sync every section image slot between siteContent and siteImages
+    mergedContent.forEach((sec, key) => {
+      const imgDoc = mergedImages.get(key) || mergedImages.get(sec.id);
+      const bestUrl = sanitizeCdnUrl(imgDoc?.imageUrl) || sanitizeCdnUrl(sec.imageUrl) || '';
+      mergedContent.set(key, {
+        ...sec,
+        imageUrl: bestUrl,
+      });
+      if (imgDoc) {
+        mergedImages.set(imgDoc.id, {
+          ...imgDoc,
+          imageUrl: bestUrl,
+        });
+      }
+    });
+
+    // 4. Cross-sync Hero Slideshow & Floor Plan Drone Shot between settings and siteImages
+    const settingsHeroes = Array.isArray(rawSettings.heroImages)
+      ? rawSettings.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+      : [];
+    const heroImgDoc = mergedImages.get('hero');
+    const siteImageHeroes =
+      heroImgDoc && Array.isArray(heroImgDoc.imageUrls) && heroImgDoc.imageUrls.length > 0
+        ? heroImgDoc.imageUrls.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+        : heroImgDoc?.imageUrl
+        ? [sanitizeCdnUrl(heroImgDoc.imageUrl)].filter(Boolean)
+        : [];
+    const bestHeroes = settingsHeroes.length > 0 ? settingsHeroes : siteImageHeroes;
+
+    const settingsFloorPlan = sanitizeCdnUrl(rawSettings.floorPlanImageUrl);
+    const floorImgDoc = mergedImages.get('floorplan');
+    const bestFloorPlan = settingsFloorPlan || sanitizeCdnUrl(floorImgDoc?.imageUrl) || '';
+
+    if (heroImgDoc) {
+      mergedImages.set('hero', {
+        ...heroImgDoc,
+        imageUrl: bestHeroes[0] || '',
+        imageUrls: bestHeroes,
+      });
+    }
+    if (floorImgDoc) {
+      mergedImages.set('floorplan', {
+        ...floorImgDoc,
+        imageUrl: bestFloorPlan,
+      });
+    }
+
+    const nextSettings: CafeSettings = {
+      ...DEFAULT_SETTINGS,
+      ...rawSettings,
+      id: 'main',
+      heroImages: bestHeroes,
+      floorPlanImageUrl: bestFloorPlan,
+      adminEmails: normalizeAdminEmailList(rawSettings.adminEmails),
+    };
+
+    setSettings(nextSettings);
+    setSiteContent(Array.from(mergedContent.values()));
+    setSiteImages(Array.from(mergedImages.values()));
+  }, []);
 
   const checkStorageStatus = useCallback(async () => {
     const endpoints = ['/api/storage/status', 'https://onelovecafesigiriya.com/api/storage/status'];
@@ -365,7 +507,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(timer);
   }, [isAdmin, reservations]);
 
-  // 1. Auth & Admin Verification Listener
+  // 1. Auth & Multi-Admin Verification Listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
@@ -377,9 +519,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const primaryEmail = getPrimaryUserEmail(currentUser);
       const isBootstrapped = isAuthorizedAdminUser(currentUser);
-      let verifiedAdmin = isBootstrapped;
+      const listedEmails = normalizeAdminEmailList(rawSettingsRef.current.adminEmails);
+      const isListedInSettings = Boolean(primaryEmail && listedEmails.includes(primaryEmail));
+      let verifiedAdmin = isBootstrapped || isListedInSettings;
 
-      if (isBootstrapped) {
+      if (verifiedAdmin) {
         setIsAdmin(true);
         setAuthReady(true);
       }
@@ -389,18 +533,29 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const snap = await getDoc(adminRef);
         if (snap.exists()) {
           verifiedAdmin = true;
-        } else if (isBootstrapped) {
-          await setDoc(adminRef, {
-            id: currentUser.uid,
-            email: primaryEmail || 'merlinfiverr0@gmail.com',
-            name: currentUser.displayName || 'Sanctuary Owner',
-            role: 'super_admin',
-            createdAt: serverTimestamp(),
-          });
-          verifiedAdmin = true;
+        } else {
+          // Also check if primaryEmail was added to settings/main.adminEmails in Firestore
+          if (!verifiedAdmin && primaryEmail) {
+            const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
+            if (settingsSnap.exists()) {
+              const dbAdminEmails = normalizeAdminEmailList(settingsSnap.data()?.adminEmails);
+              if (dbAdminEmails.includes(primaryEmail)) {
+                verifiedAdmin = true;
+              }
+            }
+          }
+          if (verifiedAdmin) {
+            await setDoc(adminRef, {
+              id: currentUser.uid,
+              email: primaryEmail || 'merlinfiverr0@gmail.com',
+              name: currentUser.displayName || primaryEmail || 'Sanctuary Administrator',
+              role: 'super_admin',
+              createdAt: serverTimestamp(),
+            });
+          }
         }
       } catch {
-        verifiedAdmin = isBootstrapped;
+        // Keep verifiedAdmin from token / settings check
       }
 
       setIsAdmin(verifiedAdmin);
@@ -409,7 +564,19 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsub();
   }, []);
 
-  // 2. Direct Real-Time Firestore Listeners (Single Source of Truth -> Live Site)
+  // Re-evaluate admin status whenever settings.adminEmails updates in real time
+  useEffect(() => {
+    if (!user) return;
+    const primaryEmail = getPrimaryUserEmail(user);
+    const allowedEmails = normalizeAdminEmailList(settings.adminEmails);
+    if (isAuthorizedAdminUser(user) || (primaryEmail && allowedEmails.includes(primaryEmail))) {
+      if (!isAdmin) {
+        setIsAdmin(true);
+      }
+    }
+  }, [user, settings.adminEmails, isAdmin]);
+
+  // 2. Direct Real-Time Firestore Listeners (Single Source of Truth -> Live Site & All Admins)
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
@@ -420,17 +587,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (snap) => {
           const mainDoc = snap.docs.find((d) => d.id === 'main');
           if (mainDoc) {
-            const rawData = mainDoc.data() as Partial<CafeSettings>;
-            const cleanHeroes = Array.isArray(rawData.heroImages)
-              ? rawData.heroImages.map((img) => sanitizeCdnUrl(img)).filter(Boolean)
-              : [];
-            setSettings({
-              ...DEFAULT_SETTINGS,
-              ...rawData,
-              id: 'main',
-              heroImages: cleanHeroes,
-              floorPlanImageUrl: sanitizeCdnUrl(rawData.floorPlanImageUrl),
-            });
+            rawSettingsRef.current = mainDoc.data() as Partial<CafeSettings>;
+            reconcileSharedSiteState();
           }
         },
         (err) => console.warn('Firestore settings listener notice:', err.message)
@@ -584,52 +742,18 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'siteContent'),
         (snap) => {
-          setSiteContent((prev) => {
-            const prevImagesByKey = new Map<string, string>();
-            prev.forEach((sec) => {
-              const clean = sanitizeCdnUrl(sec.imageUrl);
-              if (clean) {
-                prevImagesByKey.set(sec.sectionKey, clean);
-                prevImagesByKey.set(sec.id, clean);
-              }
+          const nextMap = new Map<string, SiteContentSection>();
+          snap.docs.forEach((d) => {
+            const raw = d.data() as SiteContentSection;
+            const key = raw.sectionKey || d.id;
+            nextMap.set(key, {
+              ...raw,
+              id: d.id,
+              sectionKey: key,
             });
-
-            const mergedMap = new Map<string, SiteContentSection>();
-            DEFAULT_SITE_CONTENT.forEach((sec) => {
-              mergedMap.set(sec.sectionKey, {
-                ...sec,
-                imageUrl: prevImagesByKey.get(sec.sectionKey) || '',
-              });
-            });
-
-            snap.docs.forEach((d) => {
-              const raw = d.data() as SiteContentSection;
-              const key = raw.sectionKey || d.id;
-              const existing = mergedMap.get(key);
-              const rawCleanUrl = sanitizeCdnUrl(raw.imageUrl);
-              const fallbackUrl = prevImagesByKey.get(key) || prevImagesByKey.get(d.id) || '';
-
-              mergedMap.set(key, {
-                ...(existing || {
-                  id: d.id,
-                  sectionKey: key,
-                  kicker: '',
-                  heading: '',
-                  subheading: '',
-                  body: '',
-                  ctaLabel: '',
-                  ctaLink: '',
-                  imageUrl: '',
-                }),
-                ...raw,
-                id: d.id,
-                sectionKey: key,
-                imageUrl: rawCleanUrl || fallbackUrl,
-              });
-            });
-
-            return Array.from(mergedMap.values());
           });
+          rawSiteContentRef.current = nextMap;
+          reconcileSharedSiteState();
         },
         (err) => console.warn('Firestore siteContent listener notice:', err.message)
       )
@@ -640,70 +764,17 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'siteImages'),
         (snap) => {
-          const mergedImages = new Map<string, SiteImageRecord>();
-          DEFAULT_SITE_IMAGES.forEach((slot) => {
-            mergedImages.set(slot.id, { ...slot });
-          });
-
+          const nextMap = new Map<string, SiteImageRecord>();
           snap.docs.forEach((d) => {
             const raw = d.data() as SiteImageRecord;
-            const cleanUrl = sanitizeCdnUrl(raw.imageUrl);
-            const cleanUrls = Array.isArray(raw.imageUrls)
-              ? raw.imageUrls.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
-              : cleanUrl
-              ? [cleanUrl]
-              : [];
-
-            mergedImages.set(d.id, {
-              ...(mergedImages.get(d.id) || {
-                id: d.id,
-                sectionKey: raw.sectionKey || d.id,
-                label: raw.label || d.id,
-                imageUrl: '',
-              }),
+            nextMap.set(d.id, {
               ...raw,
               id: d.id,
               sectionKey: raw.sectionKey || d.id,
-              imageUrl: cleanUrl,
-              imageUrls: cleanUrls,
             });
           });
-
-          const list = Array.from(mergedImages.values());
-          setSiteImages(list);
-
-          // Automatically propagate any section image URL in `siteImages` to live UI state (hero, floorplan, siteContent)
-          const heroDoc = mergedImages.get('hero');
-          const floorplanDoc = mergedImages.get('floorplan');
-          if (heroDoc || floorplanDoc) {
-            setSettings((prev) => {
-              const nextHeroes =
-                heroDoc && Array.isArray(heroDoc.imageUrls) && heroDoc.imageUrls.length > 0
-                  ? heroDoc.imageUrls
-                  : heroDoc?.imageUrl
-                  ? [heroDoc.imageUrl]
-                  : prev.heroImages;
-              const nextFloor =
-                floorplanDoc && floorplanDoc.imageUrl
-                  ? floorplanDoc.imageUrl
-                  : prev.floorPlanImageUrl;
-              return {
-                ...prev,
-                heroImages: nextHeroes,
-                floorPlanImageUrl: nextFloor,
-              };
-            });
-          }
-
-          setSiteContent((prev) =>
-            prev.map((sec) => {
-              const imgDoc = mergedImages.get(sec.sectionKey) || mergedImages.get(sec.id);
-              if (imgDoc && imgDoc.imageUrl) {
-                return { ...sec, imageUrl: imgDoc.imageUrl };
-              }
-              return sec;
-            })
-          );
+          rawSiteImagesRef.current = nextMap;
+          reconcileSharedSiteState();
         },
         (err) => console.warn('Firestore siteImages listener notice:', err.message)
       )
@@ -773,79 +844,143 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       unsubs.forEach((u) => u());
     };
-  }, []);
+  }, [reconcileSharedSiteState]);
 
-  // Seed structural settings, floor-plan tables/zones, opening hours, and empty-image siteContent slots to Firestore if empty
+  // Non-destructive sync: ensures all structural docs & siteImages slots exist in Firestore while preserving all uploaded R2 images & adminEmails
   const seedDatabaseIfNeeded = useCallback(async () => {
     if (!auth.currentUser) return;
     try {
+      const [settingsSnap, contentSnap, siteImagesSnap] = await Promise.all([
+        getDoc(doc(db, 'settings', 'main')),
+        getDocs(collection(db, 'siteContent')),
+        getDocs(collection(db, 'siteImages')),
+      ]);
+
+      const existingSettings = settingsSnap.exists()
+        ? (settingsSnap.data() as Partial<CafeSettings>)
+        : {};
+      const existingContentById = new Map<string, SiteContentSection>();
+      contentSnap.docs.forEach((d) => {
+        const raw = d.data() as SiteContentSection;
+        existingContentById.set(d.id, raw);
+        if (raw.sectionKey) existingContentById.set(raw.sectionKey, raw);
+      });
+      const existingImagesById = new Map<string, SiteImageRecord>();
+      siteImagesSnap.docs.forEach((d) => {
+        const raw = d.data() as SiteImageRecord;
+        existingImagesById.set(d.id, raw);
+      });
+
+      const preservedHeroes =
+        Array.isArray(existingSettings.heroImages) && existingSettings.heroImages.length > 0
+          ? existingSettings.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+          : Array.isArray(existingImagesById.get('hero')?.imageUrls)
+          ? (existingImagesById.get('hero')?.imageUrls || []).map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+          : [];
+      const preservedFloorPlan =
+        sanitizeCdnUrl(existingSettings.floorPlanImageUrl) ||
+        sanitizeCdnUrl(existingImagesById.get('floorplan')?.imageUrl) ||
+        '';
+
       await setDoc(doc(db, 'settings', 'main'), {
         ...DEFAULT_SETTINGS,
-        heroImages: [],
-        floorPlanImageUrl: '',
+        ...existingSettings,
+        id: 'main',
+        heroImages: preservedHeroes,
+        floorPlanImageUrl: preservedFloorPlan,
+        adminEmails: normalizeAdminEmailList(existingSettings.adminEmails),
         updatedAt: serverTimestamp(),
       });
 
       for (const z of DEFAULT_ZONES) {
-        await setDoc(doc(db, 'seatingZones', z.id), {
-          ...z,
-          updatedAt: serverTimestamp(),
-        });
+        const zSnap = await getDoc(doc(db, 'seatingZones', z.id));
+        if (!zSnap.exists()) {
+          await setDoc(doc(db, 'seatingZones', z.id), {
+            ...z,
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
 
       for (const t of DEFAULT_TABLES) {
-        await setDoc(doc(db, 'tables', t.id), {
-          ...t,
-          updatedAt: serverTimestamp(),
-        });
+        const tSnap = await getDoc(doc(db, 'tables', t.id));
+        if (!tSnap.exists()) {
+          await setDoc(doc(db, 'tables', t.id), {
+            ...t,
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
 
       for (const oh of DEFAULT_OPENING_HOURS) {
-        await setDoc(doc(db, 'openingHours', oh.id), {
-          ...oh,
-          updatedAt: serverTimestamp(),
-        });
+        const ohSnap = await getDoc(doc(db, 'openingHours', oh.id));
+        if (!ohSnap.exists()) {
+          await setDoc(doc(db, 'openingHours', oh.id), {
+            ...oh,
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
 
       for (const sc of DEFAULT_SITE_CONTENT) {
+        const existingSec = existingContentById.get(sc.id) || existingContentById.get(sc.sectionKey);
+        const existingImg = existingImagesById.get(sc.sectionKey) || existingImagesById.get(sc.id);
+        const preservedUrl =
+          sanitizeCdnUrl(existingSec?.imageUrl) || sanitizeCdnUrl(existingImg?.imageUrl) || '';
         await setDoc(doc(db, 'siteContent', sc.id), {
           ...sc,
-          imageUrl: '',
+          ...(existingSec || {}),
+          id: sc.id,
+          sectionKey: sc.sectionKey,
+          imageUrl: preservedUrl,
           updatedAt: serverTimestamp(),
         });
       }
 
       for (const si of DEFAULT_SITE_IMAGES) {
-        await setDoc(doc(db, 'siteImages', si.id), {
-          ...si,
-          updatedAt: serverTimestamp(),
-        });
-      }
+        const existingImg = existingImagesById.get(si.id);
+        const existingSec = existingContentById.get(si.id) || existingContentById.get(si.sectionKey);
+        const preservedUrl =
+          si.id === 'hero'
+            ? preservedHeroes[0] || ''
+            : si.id === 'floorplan'
+            ? preservedFloorPlan
+            : sanitizeCdnUrl(existingImg?.imageUrl) || sanitizeCdnUrl(existingSec?.imageUrl) || '';
 
-      await setDoc(doc(db, 'seoGlobal', 'main'), {
-        ...DEFAULT_GLOBAL_SEO,
-        updatedAt: serverTimestamp(),
-      });
-
-      for (const page of Object.values(DEFAULT_PAGE_SEO)) {
-        await setDoc(doc(db, 'seoPages', page.id), {
-          ...page,
-          updatedAt: serverTimestamp(),
-        });
+        const payload =
+          si.id === 'hero'
+            ? {
+                ...si,
+                ...(existingImg || {}),
+                id: 'hero',
+                sectionKey: 'hero',
+                imageUrl: preservedHeroes[0] || '',
+                imageUrls: preservedHeroes,
+                updatedAt: serverTimestamp(),
+              }
+            : {
+                ...si,
+                ...(existingImg || {}),
+                id: si.id,
+                sectionKey: si.sectionKey,
+                imageUrl: preservedUrl,
+                updatedAt: serverTimestamp(),
+              };
+        await setDoc(doc(db, 'siteImages', si.id), payload);
       }
 
       await logAdminAction(
-        'SEED_DATABASE',
+        'SYNC_DATABASE',
         'system',
         'all',
-        'Initialized OneLove Café Sigiriya structural settings and siteImages collection in Firestore'
+        'Synchronized shared Firestore collections across all administrator consoles'
       );
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'seedDatabase');
     }
   }, []);
 
-  // Auto-bootstrap structural collections in Firestore when Admin logs in if empty
+  // Auto-bootstrap and heal missing structural docs in Firestore when any Admin logs in
   useEffect(() => {
     if (!authReady || !isAdmin || !auth.currentUser || bootstrappedRef.current) return;
     bootstrappedRef.current = true;
@@ -858,18 +993,50 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             getDocs(query(collection(db, 'seatingZones'), limit(1))),
             getDocs(query(collection(db, 'tables'), limit(1))),
             getDocs(query(collection(db, 'openingHours'), limit(1))),
-            getDocs(query(collection(db, 'siteContent'), limit(1))),
-            getDocs(query(collection(db, 'siteImages'), limit(1))),
+            getDocs(collection(db, 'siteContent')),
+            getDocs(collection(db, 'siteImages')),
           ]);
+
+        const existingContentMap = new Map<string, SiteContentSection>();
+        contentSnap.docs.forEach((d) => {
+          const raw = d.data() as SiteContentSection;
+          existingContentMap.set(d.id, raw);
+          if (raw.sectionKey) existingContentMap.set(raw.sectionKey, raw);
+        });
+
+        const existingImagesMap = new Map<string, SiteImageRecord>();
+        siteImagesSnap.docs.forEach((d) => {
+          existingImagesMap.set(d.id, d.data() as SiteImageRecord);
+        });
 
         if (!settingsSnap.exists()) {
           await setDoc(doc(db, 'settings', 'main'), {
             ...DEFAULT_SETTINGS,
             heroImages: [],
             floorPlanImageUrl: '',
+            adminEmails: normalizeAdminEmailList(DEFAULT_SETTINGS.adminEmails),
             updatedAt: serverTimestamp(),
           });
+        } else {
+          const raw = settingsSnap.data() as Partial<CafeSettings>;
+          const normalizedAdmins = normalizeAdminEmailList(raw.adminEmails);
+          if (
+            !Array.isArray(raw.adminEmails) ||
+            raw.adminEmails.length < normalizedAdmins.length
+          ) {
+            await setDoc(
+              doc(db, 'settings', 'main'),
+              {
+                ...DEFAULT_SETTINGS,
+                ...raw,
+                id: 'main',
+                adminEmails: normalizedAdmins,
+                updatedAt: serverTimestamp(),
+              }
+            );
+          }
         }
+
         if (zonesSnap.empty) {
           for (const z of DEFAULT_ZONES) {
             await setDoc(doc(db, 'seatingZones', z.id), { ...z, updatedAt: serverTimestamp() });
@@ -885,40 +1052,63 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await setDoc(doc(db, 'openingHours', oh.id), { ...oh, updatedAt: serverTimestamp() });
           }
         }
-        if (contentSnap.empty) {
-          for (const sc of DEFAULT_SITE_CONTENT) {
+
+        // Ensure every DEFAULT_SITE_CONTENT slot exists and cross-heals any imageUrl from siteImages
+        for (const sc of DEFAULT_SITE_CONTENT) {
+          const existingSec = existingContentMap.get(sc.id) || existingContentMap.get(sc.sectionKey);
+          const existingImg = existingImagesMap.get(sc.sectionKey) || existingImagesMap.get(sc.id);
+          const bestUrl =
+            sanitizeCdnUrl(existingSec?.imageUrl) || sanitizeCdnUrl(existingImg?.imageUrl) || '';
+          if (!existingSec || (bestUrl && !sanitizeCdnUrl(existingSec.imageUrl))) {
             await setDoc(doc(db, 'siteContent', sc.id), {
               ...sc,
-              imageUrl: '',
+              ...(existingSec || {}),
+              id: sc.id,
+              sectionKey: sc.sectionKey,
+              imageUrl: bestUrl,
               updatedAt: serverTimestamp(),
             });
           }
         }
-        if (siteImagesSnap.empty) {
-          const currentHeroImages = settingsSnap.exists()
-            ? ((settingsSnap.data()?.heroImages as string[]) || []).filter(Boolean)
-            : [];
-          const currentFloorPlan = settingsSnap.exists()
-            ? (settingsSnap.data()?.floorPlanImageUrl as string) || ''
-            : '';
 
-          for (const si of DEFAULT_SITE_IMAGES) {
+        // Ensure every DEFAULT_SITE_IMAGES slot exists and cross-heals any imageUrl from siteContent or settings
+        const currentHeroImages = settingsSnap.exists()
+          ? ((settingsSnap.data()?.heroImages as string[]) || [])
+              .map((u) => sanitizeCdnUrl(u))
+              .filter(Boolean)
+          : [];
+        const currentFloorPlan = settingsSnap.exists()
+          ? sanitizeCdnUrl(settingsSnap.data()?.floorPlanImageUrl as string)
+          : '';
+
+        for (const si of DEFAULT_SITE_IMAGES) {
+          const existingImg = existingImagesMap.get(si.id);
+          const existingSec = existingContentMap.get(si.id) || existingContentMap.get(si.sectionKey);
+          const bestUrl =
+            si.id === 'hero'
+              ? currentHeroImages[0] || sanitizeCdnUrl(existingImg?.imageUrl) || ''
+              : si.id === 'floorplan'
+              ? currentFloorPlan || sanitizeCdnUrl(existingImg?.imageUrl) || ''
+              : sanitizeCdnUrl(existingImg?.imageUrl) || sanitizeCdnUrl(existingSec?.imageUrl) || '';
+
+          if (!existingImg || (bestUrl && !sanitizeCdnUrl(existingImg.imageUrl))) {
             const payload =
               si.id === 'hero'
                 ? {
                     ...si,
-                    imageUrl: currentHeroImages[0] || '',
-                    imageUrls: currentHeroImages,
-                    updatedAt: serverTimestamp(),
-                  }
-                : si.id === 'floorplan'
-                ? {
-                    ...si,
-                    imageUrl: currentFloorPlan,
+                    ...(existingImg || {}),
+                    id: 'hero',
+                    sectionKey: 'hero',
+                    imageUrl: bestUrl,
+                    imageUrls: currentHeroImages.length > 0 ? currentHeroImages : bestUrl ? [bestUrl] : [],
                     updatedAt: serverTimestamp(),
                   }
                 : {
                     ...si,
+                    ...(existingImg || {}),
+                    id: si.id,
+                    sectionKey: si.sectionKey,
+                    imageUrl: bestUrl,
                     updatedAt: serverTimestamp(),
                   };
             await setDoc(doc(db, 'siteImages', si.id), payload);
@@ -1816,8 +2006,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mapTitle: (newSettings.mapTitle || '').slice(0, 200),
         mapSubtitle: (newSettings.mapSubtitle || '').slice(0, 500),
         menuCurrencyDisplay: safeCurrencyDisplay,
+        adminEmails: normalizeAdminEmailList(newSettings.adminEmails ?? settings.adminEmails),
       };
 
+      rawSettingsRef.current = normalized;
       setSettings(normalized);
 
       await commitFirestoreWrite(
@@ -1862,6 +2054,86 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await logAdminAction('SAVE_SETTINGS', 'settings', 'main', 'Updated café settings');
     },
     [settings, deleteMediaFromR2]
+  );
+
+  const addAdminEmail = useCallback(
+    async (email: string, name?: string, role: AdminRole = 'super_admin') => {
+      const normalizedEmail = (email || '').trim().toLowerCase();
+      if (!normalizedEmail || !normalizedEmail.includes('@')) {
+        throw new Error('Please enter a valid administrator email address.');
+      }
+      const nextAdminEmails = normalizeAdminEmailList([
+        ...(settings.adminEmails || []),
+        normalizedEmail,
+      ]);
+
+      await saveSettings({
+        ...settings,
+        adminEmails: nextAdminEmails,
+      });
+
+      const emailSlugId = sanitizeDocId(`email_${normalizedEmail}`, 'admin');
+      const displayName = (name || normalizedEmail.split('@')[0] || 'Administrator')
+        .trim()
+        .slice(0, 120);
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'admins', emailSlugId), {
+          id: emailSlugId,
+          email: normalizedEmail.slice(0, 140),
+          name: displayName,
+          role,
+          createdAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `admins/${emailSlugId}`
+      );
+
+      await logAdminAction(
+        'ADD_ADMIN',
+        'admins',
+        emailSlugId,
+        `Granted shared Admin Panel access to ${normalizedEmail}`
+      );
+    },
+    [settings, saveSettings]
+  );
+
+  const removeAdminEmail = useCallback(
+    async (email: string) => {
+      const normalizedEmail = (email || '').trim().toLowerCase();
+      if (!normalizedEmail) return;
+      const isBootstrap = BOOTSTRAP_ADMIN_EMAILS.some(
+        (b) => b.trim().toLowerCase() === normalizedEmail
+      );
+      if (isBootstrap) {
+        throw new Error('Core sanctuary owner accounts cannot be removed.');
+      }
+
+      const nextAdminEmails = normalizeAdminEmailList(settings.adminEmails).filter(
+        (item) => item !== normalizedEmail
+      );
+      await saveSettings({
+        ...settings,
+        adminEmails: nextAdminEmails,
+      });
+
+      const emailSlugId = sanitizeDocId(`email_${normalizedEmail}`, 'admin');
+      await deleteDoc(doc(db, 'admins', emailSlugId)).catch(() => {});
+      const matchingDocs = admins.filter(
+        (a) => a.email && a.email.trim().toLowerCase() === normalizedEmail
+      );
+      for (const rec of matchingDocs) {
+        await deleteDoc(doc(db, 'admins', rec.id)).catch(() => {});
+      }
+
+      await logAdminAction(
+        'REMOVE_ADMIN',
+        'admins',
+        emailSlugId,
+        `Removed Admin Panel access for ${normalizedEmail}`
+      );
+    },
+    [settings, admins, saveSettings]
   );
 
   const saveSeoGlobal = useCallback(async (config: GlobalSeoConfig) => {
@@ -2234,6 +2506,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetCollageImage,
         updateSiteImageSlot,
         clearSiteImageSlot,
+        addAdminEmail,
+        removeAdminEmail,
         storageStatus,
         checkStorageStatus,
       }}

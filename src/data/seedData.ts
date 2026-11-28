@@ -35,6 +35,11 @@ export const DEFAULT_SETTINGS: CafeSettings = {
   mapSubtitle:
     'Lion Rock Sanctuary Road, Kimbissa, Sigiriya, Central Province, Sri Lanka · 1.5 km west of Sigiriya Lion Rock Fortress',
   menuCurrencyDisplay: 'both',
+  adminEmails: [
+    'merlinfiverr0@gmail.com',
+    'onelovecafesigiriya@gmail.com',
+    'manojmadurangasadaruwan@gmail.com',
+  ],
 };
 
 export const DEFAULT_ZONES: SeatingZone[] = [

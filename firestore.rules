@@ -28,9 +28,13 @@ service cloud.firestore {
     // Check email in token OR Google identity claims so Google OAuth accounts always match
     function isAuthorizedAdminToken() {
       return isSignedIn() && (
-        request.auth.token.email == "merlinfiverr0@gmail.com" ||
-        request.auth.token.email == "onelovecafesigiriya@gmail.com" ||
-        request.auth.token.email == "manojmadurangasadaruwan@gmail.com" ||
+        (
+          "email" in request.auth.token && (
+            request.auth.token.email == "merlinfiverr0@gmail.com" ||
+            request.auth.token.email == "onelovecafesigiriya@gmail.com" ||
+            request.auth.token.email == "manojmadurangasadaruwan@gmail.com"
+          )
+        ) ||
         (
           "firebase" in request.auth.token &&
           "identities" in request.auth.token.firebase &&
@@ -43,22 +47,30 @@ service cloud.firestore {
       );
     }
 
+    function isListedInSettingsAdmins() {
+      return isSignedIn() &&
+        "email" in request.auth.token &&
+        exists(/databases/$(database)/documents/settings/main) &&
+        "adminEmails" in get(/databases/$(database)/documents/settings/main).data &&
+        get(/databases/$(database)/documents/settings/main).data.adminEmails is list &&
+        request.auth.token.email in get(/databases/$(database)/documents/settings/main).data.adminEmails;
+    }
+
     function isAdmin() {
-      return isAuthorizedAdminToken() || (
-        isSignedIn() &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return isAuthorizedAdminToken() ||
+        isListedInSettingsAdmins() || (
+          isSignedIn() &&
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
     }
 
     // 2. Entity Validation Blueprints
     function isValidAdmin(data, uid) {
-      return data.keys().hasAll(['id', 'email', 'name', 'role', 'createdAt']) &&
-        data.keys().hasOnly(['id', 'email', 'name', 'role', 'createdAt']) &&
+      return data.keys().hasAll(['id', 'email', 'name', 'role']) &&
         data.id is string && data.id == uid && data.id.size() <= 128 &&
         data.email is string && data.email.size() >= 3 && data.email.size() <= 140 &&
         data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
-        (data.role == 'super_admin' || data.role == 'manager' || data.role == 'host') &&
-        data.createdAt == request.time;
+        (data.role == 'super_admin' || data.role == 'manager' || data.role == 'host');
     }
 
     function isValidSettings(data, settingId) {
@@ -222,11 +234,7 @@ service cloud.firestore {
     match /admins/{adminId} {
       allow get: if isValidId(adminId) && (isAdmin() || (isSignedIn() && request.auth.uid == adminId));
       allow list: if isAdmin();
-      allow create: if isValidId(adminId) && isValidAdmin(incoming(), adminId) && (
-        isAdmin() || (isAuthorizedAdminToken() && request.auth.uid == adminId)
-      );
-      allow update: if isValidId(adminId) && isValidAdmin(incoming(), adminId) && isAdmin() &&
-        (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time);
+      allow create, update: if isValidId(adminId) && isValidAdmin(incoming(), adminId) && isAdmin();
       allow delete: if isValidId(adminId) && isAdmin();
     }
 
