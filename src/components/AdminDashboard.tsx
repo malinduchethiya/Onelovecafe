@@ -386,6 +386,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const map: Record<string, SiteContentSection> = {};
     siteContent.forEach((s) => {
       map[s.id] = s;
+      map[s.sectionKey] = s;
     });
     setContentDrafts(map);
   }, [siteContent]);
@@ -2634,7 +2635,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </label>
                         <textarea
                           rows={3}
-                          required
+                          placeholder="Describe ingredients, origin, and preparation..."
                           value={editingMenuItem.description}
                           onChange={(e) =>
                             setEditingMenuItem({
@@ -2743,10 +2744,78 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         )}
                       </div>
 
-                      {/* Text-only Menu Card Note */}
-                      <div className="px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3] text-[11px] text-[#171513]/65">
-                        Menu cards are displayed in the clean text-only 4-in-a-row layout across
-                        Home and /menu.
+                      {/* Optional Dish / Drink Photo Upload (Cloudflare R2) */}
+                      <div className="p-3 bg-[#F8F4EE] border border-[#E7DED3] space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block font-semibold text-[#171513]">
+                            Optional Dish / Drink Photo (Cloudflare R2)
+                          </label>
+                          {editingMenuItem.imageUrl && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const updated = { ...editingMenuItem, imageUrl: '' };
+                                setEditingMenuItem(updated);
+                                if (menuItems.some((m) => m.id === updated.id)) {
+                                  await saveMenuItem(updated);
+                                  showToast(`Removed photo from "${updated.name}".`);
+                                }
+                              }}
+                              className="text-[11px] text-[#9E3F16] hover:underline cursor-pointer"
+                            >
+                              Remove Photo
+                            </button>
+                          )}
+                        </div>
+                        {editingMenuItem.imageUrl && (
+                          <div className="aspect-[16/10] w-full bg-white border border-[#E7DED3] overflow-hidden">
+                            <EditorialVisual
+                              src={editingMenuItem.imageUrl}
+                              alt={editingMenuItem.name || 'Dish preview'}
+                            />
+                          </div>
+                        )}
+                        <label className="w-full py-2 px-3 bg-white border border-[#E7DED3] hover:border-[#171513] text-[#171513] text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer">
+                          <Upload className="w-3.5 h-3.5 text-[#C65B2B]" />
+                          <span>
+                            {editingMenuItem.imageUrl ? 'Replace Photo in R2' : 'Upload Photo to R2'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (!file) return;
+                              try {
+                                showToast('Uploading menu photo to Cloudflare R2...');
+                                const r2Url = await uploadMediaFile(
+                                  file,
+                                  'menu',
+                                  editingMenuItem.imageUrl
+                                );
+                                const updated = { ...editingMenuItem, imageUrl: r2Url };
+                                setEditingMenuItem(updated);
+                                if (
+                                  menuItems.some((m) => m.id === updated.id) &&
+                                  updated.name.trim()
+                                ) {
+                                  await saveMenuItem(updated);
+                                  showToast(`Uploaded & saved photo for "${updated.name}".`);
+                                } else {
+                                  showToast('Photo uploaded to R2. Click Save Item to finish.');
+                                }
+                              } catch (err) {
+                                showToast(
+                                  err instanceof Error
+                                    ? err.message
+                                    : 'Could not upload menu photo to R2.'
+                                );
+                              }
+                            }}
+                          />
+                        </label>
                       </div>
 
                       <div className="flex items-center gap-5 pt-1">
@@ -3066,10 +3135,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[#171513]/60 mb-1">Editorial Caption</label>
+                      <label className="block text-[#171513]/60 mb-1">Editorial Caption (Optional)</label>
                       <textarea
                         rows={2}
-                        required
                         placeholder="Editorial caption..."
                         value={editingGalleryItem.caption}
                         onChange={(e) =>
@@ -3347,8 +3415,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     />
                     <input
                       type="text"
-                      required
-                      placeholder="Subtitle"
+                      placeholder="Subtitle (Optional)"
                       value={editingEvent.subtitle}
                       onChange={(e) =>
                         setEditingEvent({ ...editingEvent, subtitle: e.target.value })
@@ -3379,8 +3446,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     <textarea
                       rows={3}
-                      required
-                      placeholder="Description..."
+                      placeholder="Description (Optional)..."
                       value={editingEvent.description}
                       onChange={(e) =>
                         setEditingEvent({ ...editingEvent, description: e.target.value })
@@ -3606,7 +3672,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       sec.sectionKey !== 'menu_gallery_bg'
                   )
                   .map((sec) => {
-                  const draft = contentDrafts[sec.id] || sec;
+                  const draft = contentDrafts[sec.id] || contentDrafts[sec.sectionKey] || sec;
                   const isFooterSec = sec.sectionKey === 'footer';
                   const isHeroSec = sec.sectionKey === 'hero';
                   const hasImageUpload =
@@ -3646,12 +3712,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           onClick={async () => {
                             try {
                               await saveSiteContent(draft);
-                              setContentDrafts((prev) => {
-                                const next = { ...prev };
-                                delete next[sec.id];
-                                delete next[sec.sectionKey];
-                                return next;
-                              });
+                              setContentDrafts((prev) => ({
+                                ...prev,
+                                [sec.id]: draft,
+                                [sec.sectionKey]: draft,
+                              }));
                               showToast(`Saved "${sec.sectionKey}" section changes to live site.`);
                             } catch (err) {
                               console.error('Save site content failed:', err);
@@ -3683,12 +3748,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <input
                               type="text"
                               value={draft.kicker}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const nextDraft = { ...draft, kicker: e.target.value };
                                 setContentDrafts({
                                   ...contentDrafts,
-                                  [sec.id]: { ...draft, kicker: e.target.value },
-                                })
-                              }
+                                  [sec.id]: nextDraft,
+                                  [sec.sectionKey]: nextDraft,
+                                });
+                              }}
                               className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
                             />
                           </div>
@@ -3699,12 +3766,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <input
                               type="text"
                               value={draft.heading}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const nextDraft = { ...draft, heading: e.target.value };
                                 setContentDrafts({
                                   ...contentDrafts,
-                                  [sec.id]: { ...draft, heading: e.target.value },
-                                })
-                              }
+                                  [sec.id]: nextDraft,
+                                  [sec.sectionKey]: nextDraft,
+                                });
+                              }}
                               className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
                             />
                           </div>
@@ -3715,12 +3784,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <input
                               type="text"
                               value={draft.subheading}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const nextDraft = { ...draft, subheading: e.target.value };
                                 setContentDrafts({
                                   ...contentDrafts,
-                                  [sec.id]: { ...draft, subheading: e.target.value },
-                                })
-                              }
+                                  [sec.id]: nextDraft,
+                                  [sec.sectionKey]: nextDraft,
+                                });
+                              }}
                               className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
                             />
                           </div>
@@ -3731,16 +3802,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <textarea
                               rows={isFooterSec ? 2 : 4}
                               value={draft.body}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const nextDraft = { ...draft, body: e.target.value };
                                 setContentDrafts({
                                   ...contentDrafts,
-                                  [sec.id]: { ...draft, body: e.target.value },
-                                })
-                              }
+                                  [sec.id]: nextDraft,
+                                  [sec.sectionKey]: nextDraft,
+                                });
+                              }}
                               className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
                             />
                           </div>
-                          {isFooterSec && (
+                          {isFooterSec ? (
                             <>
                               <div>
                                 <label className="block text-[#171513]/60 mb-1">
@@ -3749,12 +3822,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <input
                                   type="text"
                                   value={draft.ctaLabel}
-                                  onChange={(e) =>
+                                  onChange={(e) => {
+                                    const nextDraft = { ...draft, ctaLabel: e.target.value };
                                     setContentDrafts({
                                       ...contentDrafts,
-                                      [sec.id]: { ...draft, ctaLabel: e.target.value },
-                                    })
-                                  }
+                                      [sec.id]: nextDraft,
+                                      [sec.sectionKey]: nextDraft,
+                                    });
+                                  }}
                                   className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
                                 />
                               </div>
@@ -3765,35 +3840,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <input
                                   type="text"
                                   value={draft.ctaLink}
-                                  onChange={(e) =>
+                                  onChange={(e) => {
+                                    const nextDraft = { ...draft, ctaLink: e.target.value };
                                     setContentDrafts({
                                       ...contentDrafts,
-                                      [sec.id]: { ...draft, ctaLink: e.target.value },
-                                    })
-                                  }
+                                      [sec.id]: nextDraft,
+                                      [sec.sectionKey]: nextDraft,
+                                    });
+                                  }}
                                   className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
                                 />
                               </div>
                             </>
-                          )}
-                          {(sec.sectionKey === 'golden_hour' ||
-                            sec.sectionKey === 'home_reserve' ||
-                            sec.sectionKey === 'find_us') && (
+                          ) : (
                             <div className="sm:col-span-2">
                               <label className="block text-[#171513]/60 mb-1">
                                 {sec.sectionKey === 'find_us'
                                   ? 'Distance Highlight Badge (e.g. 1.5 Kilometers)'
-                                  : 'Primary Button Label'}
+                                  : 'Primary Button / CTA Label'}
                               </label>
                               <input
                                 type="text"
                                 value={draft.ctaLabel}
-                                onChange={(e) =>
+                                onChange={(e) => {
+                                  const nextDraft = { ...draft, ctaLabel: e.target.value };
                                   setContentDrafts({
                                     ...contentDrafts,
-                                    [sec.id]: { ...draft, ctaLabel: e.target.value },
-                                  })
-                                }
+                                    [sec.id]: nextDraft,
+                                    [sec.sectionKey]: nextDraft,
+                                  });
+                                }}
                                 className="w-full px-3 py-2 bg-[#F8F4EE] border border-[#E7DED3]"
                               />
                             </div>
@@ -3838,10 +3914,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         draft.imageUrl
                                       );
                                       const updatedSection = { ...draft, imageUrl: r2Url };
-                                      setContentDrafts({
-                                        ...contentDrafts,
+                                      setContentDrafts((prev) => ({
+                                        ...prev,
                                         [sec.id]: updatedSection,
-                                      });
+                                        [sec.sectionKey]: updatedSection,
+                                      }));
                                       await saveSiteContent(updatedSection);
                                       showToast(
                                         `Uploaded & saved new image for "${sec.sectionKey}" directly to Cloudflare R2.`
@@ -3857,10 +3934,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 type="button"
                                 onClick={async () => {
                                   const cleared = { ...draft, imageUrl: '' };
-                                  setContentDrafts({
-                                    ...contentDrafts,
+                                  setContentDrafts((prev) => ({
+                                    ...prev,
                                     [sec.id]: cleared,
-                                  });
+                                    [sec.sectionKey]: cleared,
+                                  }));
                                   await saveSiteContent(cleared);
                                   showToast(`Removed custom image from "${sec.sectionKey}" in Cloudflare R2.`);
                                 }}
@@ -4227,12 +4305,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         siteContent.find((s) => s.sectionKey === 'footer');
                       if (footerDraft) {
                         await saveSiteContent(footerDraft);
-                        setContentDrafts((prev) => {
-                          const next = { ...prev };
-                          delete next['footer'];
-                          delete next[footerDraft.id];
-                          return next;
-                        });
+                        setContentDrafts((prev) => ({
+                          ...prev,
+                          footer: footerDraft,
+                          [footerDraft.id]: footerDraft,
+                        }));
                       }
                       showToast('Global café settings & all Footer details saved to live site.');
                     } catch (err) {

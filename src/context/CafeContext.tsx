@@ -13,6 +13,7 @@ import {
   deleteDoc,
   serverTimestamp,
   getDoc,
+  getDocs,
   query,
   limit,
 } from 'firebase/firestore';
@@ -220,6 +221,14 @@ function sanitizeCdnUrl(url: string | undefined | null): string {
   return trimmed;
 }
 
+function sanitizeDocId(rawId: string | undefined | null, prefix: string): string {
+  const cleaned = (rawId || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 100);
+  return cleaned || `${prefix}_${Date.now()}`;
+}
+
 function generateReferenceCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = 'OL-';
@@ -229,23 +238,73 @@ function generateReferenceCode(): string {
   return code;
 }
 
+/**
+ * Commits a Firestore write/delete promise without hanging the UI if server ack is slow
+ * while persistentLocalCache() has already applied the mutation locally.
+ */
+async function commitFirestoreWrite(
+  writePromise: Promise<unknown>,
+  opType: OperationType,
+  path: string
+): Promise<void> {
+  let settled = false;
+  const guarded = writePromise
+    .then(() => {
+      settled = true;
+    })
+    .catch((err) => {
+      settled = true;
+      handleFirestoreError(err, opType, path);
+    });
+
+  await Promise.race([
+    guarded,
+    new Promise<void>((resolve) => {
+      window.setTimeout(() => {
+        if (!settled) resolve();
+      }, 2500);
+    }),
+  ]);
+}
+
+const CLEAN_DEFAULT_MENU_ITEMS: MenuItem[] = DEFAULT_MENU_ITEMS.map((m) => ({
+  ...m,
+  imageUrl: sanitizeCdnUrl(m.imageUrl),
+}));
+
+const CLEAN_DEFAULT_GALLERY: GalleryItem[] = DEFAULT_GALLERY.map((g) => ({
+  ...g,
+  imageUrl: sanitizeCdnUrl(g.imageUrl),
+}));
+
+const CLEAN_DEFAULT_EVENTS: CafeEvent[] = DEFAULT_EVENTS.map((e) => ({
+  ...e,
+  imageUrl: sanitizeCdnUrl(e.imageUrl),
+}));
+
+const CLEAN_DEFAULT_SITE_CONTENT: SiteContentSection[] = DEFAULT_SITE_CONTENT.map((s) => ({
+  ...s,
+  id: s.sectionKey,
+  imageUrl: sanitizeCdnUrl(s.imageUrl),
+}));
+
 export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [sessionId] = useState<string>(getOrCreateSessionId);
 
-  // Live Firestore state (single source of truth; no localStorage shadow caches)
+  // Live Firestore state with clean initial defaults before first Firestore snapshot
   const [settings, setSettings] = useState<CafeSettings>(DEFAULT_SETTINGS);
   const [zones, setZones] = useState<SeatingZone[]>(DEFAULT_ZONES);
   const [tables, setTables] = useState<CafeTable[]>(DEFAULT_TABLES);
   const [openingHours, setOpeningHours] = useState<OpeningHoursConfig[]>(DEFAULT_OPENING_HOURS);
   const [blockedDates, setBlockedDates] = useState<BlockedDateRecord[]>([]);
   const [menuCategories, setMenuCategories] = useState<MenuCategory[]>(DEFAULT_MENU_CATEGORIES);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [gallery, setGallery] = useState<GalleryItem[]>([]);
-  const [events, setEvents] = useState<CafeEvent[]>([]);
-  const [siteContent, setSiteContent] = useState<SiteContentSection[]>(DEFAULT_SITE_CONTENT);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(CLEAN_DEFAULT_MENU_ITEMS);
+  const [gallery, setGallery] = useState<GalleryItem[]>(CLEAN_DEFAULT_GALLERY);
+  const [events, setEvents] = useState<CafeEvent[]>(CLEAN_DEFAULT_EVENTS);
+  const [siteContent, setSiteContent] = useState<SiteContentSection[]>(CLEAN_DEFAULT_SITE_CONTENT);
   const [availability, setAvailability] = useState<AvailabilitySlotRecord[]>([]);
   const [seoGlobal, setSeoGlobal] = useState<GlobalSeoConfig>(DEFAULT_GLOBAL_SEO);
   const [seoPages, setSeoPages] = useState<Record<SeoPageKey, PageSeoConfig>>(DEFAULT_PAGE_SEO);
@@ -258,8 +317,35 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const autoSeededRef = useRef(false);
   const purgingReservationIdsRef = useRef<Set<string>>(new Set());
   const purgingSlotIdsRef = useRef<Set<string>>(new Set());
-  const reservationsRef = useRef<ReservationRecord[]>([]);
+
+  // Track which collections have live documents in Firestore vs unseeded defaults
+  const hasLiveDocsRef = useRef({
+    seatingZones: false,
+    tables: false,
+    openingHours: false,
+    menuCategories: false,
+    menuItems: false,
+    gallery: false,
+    events: false,
+    siteContent: false,
+  });
+
+  // Track IDs deleted by the admin during the active session so deleted items never flicker back
+  const deletedIdsRef = useRef({
+    seatingZones: new Set<string>(),
+    tables: new Set<string>(),
+    blockedDates: new Set<string>(),
+    menuCategories: new Set<string>(),
+    menuItems: new Set<string>(),
+    gallery: new Set<string>(),
+    events: new Set<string>(),
+  });
+
+  const reservationsRef = useRef<ReservationRecord[]>(reservations);
   const settingsRef = useRef<CafeSettings>(settings);
+  const zonesRef = useRef<SeatingZone[]>(zones);
+  const tablesRef = useRef<CafeTable[]>(tables);
+  const menuCategoriesRef = useRef<MenuCategory[]>(menuCategories);
   const menuItemsRef = useRef<MenuItem[]>(menuItems);
   const galleryRef = useRef<GalleryItem[]>(gallery);
   const eventsRef = useRef<CafeEvent[]>(events);
@@ -273,6 +359,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+  useEffect(() => {
+    zonesRef.current = zones;
+  }, [zones]);
+  useEffect(() => {
+    tablesRef.current = tables;
+  }, [tables]);
+  useEffect(() => {
+    menuCategoriesRef.current = menuCategories;
+  }, [menuCategories]);
   useEffect(() => {
     menuItemsRef.current = menuItems;
   }, [menuItems]);
@@ -443,7 +538,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const cleanHeroLinks = Array.isArray(data.heroImages)
               ? data.heroImages.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
               : [];
-            setSettings({
+            const nextSettings: CafeSettings = {
               ...DEFAULT_SETTINGS,
               id: mainDoc.id,
               ...data,
@@ -457,9 +552,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 !data.googleMapsEmbedUrl || data.googleMapsEmbedUrl.includes('7.9541,80.7547')
                   ? DEFAULT_SETTINGS.googleMapsEmbedUrl
                   : data.googleMapsEmbedUrl,
-            });
-          } else if (!snap.metadata.fromCache) {
-            setSettings(DEFAULT_SETTINGS);
+            };
+            settingsRef.current = nextSettings;
+            setSettings(nextSettings);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'settings')
@@ -471,11 +566,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         collection(db, 'seatingZones'),
         (snap) => {
           if (!snap.empty) {
+            hasLiveDocsRef.current.seatingZones = true;
             const list = snap.docs
+              .filter((d) => !deletedIdsRef.current.seatingZones.has(d.id))
               .map((d) => ({ id: d.id, ...(d.data() as Omit<SeatingZone, 'id'>) }))
               .sort((a, b) => a.sortOrder - b.sortOrder);
+            zonesRef.current = list;
             setZones(list);
-          } else if (!snap.metadata.fromCache) {
+          } else if (hasLiveDocsRef.current.seatingZones) {
+            zonesRef.current = [];
             setZones([]);
           }
         },
@@ -488,11 +587,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         collection(db, 'tables'),
         (snap) => {
           if (!snap.empty) {
+            hasLiveDocsRef.current.tables = true;
             const list = snap.docs
+              .filter((d) => !deletedIdsRef.current.tables.has(d.id))
               .map((d) => ({ id: d.id, ...(d.data() as Omit<CafeTable, 'id'>) }))
               .sort((a, b) => a.number - b.number);
+            tablesRef.current = list;
             setTables(list);
-          } else if (!snap.metadata.fromCache) {
+          } else if (hasLiveDocsRef.current.tables) {
+            tablesRef.current = [];
             setTables([]);
           }
         },
@@ -505,13 +608,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         collection(db, 'openingHours'),
         (snap) => {
           if (!snap.empty) {
+            hasLiveDocsRef.current.openingHours = true;
             const list = snap.docs.map((d) => ({
               id: d.id,
               ...(d.data() as Omit<OpeningHoursConfig, 'id'>),
             }));
             setOpeningHours(list);
-          } else if (!snap.metadata.fromCache) {
-            setOpeningHours(DEFAULT_OPENING_HOURS);
           }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'openingHours')
@@ -522,10 +624,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'blockedDates'),
         (snap) => {
-          const list = snap.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as Omit<BlockedDateRecord, 'id'>),
-          }));
+          const list = snap.docs
+            .filter((d) => !deletedIdsRef.current.blockedDates.has(d.id))
+            .map((d) => ({
+              id: d.id,
+              ...(d.data() as Omit<BlockedDateRecord, 'id'>),
+            }));
           setBlockedDates(list);
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'blockedDates')
@@ -537,7 +641,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         collection(db, 'menuCategories'),
         (snap) => {
           if (!snap.empty) {
+            hasLiveDocsRef.current.menuCategories = true;
             const list = snap.docs
+              .filter((d) => !deletedIdsRef.current.menuCategories.has(d.id))
               .map((d) => {
                 const raw = d.data() as Omit<MenuCategory, 'id'>;
                 return {
@@ -547,8 +653,10 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 };
               })
               .sort((a, b) => a.sortOrder - b.sortOrder);
+            menuCategoriesRef.current = list;
             setMenuCategories(list);
-          } else if (!snap.metadata.fromCache) {
+          } else if (hasLiveDocsRef.current.menuCategories) {
+            menuCategoriesRef.current = [];
             setMenuCategories([]);
           }
         },
@@ -560,15 +668,24 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'menuItems'),
         (snap) => {
-          const list = snap.docs.map((d) => {
-            const raw = d.data() as Omit<MenuItem, 'id'>;
-            return {
-              id: d.id,
-              ...raw,
-              imageUrl: sanitizeCdnUrl(raw.imageUrl),
-            };
-          });
-          setMenuItems(list);
+          if (!snap.empty) {
+            hasLiveDocsRef.current.menuItems = true;
+            const list = snap.docs
+              .filter((d) => !deletedIdsRef.current.menuItems.has(d.id))
+              .map((d) => {
+                const raw = d.data() as Omit<MenuItem, 'id'>;
+                return {
+                  id: d.id,
+                  ...raw,
+                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
+                };
+              });
+            menuItemsRef.current = list;
+            setMenuItems(list);
+          } else if (hasLiveDocsRef.current.menuItems) {
+            menuItemsRef.current = [];
+            setMenuItems([]);
+          }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'menuItems')
       )
@@ -578,17 +695,25 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'gallery'),
         (snap) => {
-          const list = snap.docs
-            .map((d) => {
-              const raw = d.data() as Omit<GalleryItem, 'id'>;
-              return {
-                id: d.id,
-                ...raw,
-                imageUrl: sanitizeCdnUrl(raw.imageUrl),
-              };
-            })
-            .sort((a, b) => a.sortOrder - b.sortOrder);
-          setGallery(list);
+          if (!snap.empty) {
+            hasLiveDocsRef.current.gallery = true;
+            const list = snap.docs
+              .filter((d) => !deletedIdsRef.current.gallery.has(d.id))
+              .map((d) => {
+                const raw = d.data() as Omit<GalleryItem, 'id'>;
+                return {
+                  id: d.id,
+                  ...raw,
+                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
+                };
+              })
+              .sort((a, b) => a.sortOrder - b.sortOrder);
+            galleryRef.current = list;
+            setGallery(list);
+          } else if (hasLiveDocsRef.current.gallery) {
+            galleryRef.current = [];
+            setGallery([]);
+          }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'gallery')
       )
@@ -598,15 +723,24 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'events'),
         (snap) => {
-          const list = snap.docs.map((d) => {
-            const raw = d.data() as Omit<CafeEvent, 'id'>;
-            return {
-              id: d.id,
-              ...raw,
-              imageUrl: sanitizeCdnUrl(raw.imageUrl),
-            };
-          });
-          setEvents(list);
+          if (!snap.empty) {
+            hasLiveDocsRef.current.events = true;
+            const list = snap.docs
+              .filter((d) => !deletedIdsRef.current.events.has(d.id))
+              .map((d) => {
+                const raw = d.data() as Omit<CafeEvent, 'id'>;
+                return {
+                  id: d.id,
+                  ...raw,
+                  imageUrl: sanitizeCdnUrl(raw.imageUrl),
+                };
+              });
+            eventsRef.current = list;
+            setEvents(list);
+          } else if (hasLiveDocsRef.current.events) {
+            eventsRef.current = [];
+            setEvents([]);
+          }
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'events')
       )
@@ -616,12 +750,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       onSnapshot(
         collection(db, 'siteContent'),
         (snap) => {
+          if (!snap.empty) {
+            hasLiveDocsRef.current.siteContent = true;
+          }
           const byKey = new Map<string, SiteContentSection>();
           const timestampByKey = new Map<string, { ms: number; isCanonical: boolean }>();
 
-          // Base structure keys exist for sections not yet edited; Firestore docs always override
-          DEFAULT_SITE_CONTENT.forEach((def) => {
-            byKey.set(def.sectionKey, { ...def, imageUrl: sanitizeCdnUrl(def.imageUrl) });
+          // Base structure keys exist for sections not yet in Firestore; Firestore docs always override
+          CLEAN_DEFAULT_SITE_CONTENT.forEach((def) => {
+            byKey.set(def.sectionKey, { ...def, id: def.sectionKey });
             timestampByKey.set(def.sectionKey, { ms: -1, isCanonical: false });
           });
 
@@ -631,8 +768,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const raw = d.data() as Omit<SiteContentSection, 'id'> & {
                 updatedAt?: { toMillis?: () => number; seconds?: number };
               };
-              const key = raw.sectionKey || d.id.replace(/^sec_/, '');
-              if (key.startsWith('hero_slide_')) return;
+              const key = (raw.sectionKey || d.id.replace(/^sec_/, '')).trim();
+              if (!key || key.startsWith('hero_slide_')) return;
 
               const updatedMs =
                 typeof raw.updatedAt?.toMillis === 'function'
@@ -652,7 +789,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (shouldReplace) {
                 timestampByKey.set(key, { ms: updatedMs, isCanonical });
                 byKey.set(key, {
-                  id: d.id,
+                  id: key,
                   sectionKey: key,
                   kicker: raw.kicker ?? '',
                   heading: raw.heading ?? '',
@@ -665,7 +802,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
             });
 
-          setSiteContent(Array.from(byKey.values()));
+          const nextContent = Array.from(byKey.values());
+          siteContentRef.current = nextContent;
+          setSiteContent(nextContent);
         },
         (err) => handleFirestoreError(err, OperationType.LIST, 'siteContent')
       )
@@ -784,7 +923,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (mainDoc) {
             const data = mainDoc.data() as Omit<GlobalSeoConfig, 'id'>;
             const faviconUrl = sanitizeCdnUrl(data.faviconSourceUrl);
-            setSeoGlobal({
+            const nextSeo: GlobalSeoConfig = {
               ...DEFAULT_GLOBAL_SEO,
               ...data,
               id: 'main',
@@ -795,9 +934,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               favicon96Url: sanitizeCdnUrl(data.favicon96Url) || faviconUrl,
               favicon192Url: sanitizeCdnUrl(data.favicon192Url) || faviconUrl,
               appleTouchIconUrl: sanitizeCdnUrl(data.appleTouchIconUrl) || faviconUrl,
-            });
-          } else if (!snap.metadata.fromCache) {
-            setSeoGlobal(DEFAULT_GLOBAL_SEO);
+            };
+            seoGlobalRef.current = nextSeo;
+            setSeoGlobal(nextSeo);
           }
         },
         (err) => console.warn('SEO config sync note:', err)
@@ -824,9 +963,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 };
               }
             });
+            seoPagesRef.current = nextPages;
             setSeoPages(nextPages);
-          } else if (!snap.metadata.fromCache) {
-            setSeoPages(DEFAULT_PAGE_SEO);
           }
         },
         (err) => console.warn('SEO pages sync note:', err)
@@ -868,10 +1006,17 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkStorageStatus();
   }, [checkStorageStatus]);
 
-  // Seed initial sanctuary data directly to Firestore if empty
+  // Seed initial sanctuary data directly to Firestore if empty (or when requested by Admin)
   const seedDatabaseIfNeeded = useCallback(async () => {
     if (!isAdmin) return;
     try {
+      deletedIdsRef.current.seatingZones.clear();
+      deletedIdsRef.current.tables.clear();
+      deletedIdsRef.current.menuCategories.clear();
+      deletedIdsRef.current.menuItems.clear();
+      deletedIdsRef.current.gallery.clear();
+      deletedIdsRef.current.events.clear();
+
       const { id: settingId, ...settingData } = DEFAULT_SETTINGS;
       await setDoc(doc(db, 'settings', settingId), {
         ...settingData,
@@ -884,36 +1029,46 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { id, ...data } = z;
         await setDoc(doc(db, 'seatingZones', id), { ...data, updatedAt: serverTimestamp() });
       }
+      hasLiveDocsRef.current.seatingZones = true;
 
       for (const t of DEFAULT_TABLES) {
         const { id, ...data } = t;
         await setDoc(doc(db, 'tables', id), { ...data, updatedAt: serverTimestamp() });
       }
+      hasLiveDocsRef.current.tables = true;
 
       for (const oh of DEFAULT_OPENING_HOURS) {
         const { id, ...data } = oh;
         await setDoc(doc(db, 'openingHours', id), { ...data, updatedAt: serverTimestamp() });
       }
+      hasLiveDocsRef.current.openingHours = true;
 
       for (const cat of DEFAULT_MENU_CATEGORIES) {
         const { id, ...data } = cat;
-        await setDoc(doc(db, 'menuCategories', id), { ...data, updatedAt: serverTimestamp() });
+        await setDoc(doc(db, 'menuCategories', id), {
+          ...data,
+          section: resolveMenuCategorySection(cat),
+          updatedAt: serverTimestamp(),
+        });
       }
+      hasLiveDocsRef.current.menuCategories = true;
 
-      for (const item of DEFAULT_MENU_ITEMS) {
+      for (const item of CLEAN_DEFAULT_MENU_ITEMS) {
         const { id, ...data } = item;
         await setDoc(doc(db, 'menuItems', id), {
           ...data,
+          priceCurrency: data.priceCurrency || 'default',
           imageUrl: sanitizeCdnUrl(data.imageUrl),
           updatedAt: serverTimestamp(),
         });
       }
+      hasLiveDocsRef.current.menuItems = true;
 
-      for (const gItem of DEFAULT_GALLERY) {
+      for (const gItem of CLEAN_DEFAULT_GALLERY) {
         await setDoc(doc(db, 'gallery', gItem.id), {
-          title: gItem.title.slice(0, 100),
+          title: gItem.title.slice(0, 160),
           category: gItem.category,
-          caption: gItem.caption.slice(0, 300),
+          caption: gItem.caption.slice(0, 600),
           imageUrl: sanitizeCdnUrl(gItem.imageUrl),
           aspectRatio: gItem.aspectRatio,
           isFeatured: Boolean(gItem.isFeatured),
@@ -921,8 +1076,9 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: serverTimestamp(),
         });
       }
+      hasLiveDocsRef.current.gallery = true;
 
-      for (const evt of DEFAULT_EVENTS) {
+      for (const evt of CLEAN_DEFAULT_EVENTS) {
         const { id, ...data } = evt;
         await setDoc(doc(db, 'events', id), {
           ...data,
@@ -930,28 +1086,36 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatedAt: serverTimestamp(),
         });
       }
+      hasLiveDocsRef.current.events = true;
 
-      for (const sc of DEFAULT_SITE_CONTENT) {
-        const { id, ...data } = sc;
-        await setDoc(doc(db, 'siteContent', id), {
-          ...data,
-          imageUrl: sanitizeCdnUrl(data.imageUrl),
+      for (const sc of CLEAN_DEFAULT_SITE_CONTENT) {
+        const canonicalId = sc.sectionKey;
+        await setDoc(doc(db, 'siteContent', canonicalId), {
+          sectionKey: sc.sectionKey,
+          kicker: sc.kicker,
+          heading: sc.heading,
+          subheading: sc.subheading,
+          body: sc.body,
+          ctaLabel: sc.ctaLabel,
+          ctaLink: sc.ctaLink,
+          imageUrl: sanitizeCdnUrl(sc.imageUrl),
           updatedAt: serverTimestamp(),
         });
       }
+      hasLiveDocsRef.current.siteContent = true;
 
-      await logAdminAction(
+      logAdminAction(
         'SEED_SANCTUARY_DATA',
         'settings',
         'main',
         'Initialized OneLove Café Sigiriya data in Firestore'
-      );
+      ).catch(() => {});
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'seedDatabase');
     }
   }, [isAdmin]);
 
-  // 3. Protected Admin Real-Time Listeners & First-Time Auto-Bootstrap Seeding
+  // 3. Protected Admin Real-Time Listeners & Per-Collection First-Time Auto-Bootstrap Seeding
   useEffect(() => {
     if (!authReady || !isAdmin) {
       setInquiries([]);
@@ -962,13 +1126,115 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!autoSeededRef.current) {
       autoSeededRef.current = true;
-      getDoc(doc(db, 'settings', 'main'))
-        .then(async (snap) => {
-          if (!snap.exists()) {
-            await seedDatabaseIfNeeded().catch(() => {});
+      (async () => {
+        try {
+          const settingsSnap = await getDoc(doc(db, 'settings', 'main'));
+          if (!settingsSnap.exists()) {
+            const { id: settingId, ...settingData } = DEFAULT_SETTINGS;
+            await setDoc(doc(db, 'settings', settingId), {
+              ...settingData,
+              heroImages: (settingData.heroImages || []).map((u) => sanitizeCdnUrl(u)).filter(Boolean),
+              floorPlanImageUrl: sanitizeCdnUrl(settingData.floorPlanImageUrl),
+              updatedAt: serverTimestamp(),
+            });
           }
-        })
-        .catch(() => {});
+
+          const catsSnap = await getDocs(query(collection(db, 'menuCategories'), limit(1)));
+          if (catsSnap.empty && !hasLiveDocsRef.current.menuCategories) {
+            hasLiveDocsRef.current.menuCategories = true;
+            for (const cat of menuCategoriesRef.current) {
+              const { id, ...data } = cat;
+              await setDoc(doc(db, 'menuCategories', id), {
+                ...data,
+                section: resolveMenuCategorySection(cat),
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+
+          const itemsSnap = await getDocs(query(collection(db, 'menuItems'), limit(1)));
+          if (itemsSnap.empty && !hasLiveDocsRef.current.menuItems) {
+            hasLiveDocsRef.current.menuItems = true;
+            for (const item of menuItemsRef.current) {
+              const { id, ...data } = item;
+              await setDoc(doc(db, 'menuItems', id), {
+                ...data,
+                priceCurrency: data.priceCurrency || 'default',
+                imageUrl: sanitizeCdnUrl(data.imageUrl),
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+
+          const galSnap = await getDocs(query(collection(db, 'gallery'), limit(1)));
+          if (galSnap.empty && !hasLiveDocsRef.current.gallery) {
+            hasLiveDocsRef.current.gallery = true;
+            for (const gItem of galleryRef.current) {
+              await setDoc(doc(db, 'gallery', gItem.id), {
+                title: gItem.title.slice(0, 160),
+                category: gItem.category,
+                caption: gItem.caption.slice(0, 600),
+                imageUrl: sanitizeCdnUrl(gItem.imageUrl),
+                aspectRatio: gItem.aspectRatio,
+                isFeatured: Boolean(gItem.isFeatured),
+                sortOrder: Number(gItem.sortOrder) || 1,
+                createdAt: serverTimestamp(),
+              });
+            }
+          }
+
+          const evtSnap = await getDocs(query(collection(db, 'events'), limit(1)));
+          if (evtSnap.empty && !hasLiveDocsRef.current.events) {
+            hasLiveDocsRef.current.events = true;
+            for (const evt of eventsRef.current) {
+              const { id, ...data } = evt;
+              await setDoc(doc(db, 'events', id), {
+                ...data,
+                imageUrl: sanitizeCdnUrl(data.imageUrl),
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+
+          const contentSnap = await getDocs(query(collection(db, 'siteContent'), limit(1)));
+          if (contentSnap.empty && !hasLiveDocsRef.current.siteContent) {
+            hasLiveDocsRef.current.siteContent = true;
+            for (const sc of siteContentRef.current) {
+              await setDoc(doc(db, 'siteContent', sc.sectionKey), {
+                sectionKey: sc.sectionKey,
+                kicker: sc.kicker,
+                heading: sc.heading,
+                subheading: sc.subheading,
+                body: sc.body,
+                ctaLabel: sc.ctaLabel,
+                ctaLink: sc.ctaLink,
+                imageUrl: sanitizeCdnUrl(sc.imageUrl),
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+
+          const zonesSnap = await getDocs(query(collection(db, 'seatingZones'), limit(1)));
+          if (zonesSnap.empty && !hasLiveDocsRef.current.seatingZones) {
+            hasLiveDocsRef.current.seatingZones = true;
+            for (const z of zonesRef.current) {
+              const { id, ...data } = z;
+              await setDoc(doc(db, 'seatingZones', id), { ...data, updatedAt: serverTimestamp() });
+            }
+          }
+
+          const tablesSnap = await getDocs(query(collection(db, 'tables'), limit(1)));
+          if (tablesSnap.empty && !hasLiveDocsRef.current.tables) {
+            hasLiveDocsRef.current.tables = true;
+            for (const t of tablesRef.current) {
+              const { id, ...data } = t;
+              await setDoc(doc(db, 'tables', id), { ...data, updatedAt: serverTimestamp() });
+            }
+          }
+        } catch (err) {
+          console.warn('Background initial collection bootstrap note:', err);
+        }
+      })();
     }
 
     const unsubs: (() => void)[] = [];
@@ -1018,7 +1284,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       unsubs.forEach((u) => u());
     };
-  }, [authReady, isAdmin, seedDatabaseIfNeeded]);
+  }, [authReady, isAdmin]);
 
   const signInAdmin = useCallback(async () => {
     await signInWithPopup(auth, googleProvider);
@@ -1175,6 +1441,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status: 'confirmed',
       };
 
+      setReservations((prev) => [confirmedRecord, ...prev]);
+
       const reservationWritePromise = setDoc(reservationRef, {
         referenceCode,
         date: safeDate,
@@ -1210,11 +1478,11 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('Availability slot update skipped:', slotError);
       });
 
-      try {
-        await Promise.all([reservationWritePromise, slotWritePromise]);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, `reservations/${reservationId}`);
-      }
+      await commitFirestoreWrite(
+        Promise.all([reservationWritePromise, slotWritePromise]),
+        OperationType.CREATE,
+        `reservations/${reservationId}`
+      );
 
       return confirmedRecord;
     },
@@ -1247,8 +1515,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const inquiryId = `inq_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      try {
-        await setDoc(doc(db, 'inquiries', inquiryId), {
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'inquiries', inquiryId), {
           name: safeName,
           email: safeEmail,
           phone: safePhone,
@@ -1257,641 +1525,1046 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status: 'new',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-        });
-      } catch (error) {
-        handleFirestoreError(error, OperationType.CREATE, `inquiries/${inquiryId}`);
-      }
+        }),
+        OperationType.CREATE,
+        `inquiries/${inquiryId}`
+      );
     },
     []
   );
 
-  // Admin Operations (Direct Admin Panel -> Firestore & R2 -> Live Site)
+  // Admin Operations (Optimistic UI + Direct Firestore & R2 Sync)
   const updateReservationStatus = useCallback(
     async (reservation: ReservationRecord, newStatus: ReservationRecord['status']) => {
       const normalizedTime = reservation.time.replace(/[^a-zA-Z0-9]/g, '-');
       const slotId = `${reservation.date}_${normalizedTime}_${reservation.tableId}`;
-      try {
-        const existingSnap = await getDoc(doc(db, 'reservations', reservation.id));
-        const createdAtVal = existingSnap.exists()
-          ? existingSnap.data().createdAt
-          : serverTimestamp();
 
-        await setDoc(doc(db, 'reservations', reservation.id), {
-          referenceCode: reservation.referenceCode.slice(0, 24),
-          date: reservation.date.slice(0, 10),
-          time: reservation.time.slice(0, 10),
-          servicePeriod: (reservation.servicePeriod || 'Sanctuary Dining').slice(0, 40),
-          partySize: reservation.partySize,
-          tableId: reservation.tableId.slice(0, 40),
-          tableLabel: reservation.tableLabel.slice(0, 40),
-          zoneId: reservation.zoneId.slice(0, 40),
-          zoneName: reservation.zoneName.slice(0, 60),
-          guestName: reservation.guestName.slice(0, 100),
-          guestEmail: reservation.guestEmail.slice(0, 120),
-          whatsapp: reservation.whatsapp.slice(0, 30),
-          country: reservation.country.slice(0, 80),
-          occasion: (reservation.occasion || 'None').slice(0, 60),
-          dietaryNotes: (reservation.dietaryNotes || '').slice(0, 500),
-          specialRequests: (reservation.specialRequests || '').slice(0, 500),
-          status: newStatus,
-          createdAt: createdAtVal,
-          updatedAt: serverTimestamp(),
-        });
+      setReservations((prev) =>
+        prev.map((r) => (r.id === reservation.id ? { ...r, status: newStatus } : r))
+      );
 
-        const nextSlotStatus =
-          newStatus === 'cancelled' || newStatus === 'rejected' || newStatus === 'completed'
-            ? 'available'
-            : newStatus === 'seated'
-            ? 'occupied'
-            : 'reserved';
+      const nextSlotStatus =
+        newStatus === 'cancelled' || newStatus === 'rejected' || newStatus === 'completed'
+          ? 'available'
+          : newStatus === 'seated'
+          ? 'occupied'
+          : 'reserved';
 
-        await setDoc(doc(db, 'availability', slotId), {
-          date: reservation.date.slice(0, 10),
-          time: reservation.time.slice(0, 10),
-          tableId: reservation.tableId.slice(0, 40),
-          status: nextSlotStatus,
-          holdExpiresAtMs: 0,
-          sessionId: 'admin',
-          referenceCode: reservation.referenceCode.slice(0, 24),
-          updatedAt: serverTimestamp(),
-        });
+      setAvailability((prev) =>
+        prev.map((s) => (s.id === slotId ? { ...s, status: nextSlotStatus } : s))
+      );
 
-        await logAdminAction(
-          `RESERVATION_${newStatus.toUpperCase()}`,
-          'reservations',
-          reservation.id,
-          `Updated reservation ${reservation.referenceCode} (${reservation.guestName}) to ${newStatus}`
-        );
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, `reservations/${reservation.id}`);
-      }
+      await commitFirestoreWrite(
+        Promise.all([
+          setDoc(
+            doc(db, 'reservations', reservation.id),
+            {
+              status: newStatus,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          ),
+          setDoc(doc(db, 'availability', slotId), {
+            date: reservation.date.slice(0, 10),
+            time: reservation.time.slice(0, 10),
+            tableId: reservation.tableId.slice(0, 40),
+            status: nextSlotStatus,
+            holdExpiresAtMs: 0,
+            sessionId: 'admin',
+            referenceCode: reservation.referenceCode.slice(0, 24),
+            updatedAt: serverTimestamp(),
+          }),
+        ]),
+        OperationType.UPDATE,
+        `reservations/${reservation.id}`
+      );
+
+      logAdminAction(
+        `RESERVATION_${newStatus.toUpperCase()}`,
+        'reservations',
+        reservation.id,
+        `Updated reservation ${reservation.referenceCode} (${reservation.guestName}) to ${newStatus}`
+      ).catch(() => {});
     },
     []
   );
 
   const saveTable = useCallback(async (table: CafeTable) => {
-    try {
-      const { id, ...data } = table;
-      const safeLabel = (data.label || 'Table').trim().slice(0, 30) || 'Table';
-      const safeNumber = Math.max(1, Math.round(Number(data.number) || 1));
-      const safeCapacity = Math.max(1, Math.round(Number(data.capacity) || 2));
-      const safeMinGuests = Math.max(
-        1,
-        Math.min(safeCapacity, Math.round(Number(data.minGuests) || 1))
-      );
+    const safeId = sanitizeDocId(table.id, 'T');
+    const safeLabel = (table.label || 'Table').trim().slice(0, 60) || 'Table';
+    const safeNumber = Math.max(1, Math.round(Number(table.number) || 1));
+    const safeCapacity = Math.max(1, Math.round(Number(table.capacity) || 2));
+    const safeMinGuests = Math.max(
+      1,
+      Math.min(safeCapacity, Math.round(Number(table.minGuests) || 1))
+    );
 
-      await setDoc(doc(db, 'tables', id), {
-        label: safeLabel,
-        number: safeNumber,
-        capacity: safeCapacity,
-        minGuests: safeMinGuests,
-        zoneId: (data.zoneId || 'zone_garden').trim().slice(0, 40) || 'zone_garden',
-        zoneName: (data.zoneName || 'Garden Sanctuary').trim().slice(0, 60) || 'Garden Sanctuary',
-        shape: data.shape,
-        x: Math.max(0, Math.min(100, Number(data.x) || 50)),
-        y: Math.max(0, Math.min(100, Number(data.y) || 50)),
-        isVip: Boolean(data.isVip),
-        isActive: Boolean(data.isActive),
-        notes: (data.notes || '').slice(0, 200),
-        updatedAt: serverTimestamp(),
-      });
+    const cleanTable: CafeTable = {
+      id: safeId,
+      label: safeLabel,
+      number: safeNumber,
+      capacity: safeCapacity,
+      minGuests: safeMinGuests,
+      zoneId: (table.zoneId || 'zone_garden').trim().slice(0, 80) || 'zone_garden',
+      zoneName: (table.zoneName || 'Garden Sanctuary').trim().slice(0, 100) || 'Garden Sanctuary',
+      shape: table.shape || 'round',
+      x: Math.max(0, Math.min(100, Number(table.x) || 50)),
+      y: Math.max(0, Math.min(100, Number(table.y) || 50)),
+      isVip: Boolean(table.isVip),
+      isActive: Boolean(table.isActive),
+      notes: (table.notes || '').slice(0, 400),
+    };
 
-      await logAdminAction('SAVE_TABLE', 'tables', id, `Updated floor plan table ${safeLabel}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `tables/${table.id}`);
+    deletedIdsRef.current.tables.delete(safeId);
+    setTables((prev) => {
+      const exists = prev.some((t) => t.id === safeId);
+      const next = (
+        exists ? prev.map((t) => (t.id === safeId ? cleanTable : t)) : [...prev, cleanTable]
+      ).sort((a, b) => a.number - b.number);
+      tablesRef.current = next;
+      return next;
+    });
+
+    if (!hasLiveDocsRef.current.tables) {
+      hasLiveDocsRef.current.tables = true;
+      tablesRef.current
+        .filter((t) => t.id !== safeId)
+        .forEach((t) => {
+          const { id, ...d } = t;
+          setDoc(doc(db, 'tables', id), { ...d, updatedAt: serverTimestamp() }).catch(() => {});
+        });
     }
+
+    const { id: _id, ...payload } = cleanTable;
+    await commitFirestoreWrite(
+      setDoc(doc(db, 'tables', safeId), {
+        ...payload,
+        updatedAt: serverTimestamp(),
+      }),
+      OperationType.WRITE,
+      `tables/${safeId}`
+    );
+
+    logAdminAction('SAVE_TABLE', 'tables', safeId, `Updated floor plan table ${safeLabel}`).catch(
+      () => {}
+    );
   }, []);
 
   const deleteTable = useCallback(async (tableId: string) => {
-    try {
-      await deleteDoc(doc(db, 'tables', tableId));
-      await logAdminAction('DELETE_TABLE', 'tables', tableId, `Deleted table ${tableId}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `tables/${tableId}`);
+    deletedIdsRef.current.tables.add(tableId);
+    const remaining = tablesRef.current.filter((t) => t.id !== tableId);
+    tablesRef.current = remaining;
+    setTables(remaining);
+
+    if (!hasLiveDocsRef.current.tables) {
+      hasLiveDocsRef.current.tables = true;
+      remaining.forEach((t) => {
+        const { id, ...d } = t;
+        setDoc(doc(db, 'tables', id), { ...d, updatedAt: serverTimestamp() }).catch(() => {});
+      });
     }
+
+    await commitFirestoreWrite(
+      deleteDoc(doc(db, 'tables', tableId)),
+      OperationType.DELETE,
+      `tables/${tableId}`
+    );
+    logAdminAction('DELETE_TABLE', 'tables', tableId, `Deleted table ${tableId}`).catch(() => {});
   }, []);
 
   const saveZone = useCallback(async (zone: SeatingZone) => {
-    try {
-      const { id, ...data } = zone;
-      const safeName = (data.name || 'Sanctuary Zone').trim().slice(0, 60) || 'Sanctuary Zone';
-      const safeSortOrder = Math.max(0, Math.round(Number(data.sortOrder) || 1));
+    const safeId = sanitizeDocId(zone.id, 'zone');
+    const safeName = (zone.name || 'Sanctuary Zone').trim().slice(0, 100) || 'Sanctuary Zone';
+    const safeSortOrder = Math.max(0, Math.round(Number(zone.sortOrder) || 1));
 
-      await setDoc(doc(db, 'seatingZones', id), {
-        name: safeName,
-        subtitle: (data.subtitle || '').slice(0, 120),
-        description: (data.description || '').slice(0, 300),
-        atmosphere: (data.atmosphere || '').slice(0, 100),
-        isActive: Boolean(data.isActive),
-        sortOrder: safeSortOrder,
-        updatedAt: serverTimestamp(),
-      });
+    const cleanZone: SeatingZone = {
+      id: safeId,
+      name: safeName,
+      subtitle: (zone.subtitle || '').slice(0, 240),
+      description: (zone.description || '').slice(0, 600),
+      atmosphere: (zone.atmosphere || '').slice(0, 200),
+      isActive: Boolean(zone.isActive),
+      sortOrder: safeSortOrder,
+    };
 
-      await logAdminAction('SAVE_ZONE', 'seatingZones', id, `Updated seating zone ${safeName}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `seatingZones/${zone.id}`);
+    deletedIdsRef.current.seatingZones.delete(safeId);
+    setZones((prev) => {
+      const exists = prev.some((z) => z.id === safeId);
+      const next = (
+        exists ? prev.map((z) => (z.id === safeId ? cleanZone : z)) : [...prev, cleanZone]
+      ).sort((a, b) => a.sortOrder - b.sortOrder);
+      zonesRef.current = next;
+      return next;
+    });
+
+    if (!hasLiveDocsRef.current.seatingZones) {
+      hasLiveDocsRef.current.seatingZones = true;
+      zonesRef.current
+        .filter((z) => z.id !== safeId)
+        .forEach((z) => {
+          const { id, ...d } = z;
+          setDoc(doc(db, 'seatingZones', id), { ...d, updatedAt: serverTimestamp() }).catch(
+            () => {}
+          );
+        });
     }
+
+    const { id: _id, ...payload } = cleanZone;
+    await commitFirestoreWrite(
+      setDoc(doc(db, 'seatingZones', safeId), {
+        ...payload,
+        updatedAt: serverTimestamp(),
+      }),
+      OperationType.WRITE,
+      `seatingZones/${safeId}`
+    );
+
+    logAdminAction('SAVE_ZONE', 'seatingZones', safeId, `Updated seating zone ${safeName}`).catch(
+      () => {}
+    );
   }, []);
 
   const deleteZone = useCallback(async (zoneId: string) => {
-    try {
-      await deleteDoc(doc(db, 'seatingZones', zoneId));
-      await logAdminAction('DELETE_ZONE', 'seatingZones', zoneId, `Deleted seating zone ${zoneId}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `seatingZones/${zoneId}`);
+    deletedIdsRef.current.seatingZones.add(zoneId);
+    const remaining = zonesRef.current.filter((z) => z.id !== zoneId);
+    zonesRef.current = remaining;
+    setZones(remaining);
+
+    if (!hasLiveDocsRef.current.seatingZones) {
+      hasLiveDocsRef.current.seatingZones = true;
+      remaining.forEach((z) => {
+        const { id, ...d } = z;
+        setDoc(doc(db, 'seatingZones', id), { ...d, updatedAt: serverTimestamp() }).catch(() => {});
+      });
     }
+
+    await commitFirestoreWrite(
+      deleteDoc(doc(db, 'seatingZones', zoneId)),
+      OperationType.DELETE,
+      `seatingZones/${zoneId}`
+    );
+    logAdminAction('DELETE_ZONE', 'seatingZones', zoneId, `Deleted seating zone ${zoneId}`).catch(
+      () => {}
+    );
   }, []);
 
   const saveOpeningHours = useCallback(async (config: OpeningHoursConfig) => {
-    try {
-      const { id, ...data } = config;
-      const safeSlotDuration = Math.min(
-        240,
-        Math.max(15, Math.round(Number(data.slotDurationMinutes) || 90))
-      );
-      const safeGracePeriod = Math.min(
-        60,
-        Math.max(5, Math.round(Number(data.gracePeriodMinutes) || 15))
-      );
+    const safeId = sanitizeDocId(config.id, 'day');
+    const safeSlotDuration = Math.min(
+      240,
+      Math.max(15, Math.round(Number(config.slotDurationMinutes) || 90))
+    );
+    const safeGracePeriod = Math.min(
+      60,
+      Math.max(5, Math.round(Number(config.gracePeriodMinutes) || 15))
+    );
 
-      await setDoc(doc(db, 'openingHours', id), {
-        dayOfWeek: (data.dayOfWeek || 'Monday').trim().slice(0, 20) || 'Monday',
-        isOpen: Boolean(data.isOpen),
-        openTime: (data.openTime || '07:30').slice(0, 10),
-        closeTime: (data.closeTime || '22:30').slice(0, 10),
-        slotDurationMinutes: safeSlotDuration,
-        gracePeriodMinutes: safeGracePeriod,
+    const cleanOh: OpeningHoursConfig = {
+      id: safeId,
+      dayOfWeek: (config.dayOfWeek || 'Monday').trim().slice(0, 30) || 'Monday',
+      isOpen: Boolean(config.isOpen),
+      openTime: (config.openTime || '07:30').slice(0, 20),
+      closeTime: (config.closeTime || '22:30').slice(0, 20),
+      slotDurationMinutes: safeSlotDuration,
+      gracePeriodMinutes: safeGracePeriod,
+    };
+
+    setOpeningHours((prev) =>
+      prev.some((o) => o.id === safeId)
+        ? prev.map((o) => (o.id === safeId ? cleanOh : o))
+        : [...prev, cleanOh]
+    );
+
+    const { id: _id, ...payload } = cleanOh;
+    await commitFirestoreWrite(
+      setDoc(doc(db, 'openingHours', safeId), {
+        ...payload,
         updatedAt: serverTimestamp(),
-      });
+      }),
+      OperationType.WRITE,
+      `openingHours/${safeId}`
+    );
 
-      await logAdminAction(
-        'SAVE_OPENING_HOURS',
-        'openingHours',
-        id,
-        `Updated opening hours for ${data.dayOfWeek}`
-      );
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `openingHours/${config.id}`);
-    }
+    logAdminAction(
+      'SAVE_OPENING_HOURS',
+      'openingHours',
+      safeId,
+      `Updated opening hours for ${cleanOh.dayOfWeek}`
+    ).catch(() => {});
   }, []);
 
   const saveBlockedDate = useCallback(async (blocked: BlockedDateRecord) => {
-    try {
-      const { id, ...data } = blocked;
-      const safeReason = (data.reason || 'Private Event').trim().slice(0, 160) || 'Private Event';
-      await setDoc(doc(db, 'blockedDates', id), {
-        date: data.date.slice(0, 10),
-        reason: safeReason,
-        isFullDay: Boolean(data.isFullDay),
-        blockedSlots: (data.blockedSlots || []).slice(0, 30),
+    const safeId = sanitizeDocId(blocked.id, 'blk');
+    const safeReason = (blocked.reason || 'Private Event').trim().slice(0, 300) || 'Private Event';
+    const cleanBlocked: BlockedDateRecord = {
+      id: safeId,
+      date: blocked.date.slice(0, 10),
+      reason: safeReason,
+      isFullDay: Boolean(blocked.isFullDay),
+      blockedSlots: (blocked.blockedSlots || []).slice(0, 30),
+    };
+
+    deletedIdsRef.current.blockedDates.delete(safeId);
+    setBlockedDates((prev) => {
+      const exists = prev.some((b) => b.id === safeId);
+      return exists ? prev.map((b) => (b.id === safeId ? cleanBlocked : b)) : [...prev, cleanBlocked];
+    });
+
+    await commitFirestoreWrite(
+      setDoc(doc(db, 'blockedDates', safeId), {
+        date: cleanBlocked.date,
+        reason: cleanBlocked.reason,
+        isFullDay: cleanBlocked.isFullDay,
+        blockedSlots: cleanBlocked.blockedSlots,
         createdAt: serverTimestamp(),
-      });
-      await logAdminAction(
-        'ADD_BLOCKED_DATE',
-        'blockedDates',
-        id,
-        `Blocked date ${data.date}: ${safeReason}`
-      );
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `blockedDates/${blocked.id}`);
-    }
+      }),
+      OperationType.WRITE,
+      `blockedDates/${safeId}`
+    );
+
+    logAdminAction(
+      'ADD_BLOCKED_DATE',
+      'blockedDates',
+      safeId,
+      `Blocked date ${cleanBlocked.date}: ${safeReason}`
+    ).catch(() => {});
   }, []);
 
   const deleteBlockedDate = useCallback(async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'blockedDates', id));
-      await logAdminAction('REMOVE_BLOCKED_DATE', 'blockedDates', id, `Removed blocked date ${id}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `blockedDates/${id}`);
-    }
+    deletedIdsRef.current.blockedDates.add(id);
+    setBlockedDates((prev) => prev.filter((b) => b.id !== id));
+
+    await commitFirestoreWrite(
+      deleteDoc(doc(db, 'blockedDates', id)),
+      OperationType.DELETE,
+      `blockedDates/${id}`
+    );
+    logAdminAction('REMOVE_BLOCKED_DATE', 'blockedDates', id, `Removed blocked date ${id}`).catch(
+      () => {}
+    );
   }, []);
 
   const saveMenuCategory = useCallback(async (cat: MenuCategory) => {
-    try {
-      const { id, ...data } = cat;
-      const safeName = (data.name || 'Untitled Category').trim().slice(0, 60) || 'Untitled Category';
-      const safeSlug = (
-        (data.slug || '').trim() ||
-        safeName
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '') ||
-        'category'
-      ).slice(0, 60);
-      const safeSortOrder = Math.max(0, Math.round(Number(data.sortOrder) || 1));
-      const resolvedSection = resolveMenuCategorySection({ id, ...data, name: safeName });
+    const safeId = sanitizeDocId(cat.id, 'cat');
+    const safeName = (cat.name || 'Untitled Category').trim().slice(0, 100) || 'Untitled Category';
+    const safeSlug = (
+      (cat.slug || '').trim() ||
+      safeName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') ||
+      'category'
+    ).slice(0, 100);
+    const safeSortOrder = Math.max(0, Math.round(Number(cat.sortOrder) || 1));
+    const resolvedSection = resolveMenuCategorySection({ ...cat, id: safeId, name: safeName });
 
-      await setDoc(doc(db, 'menuCategories', id), {
-        name: safeName,
-        slug: safeSlug,
-        subtitle: (data.subtitle || '').slice(0, 140),
-        section: resolvedSection,
-        sortOrder: safeSortOrder,
-        isActive: Boolean(data.isActive),
-        updatedAt: serverTimestamp(),
+    const cleanCategory: MenuCategory = {
+      id: safeId,
+      name: safeName,
+      slug: safeSlug,
+      subtitle: (cat.subtitle || '').slice(0, 300),
+      section: resolvedSection,
+      sortOrder: safeSortOrder,
+      isActive: Boolean(cat.isActive),
+    };
+
+    deletedIdsRef.current.menuCategories.delete(safeId);
+    setMenuCategories((prev) => {
+      const exists = prev.some((c) => c.id === safeId);
+      const next = (
+        exists ? prev.map((c) => (c.id === safeId ? cleanCategory : c)) : [...prev, cleanCategory]
+      ).sort((a, b) => a.sortOrder - b.sortOrder);
+      menuCategoriesRef.current = next;
+      return next;
+    });
+
+    // Keep categoryName in sync on any menuItems belonging to this category
+    setMenuItems((prev) => {
+      let changed = false;
+      const next = prev.map((m) => {
+        if (m.categoryId === safeId && m.categoryName !== safeName) {
+          changed = true;
+          return { ...m, categoryName: safeName };
+        }
+        return m;
       });
+      if (changed) menuItemsRef.current = next;
+      return changed ? next : prev;
+    });
 
-      await logAdminAction(
-        'SAVE_MENU_CATEGORY',
-        'menuCategories',
-        id,
-        `Saved menu category ${safeName}`
-      );
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `menuCategories/${cat.id}`);
+    if (!hasLiveDocsRef.current.menuCategories) {
+      hasLiveDocsRef.current.menuCategories = true;
+      menuCategoriesRef.current
+        .filter((c) => c.id !== safeId)
+        .forEach((c) => {
+          setDoc(doc(db, 'menuCategories', c.id), {
+            name: c.name.slice(0, 100),
+            slug: c.slug.slice(0, 100),
+            subtitle: (c.subtitle || '').slice(0, 300),
+            section: resolveMenuCategorySection(c),
+            sortOrder: Math.max(0, Math.round(Number(c.sortOrder) || 1)),
+            isActive: Boolean(c.isActive),
+            updatedAt: serverTimestamp(),
+          }).catch(() => {});
+        });
     }
+
+    await commitFirestoreWrite(
+      setDoc(doc(db, 'menuCategories', safeId), {
+        name: cleanCategory.name,
+        slug: cleanCategory.slug,
+        subtitle: cleanCategory.subtitle,
+        section: cleanCategory.section,
+        sortOrder: cleanCategory.sortOrder,
+        isActive: cleanCategory.isActive,
+        updatedAt: serverTimestamp(),
+      }),
+      OperationType.WRITE,
+      `menuCategories/${safeId}`
+    );
+
+    logAdminAction(
+      'SAVE_MENU_CATEGORY',
+      'menuCategories',
+      safeId,
+      `Saved menu category ${safeName}`
+    ).catch(() => {});
   }, []);
 
   const deleteMenuCategory = useCallback(async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'menuCategories', id));
-      await logAdminAction(
-        'DELETE_MENU_CATEGORY',
-        'menuCategories',
-        id,
-        `Deleted menu category ${id}`
-      );
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `menuCategories/${id}`);
+    deletedIdsRef.current.menuCategories.add(id);
+    const remaining = menuCategoriesRef.current.filter((c) => c.id !== id);
+    menuCategoriesRef.current = remaining;
+    setMenuCategories(remaining);
+
+    if (!hasLiveDocsRef.current.menuCategories) {
+      hasLiveDocsRef.current.menuCategories = true;
+      remaining.forEach((c) => {
+        setDoc(doc(db, 'menuCategories', c.id), {
+          name: c.name.slice(0, 100),
+          slug: c.slug.slice(0, 100),
+          subtitle: (c.subtitle || '').slice(0, 300),
+          section: resolveMenuCategorySection(c),
+          sortOrder: Math.max(0, Math.round(Number(c.sortOrder) || 1)),
+          isActive: Boolean(c.isActive),
+          updatedAt: serverTimestamp(),
+        }).catch(() => {});
+      });
     }
+
+    await commitFirestoreWrite(
+      deleteDoc(doc(db, 'menuCategories', id)),
+      OperationType.DELETE,
+      `menuCategories/${id}`
+    );
+
+    logAdminAction(
+      'DELETE_MENU_CATEGORY',
+      'menuCategories',
+      id,
+      `Deleted menu category ${id}`
+    ).catch(() => {});
   }, []);
 
   const saveMenuItem = useCallback(
     async (item: MenuItem) => {
-      try {
-        const { id, ...data } = item;
-        const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
-        const existing = menuItemsRef.current.find((m) => m.id === id);
-        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
+      const safeId = sanitizeDocId(item.id, 'item');
+      const cleanImageUrl = sanitizeCdnUrl(item.imageUrl);
+      const existing = menuItemsRef.current.find((m) => m.id === safeId);
+      const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
 
-        const safeName = (data.name || 'Untitled Dish').trim().slice(0, 100) || 'Untitled Dish';
-        const safeCategoryId = (data.categoryId || 'cat_coffee').trim().slice(0, 60) || 'cat_coffee';
-        const safeCategoryName =
-          (data.categoryName || 'Specialty Coffee & Botanicals').trim().slice(0, 60) ||
-          'Specialty Coffee & Botanicals';
-        const safeDescription =
-          (data.description || 'Crafted fresh in Sigiriya.').trim().slice(0, 400) ||
-          'Crafted fresh in Sigiriya.';
-        const validItemCurrency =
-          data.priceCurrency && ['default', 'both', 'lkr', 'usd'].includes(data.priceCurrency)
-            ? data.priceCurrency
-            : 'default';
+      const safeName = (item.name || 'Untitled Dish').trim().slice(0, 160) || 'Untitled Dish';
+      const safeCategoryId =
+        (item.categoryId || menuCategoriesRef.current[0]?.id || 'cat_coffee')
+          .trim()
+          .slice(0, 100) || 'cat_coffee';
+      const matchedCat = menuCategoriesRef.current.find((c) => c.id === safeCategoryId);
+      const safeCategoryName =
+        (item.categoryName || matchedCat?.name || 'Specialty Coffee & Botanicals')
+          .trim()
+          .slice(0, 100) || 'Specialty Coffee & Botanicals';
+      const safeDescription = (item.description ?? '').trim().slice(0, 1000);
+      const validItemCurrency =
+        item.priceCurrency && ['default', 'both', 'lkr', 'usd'].includes(item.priceCurrency)
+          ? item.priceCurrency
+          : 'default';
 
-        await setDoc(doc(db, 'menuItems', id), {
-          name: safeName,
-          categoryId: safeCategoryId,
-          categoryName: safeCategoryName,
-          description: safeDescription,
-          priceLkr: Math.max(0, Number(data.priceLkr) || 0),
-          priceUsd: Math.max(0, Number(data.priceUsd) || 0),
-          priceCurrency: validItemCurrency,
-          imageUrl: cleanImageUrl,
-          dietaryTags: (data.dietaryTags || [])
-            .filter((t) => typeof t === 'string' && t.trim())
-            .slice(0, 10),
-          isFeatured: Boolean(data.isFeatured),
-          isAvailable: Boolean(data.isAvailable),
-          updatedAt: serverTimestamp(),
-        });
+      const cleanItem: MenuItem = {
+        id: safeId,
+        name: safeName,
+        categoryId: safeCategoryId,
+        categoryName: safeCategoryName,
+        description: safeDescription,
+        priceLkr: Math.max(0, Number(item.priceLkr) || 0),
+        priceUsd: Math.max(0, Number(item.priceUsd) || 0),
+        priceCurrency: validItemCurrency,
+        imageUrl: cleanImageUrl,
+        dietaryTags: (item.dietaryTags || [])
+          .filter((t) => typeof t === 'string' && t.trim())
+          .map((t) => t.trim())
+          .slice(0, 15),
+        isFeatured: Boolean(item.isFeatured),
+        isAvailable: Boolean(item.isAvailable),
+      };
 
-        if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
-          deleteMediaFromR2(prevImageUrl).catch(() => {});
-        }
+      deletedIdsRef.current.menuItems.delete(safeId);
+      setMenuItems((prev) => {
+        const exists = prev.some((m) => m.id === safeId);
+        const next = exists
+          ? prev.map((m) => (m.id === safeId ? cleanItem : m))
+          : [cleanItem, ...prev];
+        menuItemsRef.current = next;
+        return next;
+      });
 
-        await logAdminAction('SAVE_MENU_ITEM', 'menuItems', id, `Saved menu item ${safeName}`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `menuItems/${item.id}`);
+      if (!hasLiveDocsRef.current.menuItems) {
+        hasLiveDocsRef.current.menuItems = true;
+        menuItemsRef.current
+          .filter((m) => m.id !== safeId)
+          .forEach((m) => {
+            setDoc(doc(db, 'menuItems', m.id), {
+              name: m.name.slice(0, 160),
+              categoryId: m.categoryId.slice(0, 100),
+              categoryName: m.categoryName.slice(0, 100),
+              description: (m.description || '').slice(0, 1000),
+              priceLkr: Math.max(0, Number(m.priceLkr) || 0),
+              priceUsd: Math.max(0, Number(m.priceUsd) || 0),
+              priceCurrency: m.priceCurrency || 'default',
+              imageUrl: sanitizeCdnUrl(m.imageUrl),
+              dietaryTags: (m.dietaryTags || []).slice(0, 15),
+              isFeatured: Boolean(m.isFeatured),
+              isAvailable: Boolean(m.isAvailable),
+              updatedAt: serverTimestamp(),
+            }).catch(() => {});
+          });
       }
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'menuItems', safeId), {
+          name: cleanItem.name,
+          categoryId: cleanItem.categoryId,
+          categoryName: cleanItem.categoryName,
+          description: cleanItem.description,
+          priceLkr: cleanItem.priceLkr,
+          priceUsd: cleanItem.priceUsd,
+          priceCurrency: cleanItem.priceCurrency,
+          imageUrl: cleanItem.imageUrl,
+          dietaryTags: cleanItem.dietaryTags,
+          isFeatured: cleanItem.isFeatured,
+          isAvailable: cleanItem.isAvailable,
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `menuItems/${safeId}`
+      );
+
+      if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
+        deleteMediaFromR2(prevImageUrl).catch(() => {});
+      }
+
+      logAdminAction('SAVE_MENU_ITEM', 'menuItems', safeId, `Saved menu item ${safeName}`).catch(
+        () => {}
+      );
     },
     [deleteMediaFromR2]
   );
 
   const deleteMenuItem = useCallback(
     async (id: string) => {
-      try {
-        const existing = menuItemsRef.current.find((m) => m.id === id);
-        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
+      const existing = menuItemsRef.current.find((m) => m.id === id);
+      const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
 
-        await deleteDoc(doc(db, 'menuItems', id));
+      deletedIdsRef.current.menuItems.add(id);
+      const remaining = menuItemsRef.current.filter((m) => m.id !== id);
+      menuItemsRef.current = remaining;
+      setMenuItems(remaining);
 
-        if (prevImageUrl) {
-          deleteMediaFromR2(prevImageUrl).catch(() => {});
-        }
-
-        await logAdminAction('DELETE_MENU_ITEM', 'menuItems', id, `Deleted menu item ${id}`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `menuItems/${id}`);
+      if (!hasLiveDocsRef.current.menuItems) {
+        hasLiveDocsRef.current.menuItems = true;
+        remaining.forEach((m) => {
+          setDoc(doc(db, 'menuItems', m.id), {
+            name: m.name.slice(0, 160),
+            categoryId: m.categoryId.slice(0, 100),
+            categoryName: m.categoryName.slice(0, 100),
+            description: (m.description || '').slice(0, 1000),
+            priceLkr: Math.max(0, Number(m.priceLkr) || 0),
+            priceUsd: Math.max(0, Number(m.priceUsd) || 0),
+            priceCurrency: m.priceCurrency || 'default',
+            imageUrl: sanitizeCdnUrl(m.imageUrl),
+            dietaryTags: (m.dietaryTags || []).slice(0, 15),
+            isFeatured: Boolean(m.isFeatured),
+            isAvailable: Boolean(m.isAvailable),
+            updatedAt: serverTimestamp(),
+          }).catch(() => {});
+        });
       }
+
+      await commitFirestoreWrite(
+        deleteDoc(doc(db, 'menuItems', id)),
+        OperationType.DELETE,
+        `menuItems/${id}`
+      );
+
+      if (prevImageUrl) {
+        deleteMediaFromR2(prevImageUrl).catch(() => {});
+      }
+
+      logAdminAction('DELETE_MENU_ITEM', 'menuItems', id, `Deleted menu item ${id}`).catch(
+        () => {}
+      );
     },
     [deleteMediaFromR2]
   );
 
   const saveGalleryItem = useCallback(
     async (item: GalleryItem) => {
-      try {
-        const existing = galleryRef.current.find((g) => g.id === item.id);
-        const prevUrl = sanitizeCdnUrl(existing?.imageUrl);
-        const nextUrl = sanitizeCdnUrl(item.imageUrl);
+      const safeId = sanitizeDocId(item.id, 'gal');
+      const existing = galleryRef.current.find((g) => g.id === safeId);
+      const prevUrl = sanitizeCdnUrl(existing?.imageUrl);
+      const nextUrl = sanitizeCdnUrl(item.imageUrl);
 
-        const validCategories = [
-          'Architecture',
-          'Culinary',
-          'Coffee & Botanicals',
-          'Evening Sanctuary',
-          'Sigiriya Surroundings',
-        ] as const;
-        const safeCategory = validCategories.includes(
-          item.category as (typeof validCategories)[number]
-        )
-          ? item.category
-          : 'Architecture';
+      const validCategories = [
+        'Architecture',
+        'Culinary',
+        'Coffee & Botanicals',
+        'Evening Sanctuary',
+        'Sigiriya Surroundings',
+      ] as const;
+      const safeCategory = validCategories.includes(
+        item.category as (typeof validCategories)[number]
+      )
+        ? item.category
+        : 'Architecture';
 
-        const validRatios = ['16:9', '4:3', '3:4', '1:1'] as const;
-        const safeAspectRatio = validRatios.includes(
-          item.aspectRatio as (typeof validRatios)[number]
-        )
-          ? item.aspectRatio
-          : '4:3';
+      const validRatios = ['16:9', '4:3', '3:4', '1:1'] as const;
+      const safeAspectRatio = validRatios.includes(
+        item.aspectRatio as (typeof validRatios)[number]
+      )
+        ? item.aspectRatio
+        : '4:3';
 
-        const safeTitle =
-          (item.title || 'Sanctuary Moment').trim().slice(0, 100) || 'Sanctuary Moment';
-        const safeSortOrder = Number.isFinite(Number(item.sortOrder))
-          ? Math.round(Number(item.sortOrder))
-          : 1;
+      const safeTitle =
+        (item.title || 'Sanctuary Moment').trim().slice(0, 160) || 'Sanctuary Moment';
+      const safeSortOrder = Number.isFinite(Number(item.sortOrder))
+        ? Math.round(Number(item.sortOrder))
+        : 0;
 
-        const existingSnap = await getDoc(doc(db, 'gallery', item.id));
-        const createdAtVal =
-          existingSnap.exists() && existingSnap.data()?.createdAt
-            ? existingSnap.data().createdAt
-            : serverTimestamp();
+      const cleanGalleryItem: GalleryItem = {
+        id: safeId,
+        title: safeTitle,
+        category: safeCategory,
+        caption: (item.caption || '').slice(0, 600),
+        imageUrl: nextUrl,
+        aspectRatio: safeAspectRatio,
+        isFeatured: Boolean(item.isFeatured),
+        sortOrder: safeSortOrder,
+      };
 
-        await setDoc(doc(db, 'gallery', item.id), {
-          title: safeTitle,
-          category: safeCategory,
-          caption: (item.caption || '').slice(0, 300),
-          imageUrl: nextUrl,
-          aspectRatio: safeAspectRatio,
-          isFeatured: Boolean(item.isFeatured),
-          sortOrder: safeSortOrder,
-          createdAt: createdAtVal,
-        });
+      deletedIdsRef.current.gallery.delete(safeId);
+      setGallery((prev) => {
+        const exists = prev.some((g) => g.id === safeId);
+        const next = (
+          exists
+            ? prev.map((g) => (g.id === safeId ? cleanGalleryItem : g))
+            : [cleanGalleryItem, ...prev]
+        ).sort((a, b) => a.sortOrder - b.sortOrder);
+        galleryRef.current = next;
+        return next;
+      });
 
-        if (prevUrl && prevUrl !== nextUrl) {
-          deleteMediaFromR2(prevUrl).catch(() => {});
-        }
-
-        await logAdminAction(
-          'SAVE_GALLERY_ITEM',
-          'gallery',
-          item.id,
-          `Saved gallery photo "${safeTitle}"`
-        );
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `gallery/${item.id}`);
+      if (!hasLiveDocsRef.current.gallery) {
+        hasLiveDocsRef.current.gallery = true;
+        galleryRef.current
+          .filter((g) => g.id !== safeId)
+          .forEach((g) => {
+            setDoc(doc(db, 'gallery', g.id), {
+              title: g.title.slice(0, 160),
+              category: g.category,
+              caption: (g.caption || '').slice(0, 600),
+              imageUrl: sanitizeCdnUrl(g.imageUrl),
+              aspectRatio: g.aspectRatio,
+              isFeatured: Boolean(g.isFeatured),
+              sortOrder: Number(g.sortOrder) || 1,
+              createdAt: serverTimestamp(),
+            }).catch(() => {});
+          });
       }
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'gallery', safeId), {
+          title: cleanGalleryItem.title,
+          category: cleanGalleryItem.category,
+          caption: cleanGalleryItem.caption,
+          imageUrl: cleanGalleryItem.imageUrl,
+          aspectRatio: cleanGalleryItem.aspectRatio,
+          isFeatured: cleanGalleryItem.isFeatured,
+          sortOrder: cleanGalleryItem.sortOrder,
+          createdAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `gallery/${safeId}`
+      );
+
+      if (prevUrl && prevUrl !== nextUrl) {
+        deleteMediaFromR2(prevUrl).catch(() => {});
+      }
+
+      logAdminAction(
+        'SAVE_GALLERY_ITEM',
+        'gallery',
+        safeId,
+        `Saved gallery photo "${safeTitle}"`
+      ).catch(() => {});
     },
     [deleteMediaFromR2]
   );
 
   const deleteGalleryItem = useCallback(
     async (id: string) => {
-      try {
-        const existing = galleryRef.current.find((g) => g.id === id);
-        const prevUrl = sanitizeCdnUrl(existing?.imageUrl);
+      const existing = galleryRef.current.find((g) => g.id === id);
+      const prevUrl = sanitizeCdnUrl(existing?.imageUrl);
 
-        await deleteDoc(doc(db, 'gallery', id));
+      deletedIdsRef.current.gallery.add(id);
+      const remaining = galleryRef.current.filter((g) => g.id !== id);
+      galleryRef.current = remaining;
+      setGallery(remaining);
 
-        if (prevUrl) {
-          deleteMediaFromR2(prevUrl).catch(() => {});
-        }
-
-        await logAdminAction('DELETE_GALLERY_ITEM', 'gallery', id, `Deleted gallery item ${id}`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `gallery/${id}`);
+      if (!hasLiveDocsRef.current.gallery) {
+        hasLiveDocsRef.current.gallery = true;
+        remaining.forEach((g) => {
+          setDoc(doc(db, 'gallery', g.id), {
+            title: g.title.slice(0, 160),
+            category: g.category,
+            caption: (g.caption || '').slice(0, 600),
+            imageUrl: sanitizeCdnUrl(g.imageUrl),
+            aspectRatio: g.aspectRatio,
+            isFeatured: Boolean(g.isFeatured),
+            sortOrder: Number(g.sortOrder) || 1,
+            createdAt: serverTimestamp(),
+          }).catch(() => {});
+        });
       }
+
+      await commitFirestoreWrite(
+        deleteDoc(doc(db, 'gallery', id)),
+        OperationType.DELETE,
+        `gallery/${id}`
+      );
+
+      if (prevUrl) {
+        deleteMediaFromR2(prevUrl).catch(() => {});
+      }
+
+      logAdminAction('DELETE_GALLERY_ITEM', 'gallery', id, `Deleted gallery item ${id}`).catch(
+        () => {}
+      );
     },
     [deleteMediaFromR2]
   );
 
   const saveEvent = useCallback(
     async (evt: CafeEvent) => {
-      try {
-        const { id, ...data } = evt;
-        const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
-        const existing = eventsRef.current.find((e) => e.id === id);
-        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
+      const safeId = sanitizeDocId(evt.id, 'evt');
+      const cleanImageUrl = sanitizeCdnUrl(evt.imageUrl);
+      const existing = eventsRef.current.find((e) => e.id === safeId);
+      const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
 
-        const safeTitle = (data.title || 'Sanctuary Event').trim().slice(0, 120) || 'Sanctuary Event';
-        const safeDate = (data.date || 'Weekly').trim().slice(0, 60) || 'Weekly';
-        const safeTime = (data.time || '18:30').trim().slice(0, 40) || '18:30';
-        const safeCategory = (data.category || 'Evening Ritual').trim().slice(0, 60) || 'Evening Ritual';
-        const safeDescription = (data.description || '').slice(0, 600);
+      const safeTitle =
+        (evt.title || 'Sanctuary Event').trim().slice(0, 160) || 'Sanctuary Event';
+      const safeDate = (evt.date || 'Weekly').trim().slice(0, 80) || 'Weekly';
+      const safeTime = (evt.time || '18:30').trim().slice(0, 80) || '18:30';
+      const safeCategory =
+        (evt.category || 'Evening Ritual').trim().slice(0, 100) || 'Evening Ritual';
+      const safeDescription = (evt.description || '').slice(0, 1200);
 
-        await setDoc(doc(db, 'events', id), {
-          title: safeTitle,
-          subtitle: (data.subtitle || '').slice(0, 140),
-          date: safeDate,
-          time: safeTime,
-          category: safeCategory,
-          description: safeDescription,
-          imageUrl: cleanImageUrl,
-          priceInfo: (data.priceInfo || '').slice(0, 80),
-          isFeatured: Boolean(data.isFeatured),
-          isActive: Boolean(data.isActive),
-          updatedAt: serverTimestamp(),
-        });
+      const cleanEvt: CafeEvent = {
+        id: safeId,
+        title: safeTitle,
+        subtitle: (evt.subtitle || '').slice(0, 240),
+        date: safeDate,
+        time: safeTime,
+        category: safeCategory,
+        description: safeDescription,
+        imageUrl: cleanImageUrl,
+        priceInfo: (evt.priceInfo || '').slice(0, 160),
+        isFeatured: Boolean(evt.isFeatured),
+        isActive: Boolean(evt.isActive),
+      };
 
-        if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
-          deleteMediaFromR2(prevImageUrl).catch(() => {});
-        }
+      deletedIdsRef.current.events.delete(safeId);
+      setEvents((prev) => {
+        const exists = prev.some((e) => e.id === safeId);
+        const next = exists
+          ? prev.map((e) => (e.id === safeId ? cleanEvt : e))
+          : [cleanEvt, ...prev];
+        eventsRef.current = next;
+        return next;
+      });
 
-        await logAdminAction('SAVE_EVENT', 'events', id, `Saved event ${safeTitle}`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `events/${evt.id}`);
+      if (!hasLiveDocsRef.current.events) {
+        hasLiveDocsRef.current.events = true;
+        eventsRef.current
+          .filter((e) => e.id !== safeId)
+          .forEach((e) => {
+            const { id, ...d } = e;
+            setDoc(doc(db, 'events', id), {
+              ...d,
+              imageUrl: sanitizeCdnUrl(d.imageUrl),
+              updatedAt: serverTimestamp(),
+            }).catch(() => {});
+          });
       }
+
+      const { id: _id, ...payload } = cleanEvt;
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'events', safeId), {
+          ...payload,
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `events/${safeId}`
+      );
+
+      if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
+        deleteMediaFromR2(prevImageUrl).catch(() => {});
+      }
+
+      logAdminAction('SAVE_EVENT', 'events', safeId, `Saved event ${safeTitle}`).catch(() => {});
     },
     [deleteMediaFromR2]
   );
 
   const deleteEvent = useCallback(
     async (id: string) => {
-      try {
-        const existing = eventsRef.current.find((e) => e.id === id);
-        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
+      const existing = eventsRef.current.find((e) => e.id === id);
+      const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
 
-        await deleteDoc(doc(db, 'events', id));
+      deletedIdsRef.current.events.add(id);
+      const remaining = eventsRef.current.filter((e) => e.id !== id);
+      eventsRef.current = remaining;
+      setEvents(remaining);
 
-        if (prevImageUrl) {
-          deleteMediaFromR2(prevImageUrl).catch(() => {});
-        }
-
-        await logAdminAction('DELETE_EVENT', 'events', id, `Deleted event ${id}`);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `events/${id}`);
+      if (!hasLiveDocsRef.current.events) {
+        hasLiveDocsRef.current.events = true;
+        remaining.forEach((e) => {
+          const { id: eid, ...d } = e;
+          setDoc(doc(db, 'events', eid), {
+            ...d,
+            imageUrl: sanitizeCdnUrl(d.imageUrl),
+            updatedAt: serverTimestamp(),
+          }).catch(() => {});
+        });
       }
+
+      await commitFirestoreWrite(
+        deleteDoc(doc(db, 'events', id)),
+        OperationType.DELETE,
+        `events/${id}`
+      );
+
+      if (prevImageUrl) {
+        deleteMediaFromR2(prevImageUrl).catch(() => {});
+      }
+
+      logAdminAction('DELETE_EVENT', 'events', id, `Deleted event ${id}`).catch(() => {});
     },
     [deleteMediaFromR2]
   );
 
   const saveSiteContent = useCallback(
     async (section: SiteContentSection) => {
-      try {
-        const { id, ...data } = section;
-        const sectionKey = (data.sectionKey || id || 'section').trim().slice(0, 60) || 'section';
-        const canonicalId = sectionKey;
-        const cleanImageUrl = sanitizeCdnUrl(data.imageUrl);
-        const existing = siteContentRef.current.find((s) => s.sectionKey === sectionKey);
-        const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
+      const rawKey = (section.sectionKey || section.id || 'section')
+        .trim()
+        .replace(/^sec_/, '');
+      const sectionKey = sanitizeDocId(rawKey, 'section').slice(0, 80);
+      const canonicalId = sectionKey;
+      const cleanImageUrl = sanitizeCdnUrl(section.imageUrl);
+      const existing = siteContentRef.current.find(
+        (s) => s.sectionKey === sectionKey || s.id === canonicalId
+      );
+      const prevImageUrl = sanitizeCdnUrl(existing?.imageUrl);
 
-        const safeHeading =
-          (data.heading || 'OneLove Café Sigiriya').trim().slice(0, 160) ||
-          'OneLove Café Sigiriya';
+      const cleanSection: SiteContentSection = {
+        id: canonicalId,
+        sectionKey,
+        kicker: (section.kicker ?? '').slice(0, 200),
+        heading: (section.heading ?? '').slice(0, 300),
+        subheading: (section.subheading ?? '').slice(0, 800),
+        body: (section.body ?? '').slice(0, 3000),
+        ctaLabel: (section.ctaLabel ?? '').slice(0, 160),
+        ctaLink: (section.ctaLink ?? '').slice(0, 300),
+        imageUrl: cleanImageUrl,
+      };
 
-        await setDoc(doc(db, 'siteContent', canonicalId), {
-          sectionKey,
-          kicker: (data.kicker || '').slice(0, 100),
-          heading: safeHeading,
-          subheading: (data.subheading || '').slice(0, 400),
-          body: (data.body || '').slice(0, 1200),
-          ctaLabel: (data.ctaLabel || '').slice(0, 60),
-          ctaLink: (data.ctaLink || '').slice(0, 120),
-          imageUrl: cleanImageUrl,
+      setSiteContent((prev) => {
+        const exists = prev.some((s) => s.sectionKey === sectionKey || s.id === canonicalId);
+        const next = exists
+          ? prev.map((s) =>
+              s.sectionKey === sectionKey || s.id === canonicalId ? cleanSection : s
+            )
+          : [...prev, cleanSection];
+        siteContentRef.current = next;
+        return next;
+      });
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteContent', canonicalId), {
+          sectionKey: cleanSection.sectionKey,
+          kicker: cleanSection.kicker,
+          heading: cleanSection.heading,
+          subheading: cleanSection.subheading,
+          body: cleanSection.body,
+          ctaLabel: cleanSection.ctaLabel,
+          ctaLink: cleanSection.ctaLink,
+          imageUrl: cleanSection.imageUrl,
           updatedAt: serverTimestamp(),
-        });
+        }),
+        OperationType.WRITE,
+        `siteContent/${canonicalId}`
+      );
 
-        // Clean up any legacy duplicate doc (e.g. sec_${sectionKey})
-        const duplicateIds = new Set<string>();
-        if (id && id !== canonicalId) duplicateIds.add(id);
-        duplicateIds.add(`sec_${sectionKey}`);
-        duplicateIds.delete(canonicalId);
-        for (const dupId of duplicateIds) {
-          deleteDoc(doc(db, 'siteContent', dupId)).catch(() => {});
-        }
-
-        if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
-          deleteMediaFromR2(prevImageUrl).catch(() => {});
-        }
-
-        await logAdminAction(
-          'SAVE_SITE_CONTENT',
-          'siteContent',
-          canonicalId,
-          `Updated website section ${sectionKey}`
-        );
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `siteContent/${section.id}`);
+      // Clean up any legacy duplicate doc (e.g. sec_${sectionKey})
+      const duplicateIds = new Set<string>();
+      if (section.id && section.id !== canonicalId) duplicateIds.add(section.id);
+      duplicateIds.add(`sec_${sectionKey}`);
+      duplicateIds.delete(canonicalId);
+      for (const dupId of duplicateIds) {
+        deleteDoc(doc(db, 'siteContent', dupId)).catch(() => {});
       }
+
+      if (prevImageUrl && prevImageUrl !== cleanImageUrl) {
+        deleteMediaFromR2(prevImageUrl).catch(() => {});
+      }
+
+      logAdminAction(
+        'SAVE_SITE_CONTENT',
+        'siteContent',
+        canonicalId,
+        `Updated website section ${sectionKey}`
+      ).catch(() => {});
     },
     [deleteMediaFromR2]
   );
 
   const saveSettings = useCallback(
     async (newSettings: CafeSettings) => {
-      try {
-        const { id, ...data } = newSettings;
-        const nextHeroImages = Array.isArray(data.heroImages)
-          ? data.heroImages
-              .map((img) => sanitizeCdnUrl(img))
-              .filter(Boolean)
-              .slice(0, 12)
-          : [];
-        const speedSec = Math.min(
+      const nextHeroImages = Array.isArray(newSettings.heroImages)
+        ? newSettings.heroImages
+            .map((img) => sanitizeCdnUrl(img))
+            .filter(Boolean)
+            .slice(0, 12)
+        : [];
+      const speedSec = Math.min(
+        60,
+        Math.max(1, Math.round(Number(newSettings.heroSlideshowSpeedSeconds) || 5))
+      );
+      const nextFloorPlanUrl = sanitizeCdnUrl(newSettings.floorPlanImageUrl);
+
+      const prevHeroImages = (settingsRef.current.heroImages || [])
+        .map((u) => sanitizeCdnUrl(u))
+        .filter(Boolean);
+      const prevFloorPlanUrl = sanitizeCdnUrl(settingsRef.current.floorPlanImageUrl);
+      const removedUrls = [
+        ...prevHeroImages.filter((oldUrl) => !nextHeroImages.includes(oldUrl)),
+        ...(prevFloorPlanUrl && prevFloorPlanUrl !== nextFloorPlanUrl ? [prevFloorPlanUrl] : []),
+      ];
+
+      const validMenuCurrency =
+        newSettings.menuCurrencyDisplay &&
+        ['both', 'lkr', 'usd'].includes(newSettings.menuCurrencyDisplay)
+          ? newSettings.menuCurrencyDisplay
+          : 'both';
+      const safeCafeName =
+        (newSettings.cafeName || 'OneLove Café').trim().slice(0, 120) || 'OneLove Café';
+
+      const cleanSettings: CafeSettings = {
+        id: 'main',
+        cafeName: safeCafeName,
+        tagline: (newSettings.tagline || '').slice(0, 300),
+        address: (newSettings.address || '').slice(0, 400),
+        phone: (newSettings.phone || '').slice(0, 60),
+        whatsapp: (newSettings.whatsapp || '').slice(0, 60),
+        email: (newSettings.email || '').slice(0, 160),
+        instagram: (newSettings.instagram || '').slice(0, 160),
+        coordinates: (newSettings.coordinates || '').slice(0, 100),
+        gracePeriodMinutes: Math.min(
           60,
-          Math.max(1, Math.round(Number(data.heroSlideshowSpeedSeconds) || 5))
-        );
-        const nextFloorPlanUrl = sanitizeCdnUrl(data.floorPlanImageUrl);
+          Math.max(5, Math.round(Number(newSettings.gracePeriodMinutes) || 15))
+        ),
+        holdDurationMinutes: Math.min(
+          30,
+          Math.max(3, Math.round(Number(newSettings.holdDurationMinutes) || 10))
+        ),
+        maxPartySize: Math.min(
+          30,
+          Math.max(2, Math.round(Number(newSettings.maxPartySize) || 12))
+        ),
+        sameDayCutoffHour: Math.min(
+          23,
+          Math.max(0, Math.round(Number(newSettings.sameDayCutoffHour) || 21))
+        ),
+        bookingPolicy: (newSettings.bookingPolicy || '').slice(0, 2000),
+        heroImages: nextHeroImages,
+        heroSlideshowSpeedSeconds: speedSec,
+        floorPlanImageUrl: nextFloorPlanUrl,
+        googleMapsEmbedUrl: (newSettings.googleMapsEmbedUrl || '').slice(0, 3000),
+        mapTitle: (newSettings.mapTitle || 'Our Sanctuary Location').slice(0, 250),
+        mapSubtitle: (newSettings.mapSubtitle || '').slice(0, 500),
+        menuCurrencyDisplay: validMenuCurrency,
+      };
 
-        const prevHeroImages = (settingsRef.current.heroImages || [])
-          .map((u) => sanitizeCdnUrl(u))
-          .filter(Boolean);
-        const prevFloorPlanUrl = sanitizeCdnUrl(settingsRef.current.floorPlanImageUrl);
-        const removedUrls = [
-          ...prevHeroImages.filter((oldUrl) => !nextHeroImages.includes(oldUrl)),
-          ...(prevFloorPlanUrl && prevFloorPlanUrl !== nextFloorPlanUrl ? [prevFloorPlanUrl] : []),
-        ];
+      settingsRef.current = cleanSettings;
+      setSettings(cleanSettings);
 
-        const validMenuCurrency =
-          data.menuCurrencyDisplay && ['both', 'lkr', 'usd'].includes(data.menuCurrencyDisplay)
-            ? data.menuCurrencyDisplay
-            : 'both';
-        const safeCafeName = (data.cafeName || 'OneLove Café').trim().slice(0, 80) || 'OneLove Café';
-
-        await setDoc(doc(db, 'settings', id || 'main'), {
-          cafeName: safeCafeName,
-          tagline: (data.tagline || '').slice(0, 160),
-          address: (data.address || '').slice(0, 200),
-          phone: (data.phone || '').slice(0, 40),
-          whatsapp: (data.whatsapp || '').slice(0, 40),
-          email: (data.email || '').slice(0, 120),
-          instagram: (data.instagram || '').slice(0, 100),
-          coordinates: (data.coordinates || '').slice(0, 60),
-          gracePeriodMinutes: Math.min(
-            60,
-            Math.max(5, Math.round(Number(data.gracePeriodMinutes) || 15))
-          ),
-          holdDurationMinutes: Math.min(
-            30,
-            Math.max(3, Math.round(Number(data.holdDurationMinutes) || 10))
-          ),
-          maxPartySize: Math.min(30, Math.max(2, Math.round(Number(data.maxPartySize) || 12))),
-          sameDayCutoffHour: Math.min(
-            23,
-            Math.max(0, Math.round(Number(data.sameDayCutoffHour) || 21))
-          ),
-          bookingPolicy: (data.bookingPolicy || '').slice(0, 600),
-          heroImages: nextHeroImages,
-          heroSlideshowSpeedSeconds: speedSec,
-          floorPlanImageUrl: nextFloorPlanUrl,
-          googleMapsEmbedUrl: (data.googleMapsEmbedUrl || '').slice(0, 2000),
-          mapTitle: (data.mapTitle || 'Our Sanctuary Location').slice(0, 120),
-          mapSubtitle: (data.mapSubtitle || '').slice(0, 250),
-          menuCurrencyDisplay: validMenuCurrency,
+      const { id: _id, ...payload } = cleanSettings;
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'settings', 'main'), {
+          ...payload,
           updatedAt: serverTimestamp(),
-        });
+        }),
+        OperationType.WRITE,
+        'settings/main'
+      );
 
-        if (removedUrls.length > 0) {
-          deleteMediaFromR2(removedUrls).catch(() => {});
-        }
-
-        await logAdminAction(
-          'SAVE_SETTINGS',
-          'settings',
-          id || 'main',
-          `Updated global café settings & synced ${nextHeroImages.length} Hero image(s)`
-        );
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `settings/${newSettings.id}`);
+      if (removedUrls.length > 0) {
+        deleteMediaFromR2(removedUrls).catch(() => {});
       }
+
+      logAdminAction(
+        'SAVE_SETTINGS',
+        'settings',
+        'main',
+        `Updated global café settings & synced ${nextHeroImages.length} Hero image(s)`
+      ).catch(() => {});
     },
     [deleteMediaFromR2]
   );
 
   const updateInquiryStatus = useCallback(
     async (inquiry: InquiryRecord, status: InquiryRecord['status']) => {
-      try {
-        const existingSnap = await getDoc(doc(db, 'inquiries', inquiry.id));
-        const createdAtVal = existingSnap.exists()
-          ? existingSnap.data().createdAt
-          : serverTimestamp();
-        await setDoc(doc(db, 'inquiries', inquiry.id), {
+      setInquiries((prev) => prev.map((i) => (i.id === inquiry.id ? { ...i, status } : i)));
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'inquiries', inquiry.id), {
           name: inquiry.name.slice(0, 100),
           email: inquiry.email.slice(0, 120),
           phone: (inquiry.phone || '').slice(0, 40),
           subject: inquiry.subject.slice(0, 120),
           message: inquiry.message.slice(0, 1000),
           status,
-          createdAt: createdAtVal,
+          createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-        });
-        await logAdminAction(
-          'UPDATE_INQUIRY',
-          'inquiries',
-          inquiry.id,
-          `Marked inquiry from ${inquiry.name} as ${status}`
-        );
-      } catch (error) {
-        handleFirestoreError(error, OperationType.UPDATE, `inquiries/${inquiry.id}`);
-      }
+        }),
+        OperationType.UPDATE,
+        `inquiries/${inquiry.id}`
+      );
+
+      logAdminAction(
+        'UPDATE_INQUIRY',
+        'inquiries',
+        inquiry.id,
+        `Marked inquiry from ${inquiry.name} as ${status}`
+      ).catch(() => {});
     },
     []
   );
@@ -1949,12 +2622,12 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Cloudflare R2 upload did not return a valid R2 CDN URL');
       }
 
-      await logAdminAction(
+      logAdminAction(
         'R2_OBJECT_UPLOAD',
         folder,
         file.name.slice(0, 60),
         `Uploaded image to Cloudflare R2 bucket (${uploadedUrl})`
-      );
+      ).catch(() => {});
       return uploadedUrl;
     },
     []
@@ -1966,7 +2639,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const sectionKey = `story_collage_${slotIndex}`;
       const existingSec =
         siteContentRef.current.find((s) => s.sectionKey === sectionKey) ||
-        DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
+        CLEAN_DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
       const prevUrl = sanitizeCdnUrl(existingSec?.imageUrl);
       const uploadedR2Url = await uploadMediaFile(file, 'collage', prevUrl);
 
@@ -1990,7 +2663,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const sectionKey = `story_collage_${slotIndex}`;
       const existingSec =
         siteContentRef.current.find((s) => s.sectionKey === sectionKey) ||
-        DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
+        CLEAN_DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === sectionKey);
 
       await saveSiteContent({
         id: sectionKey,
@@ -2009,21 +2682,36 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const saveSeoGlobal = useCallback(
     async (config: GlobalSeoConfig) => {
-      try {
-        const cleanOgUrl = sanitizeCdnUrl(config.defaultOgImageUrl);
-        const cleanLogoUrl = sanitizeCdnUrl(config.brandLogoUrl);
-        const cleanFaviconUrl = sanitizeCdnUrl(config.faviconSourceUrl);
+      const cleanOgUrl = sanitizeCdnUrl(config.defaultOgImageUrl);
+      const cleanLogoUrl = sanitizeCdnUrl(config.brandLogoUrl);
+      const cleanFaviconUrl = sanitizeCdnUrl(config.faviconSourceUrl);
 
-        const prevOgUrl = sanitizeCdnUrl(seoGlobalRef.current.defaultOgImageUrl);
-        const prevLogoUrl = sanitizeCdnUrl(seoGlobalRef.current.brandLogoUrl);
-        const prevFaviconUrl = sanitizeCdnUrl(seoGlobalRef.current.faviconSourceUrl);
+      const prevOgUrl = sanitizeCdnUrl(seoGlobalRef.current.defaultOgImageUrl);
+      const prevLogoUrl = sanitizeCdnUrl(seoGlobalRef.current.brandLogoUrl);
+      const prevFaviconUrl = sanitizeCdnUrl(seoGlobalRef.current.faviconSourceUrl);
 
-        const urlsToDelete: string[] = [];
-        if (prevOgUrl && prevOgUrl !== cleanOgUrl) urlsToDelete.push(prevOgUrl);
-        if (prevLogoUrl && prevLogoUrl !== cleanLogoUrl) urlsToDelete.push(prevLogoUrl);
-        if (prevFaviconUrl && prevFaviconUrl !== cleanFaviconUrl) urlsToDelete.push(prevFaviconUrl);
+      const urlsToDelete: string[] = [];
+      if (prevOgUrl && prevOgUrl !== cleanOgUrl) urlsToDelete.push(prevOgUrl);
+      if (prevLogoUrl && prevLogoUrl !== cleanLogoUrl) urlsToDelete.push(prevLogoUrl);
+      if (prevFaviconUrl && prevFaviconUrl !== cleanFaviconUrl) urlsToDelete.push(prevFaviconUrl);
 
-        await setDoc(doc(db, 'seoConfig', config.id || 'main'), {
+      const cleanSeo: GlobalSeoConfig = {
+        ...DEFAULT_GLOBAL_SEO,
+        ...config,
+        id: 'main',
+        defaultOgImageUrl: cleanOgUrl,
+        brandLogoUrl: cleanLogoUrl,
+        faviconSourceUrl: cleanFaviconUrl,
+        favicon48Url: cleanFaviconUrl,
+        favicon96Url: cleanFaviconUrl,
+        favicon192Url: cleanFaviconUrl,
+        appleTouchIconUrl: cleanFaviconUrl,
+      };
+      seoGlobalRef.current = cleanSeo;
+      setSeoGlobal(cleanSeo);
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'seoConfig', 'main'), {
           siteName: (config.siteName || 'OneLove Café').slice(0, 100),
           alternateNames: (config.alternateNames || []).slice(0, 15),
           defaultTitle: (config.defaultTitle || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
@@ -2063,32 +2751,42 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           customKeywords: (config.customKeywords || []).slice(0, 200),
           imageAltOverrides: config.imageAltOverrides || {},
           updatedAt: serverTimestamp(),
-        });
+        }),
+        OperationType.WRITE,
+        'seoConfig/main'
+      );
 
-        if (urlsToDelete.length > 0) {
-          deleteMediaFromR2(urlsToDelete).catch(() => {});
-        }
-
-        await logAdminAction(
-          'SAVE_SEO_GLOBAL',
-          'seoConfig',
-          'main',
-          `Updated global SEO configuration (${config.siteName})`
-        );
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, 'seoConfig/main');
+      if (urlsToDelete.length > 0) {
+        deleteMediaFromR2(urlsToDelete).catch(() => {});
       }
+
+      logAdminAction(
+        'SAVE_SEO_GLOBAL',
+        'seoConfig',
+        'main',
+        `Updated global SEO configuration (${config.siteName})`
+      ).catch(() => {});
     },
     [deleteMediaFromR2]
   );
 
   const saveSeoPage = useCallback(
     async (page: PageSeoConfig) => {
-      try {
-        const cleanOgUrl = sanitizeCdnUrl(page.ogImageUrl);
-        const prevOgUrl = sanitizeCdnUrl(seoPagesRef.current[page.id]?.ogImageUrl);
+      const cleanOgUrl = sanitizeCdnUrl(page.ogImageUrl);
+      const prevOgUrl = sanitizeCdnUrl(seoPagesRef.current[page.id]?.ogImageUrl);
 
-        await setDoc(doc(db, 'seoPages', page.id), {
+      const cleanPage: PageSeoConfig = {
+        ...page,
+        ogImageUrl: cleanOgUrl,
+      };
+      setSeoPages((prev) => {
+        const next = { ...prev, [page.id]: cleanPage };
+        seoPagesRef.current = next;
+        return next;
+      });
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'seoPages', page.id), {
           routePath: (page.routePath || '/').slice(0, 120),
           pageLabel: (page.pageLabel || page.id).slice(0, 120),
           title: (page.title || DEFAULT_GLOBAL_SEO.defaultTitle).slice(0, 160),
@@ -2101,21 +2799,21 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ogImageUrl: cleanOgUrl,
           indexable: Boolean(page.indexable),
           updatedAt: serverTimestamp(),
-        });
+        }),
+        OperationType.WRITE,
+        `seoPages/${page.id}`
+      );
 
-        if (prevOgUrl && prevOgUrl !== cleanOgUrl) {
-          deleteMediaFromR2(prevOgUrl).catch(() => {});
-        }
-
-        await logAdminAction(
-          'SAVE_SEO_PAGE',
-          'seoPages',
-          page.id,
-          `Updated page SEO metadata for ${page.routePath}`
-        );
-      } catch (error) {
-        handleFirestoreError(error, OperationType.WRITE, `seoPages/${page.id}`);
+      if (prevOgUrl && prevOgUrl !== cleanOgUrl) {
+        deleteMediaFromR2(prevOgUrl).catch(() => {});
       }
+
+      logAdminAction(
+        'SAVE_SEO_PAGE',
+        'seoPages',
+        page.id,
+        `Updated page SEO metadata for ${page.routePath}`
+      ).catch(() => {});
     },
     [deleteMediaFromR2]
   );

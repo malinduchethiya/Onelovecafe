@@ -26,13 +26,6 @@ export const LateriteStorySection: React.FC<LateriteStorySectionProps> = ({
     if (found && found.imageUrl && /^https?:\/\//i.test(found.imageUrl.trim())) {
       return found.imageUrl.trim();
     }
-    if (
-      slotIndex === 1 &&
-      storyContent?.imageUrl &&
-      /^https?:\/\//i.test(storyContent.imageUrl.trim())
-    ) {
-      return storyContent.imageUrl.trim();
-    }
     return '';
   };
 

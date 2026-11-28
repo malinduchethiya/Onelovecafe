@@ -182,11 +182,12 @@ export async function logAdminAction(
   summary: string
 ) {
   const user = auth.currentUser;
-  if (!user || !user.email) return;
+  const email = getPrimaryUserEmail(user);
+  if (!user || !email) return;
   const logId = `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   try {
     await setDoc(doc(collection(db, 'auditLogs'), logId), {
-      actorEmail: user.email.slice(0, 120),
+      actorEmail: email.slice(0, 120),
       actorUid: user.uid.slice(0, 80),
       action: action.slice(0, 80),
       targetCollection: targetCollection.slice(0, 60),

@@ -1346,12 +1346,7 @@ const OneLoveRouter: React.FC = () => {
                 <div className="lg:col-span-6">
                   <div className="rounded-[24px] overflow-hidden border border-white/10 bg-[#1C1612] aspect-[4/3] shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
                     <EditorialVisual
-                      src={
-                        goldenHourContent?.imageUrl ||
-                        gallery.find((g) => g.category === 'Culinary')?.imageUrl ||
-                        events[0]?.imageUrl ||
-                        'https://cdn.onelovecafesigiriya.com/gallery/1793182356132-42957eec-2f66-492e-b754-eaeb2e0420af.webp'
-                      }
+                      src={goldenHourContent?.imageUrl || ''}
                       alt={goldenHourContent?.heading || 'OneLove Café Sigiriya culinary showcase'}
                       className="w-full h-full object-cover"
                     />
@@ -1404,12 +1399,7 @@ const OneLoveRouter: React.FC = () => {
                 <div className="lg:col-span-7">
                   <div className="rounded-[24px] border-[4px] border-white shadow-[0_20px_50px_rgba(20,16,12,0.09)] overflow-hidden aspect-[16/10] bg-[#EAE2D6]">
                     <EditorialVisual
-                      src={
-                        atmosphereContent?.imageUrl ||
-                        conciergeContent?.imageUrl ||
-                        gallery.find((g) => g.category === 'Architecture')?.imageUrl ||
-                        'https://cdn.onelovecafesigiriya.com/gallery/1793182353441-wp11934943-cozy-cafe-4k-wallpapers.webp'
-                      }
+                      src={atmosphereContent?.imageUrl || ''}
                       alt={
                         atmosphereContent?.heading ||
                         'OneLove Café Sigiriya warm teak and tropical light atmosphere'

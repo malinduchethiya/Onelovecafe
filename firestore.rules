@@ -127,42 +127,42 @@ service cloud.firestore {
     function isValidTable(data) {
       return data.keys().hasAll(['label', 'number', 'capacity', 'minGuests', 'zoneId', 'zoneName', 'shape', 'x', 'y', 'isVip', 'isActive', 'notes', 'updatedAt']) &&
         data.keys().hasOnly(['label', 'number', 'capacity', 'minGuests', 'zoneId', 'zoneName', 'shape', 'x', 'y', 'isVip', 'isActive', 'notes', 'updatedAt']) &&
-        data.label is string && data.label.size() >= 1 && data.label.size() <= 30 &&
-        data.number is int && data.number >= 1 && data.number <= 200 &&
-        data.capacity is int && data.capacity >= 1 && data.capacity <= 24 &&
-        data.minGuests is int && data.minGuests >= 1 && data.minGuests <= 24 &&
-        data.zoneId is string && data.zoneId.size() >= 1 && data.zoneId.size() <= 40 &&
-        data.zoneName is string && data.zoneName.size() >= 1 && data.zoneName.size() <= 60 &&
+        data.label is string && data.label.size() >= 1 && data.label.size() <= 60 &&
+        data.number is number && data.number >= 1 && data.number <= 500 &&
+        data.capacity is number && data.capacity >= 1 && data.capacity <= 50 &&
+        data.minGuests is number && data.minGuests >= 1 && data.minGuests <= 50 &&
+        data.zoneId is string && data.zoneId.size() >= 1 && data.zoneId.size() <= 80 &&
+        data.zoneName is string && data.zoneName.size() >= 1 && data.zoneName.size() <= 100 &&
         data.shape in ['round', 'square', 'diamond', 'rectangle'] &&
         data.x is number && data.x >= 0 && data.x <= 100 &&
         data.y is number && data.y >= 0 && data.y <= 100 &&
         data.isVip is bool &&
         data.isActive is bool &&
-        data.notes is string && data.notes.size() <= 200 &&
+        data.notes is string && data.notes.size() <= 400 &&
         data.updatedAt is timestamp;
     }
 
     function isValidSeatingZone(data) {
       return data.keys().hasAll(['name', 'subtitle', 'description', 'atmosphere', 'isActive', 'sortOrder', 'updatedAt']) &&
         data.keys().hasOnly(['name', 'subtitle', 'description', 'atmosphere', 'isActive', 'sortOrder', 'updatedAt']) &&
-        data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
-        data.subtitle is string && data.subtitle.size() <= 120 &&
-        data.description is string && data.description.size() <= 300 &&
-        data.atmosphere is string && data.atmosphere.size() <= 100 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.subtitle is string && data.subtitle.size() <= 240 &&
+        data.description is string && data.description.size() <= 600 &&
+        data.atmosphere is string && data.atmosphere.size() <= 200 &&
         data.isActive is bool &&
-        data.sortOrder is int &&
+        data.sortOrder is number &&
         data.updatedAt is timestamp;
     }
 
     function isValidOpeningHours(data) {
       return data.keys().hasAll(['dayOfWeek', 'isOpen', 'openTime', 'closeTime', 'slotDurationMinutes', 'gracePeriodMinutes', 'updatedAt']) &&
         data.keys().hasOnly(['dayOfWeek', 'isOpen', 'openTime', 'closeTime', 'slotDurationMinutes', 'gracePeriodMinutes', 'updatedAt']) &&
-        data.dayOfWeek is string && data.dayOfWeek.size() >= 3 && data.dayOfWeek.size() <= 20 &&
+        data.dayOfWeek is string && data.dayOfWeek.size() >= 3 && data.dayOfWeek.size() <= 30 &&
         data.isOpen is bool &&
-        data.openTime is string && data.openTime.size() <= 10 &&
-        data.closeTime is string && data.closeTime.size() <= 10 &&
-        data.slotDurationMinutes is int && data.slotDurationMinutes >= 15 && data.slotDurationMinutes <= 240 &&
-        data.gracePeriodMinutes is int && data.gracePeriodMinutes >= 5 && data.gracePeriodMinutes <= 60 &&
+        data.openTime is string && data.openTime.size() <= 20 &&
+        data.closeTime is string && data.closeTime.size() <= 20 &&
+        data.slotDurationMinutes is number && data.slotDurationMinutes >= 15 && data.slotDurationMinutes <= 240 &&
+        data.gracePeriodMinutes is number && data.gracePeriodMinutes >= 5 && data.gracePeriodMinutes <= 60 &&
         data.updatedAt is timestamp;
     }
 
@@ -170,7 +170,7 @@ service cloud.firestore {
       return data.keys().hasAll(['date', 'reason', 'isFullDay', 'blockedSlots', 'createdAt']) &&
         data.keys().hasOnly(['date', 'reason', 'isFullDay', 'blockedSlots', 'createdAt']) &&
         data.date is string && data.date.size() == 10 &&
-        data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 160 &&
+        data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 300 &&
         data.isFullDay is bool &&
         data.blockedSlots is list && data.blockedSlots.size() <= 30 &&
         (data.blockedSlots.size() == 0 || data.blockedSlots[0] is string) &&
@@ -180,11 +180,11 @@ service cloud.firestore {
     function isValidMenuCategory(data) {
       return data.keys().hasAll(['name', 'slug', 'subtitle', 'sortOrder', 'isActive', 'updatedAt']) &&
         data.keys().hasOnly(['name', 'slug', 'subtitle', 'section', 'sortOrder', 'isActive', 'updatedAt']) &&
-        data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
-        data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 60 &&
-        data.subtitle is string && data.subtitle.size() <= 140 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+        data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 100 &&
+        data.subtitle is string && data.subtitle.size() <= 300 &&
         (!('section' in data) || (data.section in ['food', 'drinks'])) &&
-        data.sortOrder is int &&
+        data.sortOrder is number &&
         data.isActive is bool &&
         data.updatedAt is timestamp;
     }
@@ -196,15 +196,15 @@ service cloud.firestore {
     function isValidMenuItem(data) {
       return data.keys().hasAll(['name', 'categoryId', 'categoryName', 'description', 'priceLkr', 'priceUsd', 'imageUrl', 'dietaryTags', 'isFeatured', 'isAvailable', 'updatedAt']) &&
         data.keys().hasOnly(['name', 'categoryId', 'categoryName', 'description', 'priceLkr', 'priceUsd', 'priceCurrency', 'imageUrl', 'dietaryTags', 'isFeatured', 'isAvailable', 'updatedAt']) &&
-        data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
-        data.categoryId is string && data.categoryId.size() >= 1 && data.categoryId.size() <= 60 &&
-        data.categoryName is string && data.categoryName.size() >= 1 && data.categoryName.size() <= 60 &&
-        data.description is string && data.description.size() >= 1 && data.description.size() <= 400 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 160 &&
+        data.categoryId is string && data.categoryId.size() >= 1 && data.categoryId.size() <= 100 &&
+        data.categoryName is string && data.categoryName.size() >= 1 && data.categoryName.size() <= 100 &&
+        data.description is string && data.description.size() <= 1000 &&
         data.priceLkr is number && data.priceLkr >= 0 &&
         data.priceUsd is number && data.priceUsd >= 0 &&
         (!('priceCurrency' in data) || (data.priceCurrency in ['default', 'both', 'lkr', 'usd'])) &&
         isValidCdnLink(data.imageUrl) &&
-        data.dietaryTags is list && data.dietaryTags.size() <= 10 &&
+        data.dietaryTags is list && data.dietaryTags.size() <= 15 &&
         (data.dietaryTags.size() == 0 || data.dietaryTags[0] is string) &&
         data.isFeatured is bool &&
         data.isAvailable is bool &&
@@ -214,27 +214,27 @@ service cloud.firestore {
     function isValidGalleryItem(data) {
       return data.keys().hasAll(['title', 'category', 'caption', 'imageUrl', 'aspectRatio', 'isFeatured', 'sortOrder', 'createdAt']) &&
         data.keys().hasOnly(['title', 'category', 'caption', 'imageUrl', 'aspectRatio', 'isFeatured', 'sortOrder', 'createdAt']) &&
-        data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
         data.category in ['Architecture', 'Culinary', 'Coffee & Botanicals', 'Evening Sanctuary', 'Sigiriya Surroundings'] &&
-        data.caption is string && data.caption.size() <= 300 &&
+        data.caption is string && data.caption.size() <= 600 &&
         isValidCdnLink(data.imageUrl) &&
         data.aspectRatio in ['16:9', '4:3', '3:4', '1:1'] &&
         data.isFeatured is bool &&
-        data.sortOrder is int &&
+        data.sortOrder is number &&
         data.createdAt is timestamp;
     }
 
     function isValidCafeEvent(data) {
       return data.keys().hasAll(['title', 'subtitle', 'date', 'time', 'category', 'description', 'imageUrl', 'priceInfo', 'isFeatured', 'isActive', 'updatedAt']) &&
         data.keys().hasOnly(['title', 'subtitle', 'date', 'time', 'category', 'description', 'imageUrl', 'priceInfo', 'isFeatured', 'isActive', 'updatedAt']) &&
-        data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
-        data.subtitle is string && data.subtitle.size() <= 140 &&
-        data.date is string && data.date.size() >= 1 && data.date.size() <= 40 &&
-        data.time is string && data.time.size() >= 1 && data.time.size() <= 40 &&
-        data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
-        data.description is string && data.description.size() >= 1 && data.description.size() <= 600 &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.subtitle is string && data.subtitle.size() <= 240 &&
+        data.date is string && data.date.size() >= 1 && data.date.size() <= 80 &&
+        data.time is string && data.time.size() >= 1 && data.time.size() <= 80 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 100 &&
+        data.description is string && data.description.size() <= 1200 &&
         isValidCdnLink(data.imageUrl) &&
-        data.priceInfo is string && data.priceInfo.size() <= 80 &&
+        data.priceInfo is string && data.priceInfo.size() <= 160 &&
         data.isFeatured is bool &&
         data.isActive is bool &&
         data.updatedAt is timestamp;
@@ -243,13 +243,13 @@ service cloud.firestore {
     function isValidSiteContent(data) {
       return data.keys().hasAll(['sectionKey', 'kicker', 'heading', 'subheading', 'body', 'ctaLabel', 'ctaLink', 'imageUrl', 'updatedAt']) &&
         data.keys().hasOnly(['sectionKey', 'kicker', 'heading', 'subheading', 'body', 'ctaLabel', 'ctaLink', 'imageUrl', 'updatedAt']) &&
-        data.sectionKey is string && data.sectionKey.size() >= 1 && data.sectionKey.size() <= 60 &&
-        data.kicker is string && data.kicker.size() <= 100 &&
-        data.heading is string && data.heading.size() >= 1 && data.heading.size() <= 160 &&
-        data.subheading is string && data.subheading.size() <= 400 &&
-        data.body is string && data.body.size() <= 1200 &&
-        data.ctaLabel is string && data.ctaLabel.size() <= 60 &&
-        data.ctaLink is string && data.ctaLink.size() <= 120 &&
+        data.sectionKey is string && data.sectionKey.size() >= 1 && data.sectionKey.size() <= 80 &&
+        data.kicker is string && data.kicker.size() <= 200 &&
+        data.heading is string && data.heading.size() <= 300 &&
+        data.subheading is string && data.subheading.size() <= 800 &&
+        data.body is string && data.body.size() <= 3000 &&
+        data.ctaLabel is string && data.ctaLabel.size() <= 160 &&
+        data.ctaLink is string && data.ctaLink.size() <= 300 &&
         isValidCdnLink(data.imageUrl) &&
         data.updatedAt is timestamp;
     }
@@ -267,25 +267,25 @@ service cloud.firestore {
           'heroImages', 'heroSlideshowSpeedSeconds', 'floorPlanImageUrl',
           'googleMapsEmbedUrl', 'mapTitle', 'mapSubtitle', 'menuCurrencyDisplay', 'updatedAt'
         ]) &&
-        data.cafeName is string && data.cafeName.size() >= 1 && data.cafeName.size() <= 80 &&
-        data.tagline is string && data.tagline.size() <= 160 &&
-        data.address is string && data.address.size() <= 200 &&
-        data.phone is string && data.phone.size() <= 40 &&
-        data.whatsapp is string && data.whatsapp.size() <= 40 &&
-        data.email is string && data.email.size() <= 120 &&
-        data.instagram is string && data.instagram.size() <= 100 &&
-        data.coordinates is string && data.coordinates.size() <= 60 &&
-        data.gracePeriodMinutes is int && data.gracePeriodMinutes >= 5 && data.gracePeriodMinutes <= 60 &&
-        data.holdDurationMinutes is int && data.holdDurationMinutes >= 3 && data.holdDurationMinutes <= 30 &&
-        data.maxPartySize is int && data.maxPartySize >= 2 && data.maxPartySize <= 30 &&
-        data.sameDayCutoffHour is int && data.sameDayCutoffHour >= 0 && data.sameDayCutoffHour <= 23 &&
-        data.bookingPolicy is string && data.bookingPolicy.size() <= 600 &&
+        data.cafeName is string && data.cafeName.size() >= 1 && data.cafeName.size() <= 120 &&
+        data.tagline is string && data.tagline.size() <= 300 &&
+        data.address is string && data.address.size() <= 400 &&
+        data.phone is string && data.phone.size() <= 60 &&
+        data.whatsapp is string && data.whatsapp.size() <= 60 &&
+        data.email is string && data.email.size() <= 160 &&
+        data.instagram is string && data.instagram.size() <= 160 &&
+        data.coordinates is string && data.coordinates.size() <= 100 &&
+        data.gracePeriodMinutes is number && data.gracePeriodMinutes >= 5 && data.gracePeriodMinutes <= 60 &&
+        data.holdDurationMinutes is number && data.holdDurationMinutes >= 3 && data.holdDurationMinutes <= 30 &&
+        data.maxPartySize is number && data.maxPartySize >= 2 && data.maxPartySize <= 30 &&
+        data.sameDayCutoffHour is number && data.sameDayCutoffHour >= 0 && data.sameDayCutoffHour <= 23 &&
+        data.bookingPolicy is string && data.bookingPolicy.size() <= 2000 &&
         (!('heroImages' in data) || (data.heroImages is list && data.heroImages.size() <= 12 && (data.heroImages.size() == 0 || isValidCdnLink(data.heroImages[0])))) &&
         (!('heroSlideshowSpeedSeconds' in data) || (data.heroSlideshowSpeedSeconds is number && data.heroSlideshowSpeedSeconds >= 1 && data.heroSlideshowSpeedSeconds <= 60)) &&
         (!('floorPlanImageUrl' in data) || isValidCdnLink(data.floorPlanImageUrl)) &&
-        (!('googleMapsEmbedUrl' in data) || (data.googleMapsEmbedUrl is string && data.googleMapsEmbedUrl.size() <= 2000)) &&
-        (!('mapTitle' in data) || (data.mapTitle is string && data.mapTitle.size() <= 120)) &&
-        (!('mapSubtitle' in data) || (data.mapSubtitle is string && data.mapSubtitle.size() <= 250)) &&
+        (!('googleMapsEmbedUrl' in data) || (data.googleMapsEmbedUrl is string && data.googleMapsEmbedUrl.size() <= 3000)) &&
+        (!('mapTitle' in data) || (data.mapTitle is string && data.mapTitle.size() <= 250)) &&
+        (!('mapSubtitle' in data) || (data.mapSubtitle is string && data.mapSubtitle.size() <= 500)) &&
         (!('menuCurrencyDisplay' in data) || (data.menuCurrencyDisplay in ['both', 'lkr', 'usd'])) &&
         data.updatedAt is timestamp;
     }
@@ -337,7 +337,7 @@ service cloud.firestore {
       allow get: if isValidId(adminId) && (isAdmin() || (isVerifiedUser() && request.auth.uid == adminId));
       allow list: if isAdmin();
       allow create: if isValidId(adminId) && isValidAdmin(incoming()) && incoming().createdAt == request.time && isAdmin();
-      allow update: if isValidId(adminId) && isValidAdmin(incoming()) && incoming().createdAt == existing().createdAt && isAdmin();
+      allow update: if isValidId(adminId) && isValidAdmin(incoming()) && (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time) && isAdmin();
       allow delete: if isValidId(adminId) && isAdmin();
     }
 
@@ -422,7 +422,7 @@ service cloud.firestore {
       allow get: if isValidId(dateId);
       allow list: if true;
       allow create: if isValidId(dateId) && isValidBlockedDate(incoming()) && incoming().createdAt == request.time && isAdmin();
-      allow update: if isValidId(dateId) && isValidBlockedDate(incoming()) && incoming().createdAt == existing().createdAt && isAdmin();
+      allow update: if isValidId(dateId) && isValidBlockedDate(incoming()) && (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time) && isAdmin();
       allow delete: if isValidId(dateId) && isAdmin();
     }
 
@@ -449,7 +449,7 @@ service cloud.firestore {
       allow get: if isValidId(imageId);
       allow list: if true;
       allow create: if isValidId(imageId) && isValidGalleryItem(incoming()) && incoming().createdAt == request.time && isAdmin();
-      allow update: if isValidId(imageId) && isValidGalleryItem(incoming()) && incoming().createdAt == existing().createdAt && isAdmin();
+      allow update: if isValidId(imageId) && isValidGalleryItem(incoming()) && (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time) && isAdmin();
       allow delete: if isValidId(imageId) && isAdmin();
     }
 
@@ -491,7 +491,7 @@ service cloud.firestore {
         incoming().updatedAt == request.time;
       allow update: if isValidId(inquiryId) &&
         isValidInquiry(incoming()) &&
-        incoming().createdAt == existing().createdAt &&
+        (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time) &&
         incoming().updatedAt == request.time &&
         isAdmin();
       allow delete: if isValidId(inquiryId) && isAdmin();
