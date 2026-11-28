@@ -242,26 +242,11 @@ async function commitFirestoreWrite(
   opType: OperationType,
   path: string
 ): Promise<void> {
-  let settled = false;
-  const guardedPromise = writePromise
-    .then(() => {
-      settled = true;
-    })
-    .catch((err) => {
-      settled = true;
-      handleFirestoreError(err, opType, path);
-    });
-
-  await Promise.race([
-    guardedPromise,
-    new Promise<void>((resolve) => {
-      setTimeout(() => {
-        if (!settled) {
-          resolve();
-        }
-      }, 2500);
-    }),
-  ]);
+  try {
+    await writePromise;
+  } catch (err) {
+    handleFirestoreError(err, opType, path);
+  }
 }
 
 export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

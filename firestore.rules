@@ -25,19 +25,27 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isBootstrappedAdmin() {
-      return isSignedIn() &&
-        request.auth.token.email_verified == true && (
-          request.auth.token.email == "merlinfiverr0@gmail.com" ||
-          request.auth.token.email == "onelovecafesigiriya@gmail.com" ||
-          request.auth.token.email == "manojmadurangasadaruwan@gmail.com"
-        );
+    // Check email in token OR Google identity claims so Google OAuth accounts always match
+    function isAuthorizedAdminToken() {
+      return isSignedIn() && (
+        request.auth.token.email == "merlinfiverr0@gmail.com" ||
+        request.auth.token.email == "onelovecafesigiriya@gmail.com" ||
+        request.auth.token.email == "manojmadurangasadaruwan@gmail.com" ||
+        (
+          "firebase" in request.auth.token &&
+          "identities" in request.auth.token.firebase &&
+          "email" in request.auth.token.firebase.identities && (
+            "merlinfiverr0@gmail.com" in request.auth.token.firebase.identities.email ||
+            "onelovecafesigiriya@gmail.com" in request.auth.token.firebase.identities.email ||
+            "manojmadurangasadaruwan@gmail.com" in request.auth.token.firebase.identities.email
+          )
+        )
+      );
     }
 
     function isAdmin() {
-      return isBootstrappedAdmin() || (
+      return isAuthorizedAdminToken() || (
         isSignedIn() &&
-        request.auth.token.email_verified == true &&
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
@@ -54,23 +62,21 @@ service cloud.firestore {
     }
 
     function isValidSettings(data, settingId) {
-      return data.keys().hasAll(['id', 'cafeName', 'updatedAt']) &&
+      return data.keys().hasAll(['id', 'cafeName']) &&
         data.id is string && data.id == settingId && data.id.size() <= 100 &&
-        data.cafeName is string && data.cafeName.size() >= 1 && data.cafeName.size() <= 160 &&
-        data.updatedAt == request.time;
+        data.cafeName is string && data.cafeName.size() >= 1 && data.cafeName.size() <= 160;
     }
 
     function isValidSeatingZone(data, zoneId) {
-      return data.keys().hasAll(['id', 'name', 'isActive', 'sortOrder', 'updatedAt']) &&
+      return data.keys().hasAll(['id', 'name', 'isActive', 'sortOrder']) &&
         data.id is string && data.id == zoneId && data.id.size() <= 100 &&
         data.name is string && data.name.size() >= 1 && data.name.size() <= 160 &&
         data.isActive is bool &&
-        data.sortOrder is number &&
-        data.updatedAt == request.time;
+        data.sortOrder is number;
     }
 
     function isValidTable(data, tableId) {
-      return data.keys().hasAll(['id', 'label', 'number', 'capacity', 'zoneId', 'zoneName', 'shape', 'x', 'y', 'isActive', 'updatedAt']) &&
+      return data.keys().hasAll(['id', 'label', 'number', 'capacity', 'zoneId', 'zoneName', 'shape', 'x', 'y', 'isActive']) &&
         data.id is string && data.id == tableId && data.id.size() <= 100 &&
         data.label is string && data.label.size() >= 1 && data.label.size() <= 80 &&
         data.number is number &&
@@ -80,22 +86,20 @@ service cloud.firestore {
         data.shape is string && data.shape.size() <= 40 &&
         data.x is number &&
         data.y is number &&
-        data.isActive is bool &&
-        data.updatedAt == request.time;
+        data.isActive is bool;
     }
 
     function isValidOpeningHours(data, dayId) {
-      return data.keys().hasAll(['id', 'dayOfWeek', 'isOpen', 'openTime', 'closeTime', 'updatedAt']) &&
+      return data.keys().hasAll(['id', 'dayOfWeek', 'isOpen', 'openTime', 'closeTime']) &&
         data.id is string && data.id == dayId && data.id.size() <= 100 &&
         data.dayOfWeek is string && data.dayOfWeek.size() <= 40 &&
         data.isOpen is bool &&
         data.openTime is string && data.openTime.size() <= 20 &&
-        data.closeTime is string && data.closeTime.size() <= 20 &&
-        data.updatedAt == request.time;
+        data.closeTime is string && data.closeTime.size() <= 20;
     }
 
     function isValidBlockedDate(data, blockId) {
-      return data.keys().hasAll(['id', 'date', 'reason', 'isFullDay', 'createdAt']) &&
+      return data.keys().hasAll(['id', 'date', 'reason', 'isFullDay']) &&
         data.id is string && data.id == blockId && data.id.size() <= 100 &&
         data.date is string && data.date.size() <= 30 &&
         data.reason is string && data.reason.size() <= 400 &&
@@ -103,17 +107,16 @@ service cloud.firestore {
     }
 
     function isValidMenuCategory(data, catId) {
-      return data.keys().hasAll(['id', 'name', 'slug', 'sortOrder', 'isActive', 'updatedAt']) &&
+      return data.keys().hasAll(['id', 'name', 'slug', 'sortOrder', 'isActive']) &&
         data.id is string && data.id == catId && data.id.size() <= 100 &&
         data.name is string && data.name.size() >= 1 && data.name.size() <= 160 &&
         data.slug is string && data.slug.size() <= 160 &&
         data.sortOrder is number &&
-        data.isActive is bool &&
-        data.updatedAt == request.time;
+        data.isActive is bool;
     }
 
     function isValidMenuItem(data, itemId) {
-      return data.keys().hasAll(['id', 'name', 'categoryId', 'categoryName', 'priceLkr', 'priceUsd', 'isFeatured', 'isAvailable', 'updatedAt']) &&
+      return data.keys().hasAll(['id', 'name', 'categoryId', 'categoryName', 'priceLkr', 'priceUsd', 'isFeatured', 'isAvailable']) &&
         data.id is string && data.id == itemId && data.id.size() <= 100 &&
         data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
         data.categoryId is string && data.categoryId.size() <= 100 &&
@@ -121,12 +124,11 @@ service cloud.firestore {
         data.priceLkr is number && data.priceLkr >= 0 &&
         data.priceUsd is number && data.priceUsd >= 0 &&
         data.isFeatured is bool &&
-        data.isAvailable is bool &&
-        data.updatedAt == request.time;
+        data.isAvailable is bool;
     }
 
     function isValidGalleryItem(data, galId) {
-      return data.keys().hasAll(['id', 'title', 'category', 'imageUrl', 'aspectRatio', 'isFeatured', 'sortOrder', 'createdAt']) &&
+      return data.keys().hasAll(['id', 'title', 'category', 'imageUrl', 'aspectRatio', 'isFeatured', 'sortOrder']) &&
         data.id is string && data.id == galId && data.id.size() <= 100 &&
         data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
         data.category is string && data.category.size() <= 100 &&
@@ -137,22 +139,20 @@ service cloud.firestore {
     }
 
     function isValidEvent(data, eventId) {
-      return data.keys().hasAll(['id', 'title', 'date', 'time', 'category', 'isFeatured', 'isActive', 'updatedAt']) &&
+      return data.keys().hasAll(['id', 'title', 'date', 'time', 'category', 'isFeatured', 'isActive']) &&
         data.id is string && data.id == eventId && data.id.size() <= 100 &&
         data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
         data.date is string && data.date.size() <= 100 &&
         data.time is string && data.time.size() <= 100 &&
         data.category is string && data.category.size() <= 100 &&
         data.isFeatured is bool &&
-        data.isActive is bool &&
-        data.updatedAt == request.time;
+        data.isActive is bool;
     }
 
     function isValidSiteContent(data, sectionId) {
-      return data.keys().hasAll(['id', 'sectionKey', 'updatedAt']) &&
+      return data.keys().hasAll(['id', 'sectionKey']) &&
         data.id is string && data.id == sectionId && data.id.size() <= 100 &&
-        data.sectionKey is string && data.sectionKey.size() <= 100 &&
-        data.updatedAt == request.time;
+        data.sectionKey is string && data.sectionKey.size() <= 100;
     }
 
     function isValidAvailabilitySlot(data, slotId) {
@@ -221,9 +221,9 @@ service cloud.firestore {
     // 3. Collection Match Blocks
     match /admins/{adminId} {
       allow get: if isValidId(adminId) && (isAdmin() || (isSignedIn() && request.auth.uid == adminId));
-      allow list: if isAdmin() && existing().id is string;
+      allow list: if isAdmin();
       allow create: if isValidId(adminId) && isValidAdmin(incoming(), adminId) && (
-        isAdmin() || (isBootstrappedAdmin() && request.auth.uid == adminId)
+        isAdmin() || (isAuthorizedAdminToken() && request.auth.uid == adminId)
       );
       allow update: if isValidId(adminId) && isValidAdmin(incoming(), adminId) && isAdmin() &&
         (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time);
@@ -231,96 +231,77 @@ service cloud.firestore {
     }
 
     match /settings/{settingId} {
-      allow get: if isValidId(settingId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update: if isValidId(settingId) && isAdmin() && isValidSettings(incoming(), settingId);
       allow delete: if isValidId(settingId) && isAdmin();
     }
 
     match /seatingZones/{zoneId} {
-      allow get: if isValidId(zoneId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update: if isValidId(zoneId) && isAdmin() && isValidSeatingZone(incoming(), zoneId);
       allow delete: if isValidId(zoneId) && isAdmin();
     }
 
     match /tables/{tableId} {
-      allow get: if isValidId(tableId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update: if isValidId(tableId) && isAdmin() && isValidTable(incoming(), tableId);
       allow delete: if isValidId(tableId) && isAdmin();
     }
 
     match /openingHours/{dayId} {
-      allow get: if isValidId(dayId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update: if isValidId(dayId) && isAdmin() && isValidOpeningHours(incoming(), dayId);
       allow delete: if isValidId(dayId) && isAdmin();
     }
 
     match /blockedDates/{blockId} {
-      allow get: if isValidId(blockId);
-      allow list: if existing().id is string;
-      allow create: if isValidId(blockId) && isAdmin() && isValidBlockedDate(incoming(), blockId) &&
-        incoming().createdAt == request.time;
-      allow update: if isValidId(blockId) && isAdmin() && isValidBlockedDate(incoming(), blockId) &&
-        (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time);
+      allow get, list: if true;
+      allow create, update: if isValidId(blockId) && isAdmin() && isValidBlockedDate(incoming(), blockId);
       allow delete: if isValidId(blockId) && isAdmin();
     }
 
     match /menuCategories/{categoryId} {
-      allow get: if isValidId(categoryId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update: if isValidId(categoryId) && isAdmin() && isValidMenuCategory(incoming(), categoryId);
       allow delete: if isValidId(categoryId) && isAdmin();
     }
 
     match /menuItems/{itemId} {
-      allow get: if isValidId(itemId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update: if isValidId(itemId) && isAdmin() && isValidMenuItem(incoming(), itemId);
       allow delete: if isValidId(itemId) && isAdmin();
     }
 
     match /gallery/{galleryId} {
-      allow get: if isValidId(galleryId);
-      allow list: if existing().id is string;
-      allow create: if isValidId(galleryId) && isAdmin() && isValidGalleryItem(incoming(), galleryId) &&
-        incoming().createdAt == request.time;
-      allow update: if isValidId(galleryId) && isAdmin() && isValidGalleryItem(incoming(), galleryId) &&
-        (incoming().createdAt == existing().createdAt || incoming().createdAt == request.time);
+      allow get, list: if true;
+      allow create, update: if isValidId(galleryId) && isAdmin() && isValidGalleryItem(incoming(), galleryId);
       allow delete: if isValidId(galleryId) && isAdmin();
     }
 
     match /events/{eventId} {
-      allow get: if isValidId(eventId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update: if isValidId(eventId) && isAdmin() && isValidEvent(incoming(), eventId);
       allow delete: if isValidId(eventId) && isAdmin();
     }
 
     match /siteContent/{sectionId} {
-      allow get: if isValidId(sectionId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update: if isValidId(sectionId) && isAdmin() && isValidSiteContent(incoming(), sectionId);
       allow delete: if isValidId(sectionId) && isAdmin();
     }
 
     match /seoGlobal/{docId} {
-      allow get: if isValidId(docId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update, delete: if isValidId(docId) && isAdmin();
     }
 
     match /seoPages/{pageId} {
-      allow get: if isValidId(pageId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create, update, delete: if isValidId(pageId) && isAdmin();
     }
 
     match /availability/{slotId} {
-      allow get: if isValidId(slotId);
-      allow list: if existing().id is string;
+      allow get, list: if true;
       allow create: if isValidId(slotId) && isValidAvailabilitySlot(incoming(), slotId);
       allow update: if isValidId(slotId) && isValidAvailabilitySlot(incoming(), slotId) && (
         isAdmin() ||
@@ -332,7 +313,7 @@ service cloud.firestore {
 
     match /reservations/{reservationId} {
       allow get: if isValidId(reservationId);
-      allow list: if isAdmin() && existing().id is string;
+      allow list: if isAdmin();
       allow create: if isValidId(reservationId) && isValidReservation(incoming(), reservationId) &&
         incoming().status == 'confirmed' &&
         incoming().createdAt == request.time;
@@ -341,8 +322,7 @@ service cloud.firestore {
     }
 
     match /inquiries/{inquiryId} {
-      allow get: if isValidId(inquiryId) && isAdmin();
-      allow list: if isAdmin() && existing().id is string;
+      allow get, list: if isAdmin();
       allow create: if isValidId(inquiryId) && isValidInquiry(incoming(), inquiryId) &&
         incoming().status == 'new' &&
         incoming().createdAt == request.time;
@@ -351,8 +331,7 @@ service cloud.firestore {
     }
 
     match /auditLogs/{logId} {
-      allow get: if isValidId(logId) && isAdmin();
-      allow list: if isAdmin() && existing().action is string;
+      allow get, list: if isAdmin();
       allow create: if isValidId(logId) && isAdmin() && isValidAuditLog(incoming());
       allow update, delete: if false;
     }

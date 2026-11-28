@@ -45,23 +45,12 @@ function initDb() {
       app,
       {
         experimentalAutoDetectLongPolling: true,
-        localCache: persistentLocalCache(),
+        localCache: memoryLocalCache(),
       },
       dbId
     );
   } catch {
-    try {
-      return initializeFirestore(
-        app,
-        {
-          experimentalAutoDetectLongPolling: true,
-          localCache: memoryLocalCache(),
-        },
-        dbId
-      );
-    } catch {
-      return getFirestore(app, dbId);
-    }
+    return getFirestore(app, dbId);
   }
 }
 
