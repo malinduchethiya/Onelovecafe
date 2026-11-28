@@ -290,6 +290,11 @@ service cloud.firestore {
       allow delete: if isValidId(sectionId) && isAdmin();
     }
 
+    match /siteImages/{imageId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(imageId) && isAdmin();
+    }
+
     match /seoGlobal/{docId} {
       allow get, list: if true;
       allow create, update, delete: if isValidId(docId) && isAdmin();

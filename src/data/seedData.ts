@@ -398,3 +398,73 @@ export const DEFAULT_SITE_CONTENT: SiteContentSection[] = [
     imageUrl: '',
   },
 ];
+
+// Dedicated `siteImages` Firestore collection indexing every image slot on the website (Admin Panel -> R2 -> Firestore siteImages -> Live Site)
+export const DEFAULT_SITE_IMAGES = [
+  {
+    id: 'hero',
+    sectionKey: 'hero',
+    label: 'Homepage Hero Slideshow Images',
+    imageUrl: '',
+    imageUrls: [] as string[],
+    targetCollection: 'settings',
+    targetDocId: 'main',
+  },
+  {
+    id: 'story_collage_1',
+    sectionKey: 'story_collage_1',
+    label: 'Homepage Our Story · Main Vertical Feature Photo (Slot 01)',
+    imageUrl: '',
+    targetCollection: 'siteContent',
+    targetDocId: 'story_collage_1',
+  },
+  {
+    id: 'story_collage_2',
+    sectionKey: 'story_collage_2',
+    label: 'Homepage Our Story · Overlapping Square Inset Photo (Slot 02)',
+    imageUrl: '',
+    targetCollection: 'siteContent',
+    targetDocId: 'story_collage_2',
+  },
+  {
+    id: 'golden_hour',
+    sectionKey: 'golden_hour',
+    label: 'Homepage · The Golden Hour Culinary Feature Photo',
+    imageUrl: '',
+    targetCollection: 'siteContent',
+    targetDocId: 'golden_hour',
+  },
+  {
+    id: 'atmosphere',
+    sectionKey: 'atmosphere',
+    label: 'Homepage · Atmosphere & Spaces Feature Photo',
+    imageUrl: '',
+    targetCollection: 'siteContent',
+    targetDocId: 'atmosphere',
+  },
+  {
+    id: 'story',
+    sectionKey: 'story',
+    label: 'Our Story Page (/story) · Primary Sanctuary Architecture Photo',
+    imageUrl: '',
+    targetCollection: 'siteContent',
+    targetDocId: 'story',
+  },
+  {
+    id: 'concierge',
+    sectionKey: 'concierge',
+    label: 'Our Story Page (/story) · Secondary Hospitality & Concierge Photo',
+    imageUrl: '',
+    targetCollection: 'siteContent',
+    targetDocId: 'concierge',
+  },
+  {
+    id: 'floorplan',
+    sectionKey: 'floorplan',
+    label: 'Reserve Page (/reserve) · Interactive Floor Plan Background Drone Shot',
+    imageUrl: '',
+    targetCollection: 'settings',
+    targetDocId: 'main',
+  },
+];
+

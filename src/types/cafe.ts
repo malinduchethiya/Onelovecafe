@@ -193,6 +193,17 @@ export interface SiteContentSection {
   updatedAt?: unknown;
 }
 
+export interface SiteImageRecord {
+  id: string;
+  sectionKey: string;
+  label: string;
+  imageUrl: string;
+  imageUrls?: string[];
+  targetCollection?: string;
+  targetDocId?: string;
+  updatedAt?: unknown;
+}
+
 export interface CafeSettings {
   id: string;
   cafeName: string;

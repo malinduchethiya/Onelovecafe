@@ -47,6 +47,7 @@ import {
   GalleryItem,
   CafeEvent,
   SiteContentSection,
+  SiteImageRecord,
   AvailabilitySlotRecord,
   ReservationRecord,
   InquiryRecord,
@@ -59,6 +60,7 @@ import {
   DEFAULT_TABLES,
   DEFAULT_OPENING_HOURS,
   DEFAULT_SITE_CONTENT,
+  DEFAULT_SITE_IMAGES,
 } from '../data/seedData';
 import { GlobalSeoConfig, PageSeoConfig, SeoPageKey } from '../types/seo';
 import { DEFAULT_GLOBAL_SEO, DEFAULT_PAGE_SEO } from '../data/seoDefaults';
@@ -139,6 +141,7 @@ interface CafeContextValue {
   gallery: GalleryItem[];
   events: CafeEvent[];
   siteContent: SiteContentSection[];
+  siteImages: SiteImageRecord[];
   availability: AvailabilitySlotRecord[];
   seoGlobal: GlobalSeoConfig;
   seoPages: Record<SeoPageKey, PageSeoConfig>;
@@ -266,6 +269,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [events, setEvents] = useState<CafeEvent[]>([]);
   const [siteContent, setSiteContent] = useState<SiteContentSection[]>(DEFAULT_SITE_CONTENT);
+  const [siteImages, setSiteImages] = useState<SiteImageRecord[]>(DEFAULT_SITE_IMAGES);
   const [availability, setAvailability] = useState<AvailabilitySlotRecord[]>([]);
   const [seoGlobal, setSeoGlobal] = useState<GlobalSeoConfig>(DEFAULT_GLOBAL_SEO);
   const [seoPages, setSeoPages] = useState<Record<SeoPageKey, PageSeoConfig>>(DEFAULT_PAGE_SEO);
@@ -601,6 +605,80 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
     );
 
+    // Site Images — Dedicated `siteImages` Firestore collection for every section image on the site
+    unsubs.push(
+      onSnapshot(
+        collection(db, 'siteImages'),
+        (snap) => {
+          const mergedImages = new Map<string, SiteImageRecord>();
+          DEFAULT_SITE_IMAGES.forEach((slot) => {
+            mergedImages.set(slot.id, { ...slot });
+          });
+
+          snap.docs.forEach((d) => {
+            const raw = d.data() as SiteImageRecord;
+            const cleanUrl = sanitizeCdnUrl(raw.imageUrl);
+            const cleanUrls = Array.isArray(raw.imageUrls)
+              ? raw.imageUrls.map((u) => sanitizeCdnUrl(u)).filter(Boolean)
+              : cleanUrl
+              ? [cleanUrl]
+              : [];
+
+            mergedImages.set(d.id, {
+              ...(mergedImages.get(d.id) || {
+                id: d.id,
+                sectionKey: raw.sectionKey || d.id,
+                label: raw.label || d.id,
+                imageUrl: '',
+              }),
+              ...raw,
+              id: d.id,
+              sectionKey: raw.sectionKey || d.id,
+              imageUrl: cleanUrl,
+              imageUrls: cleanUrls,
+            });
+          });
+
+          const list = Array.from(mergedImages.values());
+          setSiteImages(list);
+
+          // Automatically propagate any section image URL in `siteImages` to live UI state (hero, floorplan, siteContent)
+          const heroDoc = mergedImages.get('hero');
+          const floorplanDoc = mergedImages.get('floorplan');
+          if (heroDoc || floorplanDoc) {
+            setSettings((prev) => {
+              const nextHeroes =
+                heroDoc && Array.isArray(heroDoc.imageUrls) && heroDoc.imageUrls.length > 0
+                  ? heroDoc.imageUrls
+                  : heroDoc?.imageUrl
+                  ? [heroDoc.imageUrl]
+                  : prev.heroImages;
+              const nextFloor =
+                floorplanDoc && floorplanDoc.imageUrl
+                  ? floorplanDoc.imageUrl
+                  : prev.floorPlanImageUrl;
+              return {
+                ...prev,
+                heroImages: nextHeroes,
+                floorPlanImageUrl: nextFloor,
+              };
+            });
+          }
+
+          setSiteContent((prev) =>
+            prev.map((sec) => {
+              const imgDoc = mergedImages.get(sec.sectionKey) || mergedImages.get(sec.id);
+              if (imgDoc && imgDoc.imageUrl) {
+                return { ...sec, imageUrl: imgDoc.imageUrl };
+              }
+              return sec;
+            })
+          );
+        },
+        (err) => console.warn('Firestore siteImages listener notice:', err.message)
+      )
+    );
+
     // Availability Slots
     unsubs.push(
       onSnapshot(
@@ -707,6 +785,13 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       }
 
+      for (const si of DEFAULT_SITE_IMAGES) {
+        await setDoc(doc(db, 'siteImages', si.id), {
+          ...si,
+          updatedAt: serverTimestamp(),
+        });
+      }
+
       await setDoc(doc(db, 'seoGlobal', 'main'), {
         ...DEFAULT_GLOBAL_SEO,
         updatedAt: serverTimestamp(),
@@ -723,7 +808,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'SEED_DATABASE',
         'system',
         'all',
-        'Initialized OneLove Café Sigiriya structural settings in Firestore'
+        'Initialized OneLove Café Sigiriya structural settings and siteImages collection in Firestore'
       );
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'seedDatabase');
@@ -737,13 +822,15 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     (async () => {
       try {
-        const [settingsSnap, zonesSnap, tablesSnap, hoursSnap, contentSnap] = await Promise.all([
-          getDoc(doc(db, 'settings', 'main')),
-          getDocs(query(collection(db, 'seatingZones'), limit(1))),
-          getDocs(query(collection(db, 'tables'), limit(1))),
-          getDocs(query(collection(db, 'openingHours'), limit(1))),
-          getDocs(query(collection(db, 'siteContent'), limit(1))),
-        ]);
+        const [settingsSnap, zonesSnap, tablesSnap, hoursSnap, contentSnap, siteImagesSnap] =
+          await Promise.all([
+            getDoc(doc(db, 'settings', 'main')),
+            getDocs(query(collection(db, 'seatingZones'), limit(1))),
+            getDocs(query(collection(db, 'tables'), limit(1))),
+            getDocs(query(collection(db, 'openingHours'), limit(1))),
+            getDocs(query(collection(db, 'siteContent'), limit(1))),
+            getDocs(query(collection(db, 'siteImages'), limit(1))),
+          ]);
 
         if (!settingsSnap.exists()) {
           await setDoc(doc(db, 'settings', 'main'), {
@@ -775,6 +862,36 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
               imageUrl: '',
               updatedAt: serverTimestamp(),
             });
+          }
+        }
+        if (siteImagesSnap.empty) {
+          const currentHeroImages = settingsSnap.exists()
+            ? ((settingsSnap.data()?.heroImages as string[]) || []).filter(Boolean)
+            : [];
+          const currentFloorPlan = settingsSnap.exists()
+            ? (settingsSnap.data()?.floorPlanImageUrl as string) || ''
+            : '';
+
+          for (const si of DEFAULT_SITE_IMAGES) {
+            const payload =
+              si.id === 'hero'
+                ? {
+                    ...si,
+                    imageUrl: currentHeroImages[0] || '',
+                    imageUrls: currentHeroImages,
+                    updatedAt: serverTimestamp(),
+                  }
+                : si.id === 'floorplan'
+                ? {
+                    ...si,
+                    imageUrl: currentFloorPlan,
+                    updatedAt: serverTimestamp(),
+                  }
+                : {
+                    ...si,
+                    updatedAt: serverTimestamp(),
+                  };
+            await setDoc(doc(db, 'siteImages', si.id), payload);
           }
         }
       } catch (err) {
@@ -1347,6 +1464,21 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.WRITE,
         `menuItems/${safeId}`
       );
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteImages', `menu_${safeId}`), {
+          id: `menu_${safeId}`,
+          sectionKey: 'menu',
+          label: `Menu Item · ${normalized.name}`,
+          imageUrl: normalized.imageUrl,
+          targetCollection: 'menuItems',
+          targetDocId: safeId,
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `siteImages/menu_${safeId}`
+      );
+
       await logAdminAction('SAVE_MENU_ITEM', 'menuItems', safeId, `Saved menu item ${normalized.name}`);
     },
     [menuItems, deleteMediaFromR2]
@@ -1365,6 +1497,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.DELETE,
         `menuItems/${safeId}`
       );
+      await deleteDoc(doc(db, 'siteImages', `menu_${safeId}`)).catch(() => {});
       await logAdminAction('DELETE_MENU_ITEM', 'menuItems', safeId, `Deleted menu item ${safeId}`);
     },
     [menuItems, deleteMediaFromR2]
@@ -1407,6 +1540,21 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.WRITE,
         `gallery/${safeId}`
       );
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteImages', `gallery_${safeId}`), {
+          id: `gallery_${safeId}`,
+          sectionKey: 'gallery',
+          label: `Gallery · ${normalized.title}`,
+          imageUrl: normalized.imageUrl,
+          targetCollection: 'gallery',
+          targetDocId: safeId,
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `siteImages/gallery_${safeId}`
+      );
+
       await logAdminAction('SAVE_GALLERY', 'gallery', safeId, `Saved gallery item ${normalized.title}`);
     },
     [gallery, deleteMediaFromR2]
@@ -1425,6 +1573,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.DELETE,
         `gallery/${safeId}`
       );
+      await deleteDoc(doc(db, 'siteImages', `gallery_${safeId}`)).catch(() => {});
       await logAdminAction('DELETE_GALLERY', 'gallery', safeId, `Deleted gallery item ${safeId}`);
     },
     [gallery, deleteMediaFromR2]
@@ -1466,6 +1615,21 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.WRITE,
         `events/${safeId}`
       );
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteImages', `event_${safeId}`), {
+          id: `event_${safeId}`,
+          sectionKey: 'events',
+          label: `Event · ${normalized.title}`,
+          imageUrl: normalized.imageUrl,
+          targetCollection: 'events',
+          targetDocId: safeId,
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `siteImages/event_${safeId}`
+      );
+
       await logAdminAction('SAVE_EVENT', 'events', safeId, `Saved event ${normalized.title}`);
     },
     [events, deleteMediaFromR2]
@@ -1484,6 +1648,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.DELETE,
         `events/${safeId}`
       );
+      await deleteDoc(doc(db, 'siteImages', `event_${safeId}`)).catch(() => {});
       await logAdminAction('DELETE_EVENT', 'events', safeId, `Deleted event ${safeId}`);
     },
     [events, deleteMediaFromR2]
@@ -1533,6 +1698,25 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.WRITE,
         `siteContent/${safeId}`
       );
+
+      // Sync section image into dedicated `siteImages` Firestore collection
+      const slotMeta = DEFAULT_SITE_IMAGES.find(
+        (si) => si.id === normalized.sectionKey || si.id === safeId
+      );
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteImages', normalized.sectionKey || safeId), {
+          id: normalized.sectionKey || safeId,
+          sectionKey: normalized.sectionKey || safeId,
+          label: slotMeta?.label || normalized.heading || normalized.sectionKey,
+          imageUrl: normalized.imageUrl,
+          targetCollection: 'siteContent',
+          targetDocId: safeId,
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `siteImages/${normalized.sectionKey || safeId}`
+      );
+
       await logAdminAction(
         'SAVE_SITE_CONTENT',
         'siteContent',
@@ -1601,6 +1785,37 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.WRITE,
         'settings/main'
       );
+
+      // Sync Hero Slideshow images & Floor Plan Drone Shot into dedicated `siteImages` Firestore collection
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteImages', 'hero'), {
+          id: 'hero',
+          sectionKey: 'hero',
+          label: 'Homepage Hero Slideshow Images',
+          imageUrl: normalized.heroImages?.[0] || '',
+          imageUrls: normalized.heroImages || [],
+          targetCollection: 'settings',
+          targetDocId: 'main',
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        'siteImages/hero'
+      );
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteImages', 'floorplan'), {
+          id: 'floorplan',
+          sectionKey: 'floorplan',
+          label: 'Reserve Page (/reserve) · Interactive Floor Plan Background Drone Shot',
+          imageUrl: normalized.floorPlanImageUrl || '',
+          targetCollection: 'settings',
+          targetDocId: 'main',
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        'siteImages/floorplan'
+      );
+
       await logAdminAction('SAVE_SETTINGS', 'settings', 'main', 'Updated café settings');
     },
     [settings, deleteMediaFromR2]
@@ -1750,6 +1965,20 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.WRITE,
         `siteContent/${sectionKey}`
       );
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteImages', sectionKey), {
+          id: sectionKey,
+          sectionKey,
+          label: `Homepage Our Story Collage Photo (Slot 0${slotIndex})`,
+          imageUrl: payload.imageUrl,
+          targetCollection: 'siteContent',
+          targetDocId: sectionKey,
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `siteImages/${sectionKey}`
+      );
     },
     [siteContent, uploadMediaFile]
   );
@@ -1793,6 +2022,20 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         OperationType.WRITE,
         `siteContent/${sectionKey}`
       );
+
+      await commitFirestoreWrite(
+        setDoc(doc(db, 'siteImages', sectionKey), {
+          id: sectionKey,
+          sectionKey,
+          label: `Homepage Our Story Collage Photo (Slot 0${slotIndex})`,
+          imageUrl: '',
+          targetCollection: 'siteContent',
+          targetDocId: sectionKey,
+          updatedAt: serverTimestamp(),
+        }),
+        OperationType.WRITE,
+        `siteImages/${sectionKey}`
+      );
     },
     [siteContent, deleteMediaFromR2]
   );
@@ -1814,6 +2057,7 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         gallery,
         events,
         siteContent,
+        siteImages,
         availability,
         seoGlobal,
         seoPages,
