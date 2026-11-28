@@ -120,6 +120,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     uploadMediaFile,
     updateCollageImageFromDevice,
     resetCollageImage,
+    updateSiteImageSlot,
+    clearSiteImageSlot,
     storageStatus,
     checkStorageStatus,
   } = useCafe();
@@ -1224,6 +1226,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           });
                           showToast(
                             'Drone shot floor plan saved directly to Cloudflare R2! Drag tables to adjust positions.'
+                          );
+                        } catch (err) {
+                          showToast(
+                            err instanceof Error ? err.message : 'Failed to upload drone shot to Cloudflare R2.'
                           );
                         } finally {
                           setUploadingDroneShot(false);
@@ -3042,6 +3048,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 showToast(
                                   `Uploaded & replaced photo for "${g.title}" in Cloudflare R2.`
                                 );
+                              } catch (err) {
+                                showToast(
+                                  err instanceof Error ? err.message : 'Failed to upload gallery photo to R2.'
+                                );
                               } finally {
                                 setUploadingGalleryRowId(null);
                                 e.target.value = '';
@@ -3236,6 +3246,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 showToast(
                                   `Uploaded photo to Cloudflare R2 & synced "${updatedGallery.title}" to Firestore.`
                                 );
+                              } catch (err) {
+                                showToast(
+                                  err instanceof Error ? err.message : 'Failed to upload gallery photo to R2.'
+                                );
                               } finally {
                                 setUploadingGalleryImg(false);
                                 e.target.value = '';
@@ -3350,6 +3364,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 }
                                 showToast(
                                   `Uploaded & saved photo for "${evt.title}" in Cloudflare R2.`
+                                );
+                              } catch (err) {
+                                showToast(
+                                  err instanceof Error ? err.message : 'Failed to upload event photo to R2.'
                                 );
                               } finally {
                                 setUploadingEventRowId(null);
@@ -3543,6 +3561,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 showToast(
                                   `Uploaded photo to Cloudflare R2 & synced "${updatedEvent.title}" to Firestore.`
                                 );
+                              } catch (err) {
+                                showToast(
+                                  err instanceof Error ? err.message : 'Failed to upload event photo to R2.'
+                                );
                               } finally {
                                 setUploadingEventImg(false);
                                 e.target.value = '';
@@ -3659,6 +3681,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 try {
                                   await updateCollageImageFromDevice(slot.index, file);
                                   showToast(`Updated Our Story photo #${slot.index} (${slot.title}).`);
+                                } catch (err) {
+                                  showToast(
+                                    err instanceof Error ? err.message : 'Failed to upload Our Story collage photo to R2.'
+                                  );
                                 } finally {
                                   setUploadingCollageSlot(null);
                                 }
@@ -3955,6 +3981,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       showToast(
                                         `Uploaded & saved new image for "${sec.sectionKey}" directly to Cloudflare R2.`
                                       );
+                                    } catch (err) {
+                                      showToast(
+                                        err instanceof Error ? err.message : 'Failed to upload section image to R2.'
+                                      );
                                     } finally {
                                       setUploadingSectionId(null);
                                       e.target.value = '';
@@ -4002,155 +4032,103 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </p>
                 </div>
 
-                {/* 1. Core Page, Home Showcase & Floor Plan Visuals */}
+                {/* 1. Firestore siteImages Collection — All 8 Website Section Slots */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-[#58644E]">
-                    1. Core Page, Home Showcase &amp; Floor Plan Images
+                    1. Firestore &ldquo;siteImages&rdquo; Collection — All 8 Website Section Slots (Direct R2 Push)
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-                    {/* Floor Plan Drone Shot */}
-                    <div className="border border-[#E7DED3] bg-[#F8F4EE] p-3 flex flex-col justify-between space-y-3">
-                      <div className="space-y-1.5">
-                        <div className="font-semibold text-[#171513]">
-                          Interactive Floor Plan Background (Drone Shot)
-                        </div>
-                        <div className="text-[11px] text-[#171513]/60">
-                          Shown on /reserve Interactive Floor Plan Page
-                        </div>
-                        <div className="aspect-[16/10] bg-white border border-[#E7DED3] overflow-hidden">
-                          <EditorialVisual
-                            src={settings.floorPlanImageUrl || ''}
-                            alt="Floor Plan Background"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="flex-1 py-1.5 px-2.5 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
-                          <Upload className="w-3 h-3" />
-                          <span>
-                            {uploadingAuditKey === 'floorplan' ? 'Uploading...' : 'Upload Drone Shot'}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={async (e) => {
-                              const file = e.target.files?.[0];
-                              if (!file) return;
-                              setUploadingAuditKey('floorplan');
-                              try {
-                                const r2Url = await uploadMediaFile(
-                                  file,
-                                  'floorplan',
-                                  settings.floorPlanImageUrl
-                                );
-                                await saveSettings({ ...settings, floorPlanImageUrl: r2Url });
-                                showToast('Updated Floor Plan Drone Shot in Cloudflare R2.');
-                              } finally {
-                                setUploadingAuditKey(null);
-                                e.target.value = '';
-                              }
-                            }}
-                          />
-                        </label>
-                        {settings.floorPlanImageUrl && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await saveSettings({ ...settings, floorPlanImageUrl: '' });
-                              showToast('Deleted Floor Plan Drone Shot from Cloudflare R2.');
-                            }}
-                            className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16]"
-                          >
-                            Reset
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                    {[
+                      { id: 'hero', title: 'Homepage Hero Slideshow (Primary)', route: 'Home (/)' },
+                      { id: 'story_collage_1', title: 'Our Story Collage Slot 01 (Vertical 4:5)', route: 'Home (/) & /story' },
+                      { id: 'story_collage_2', title: 'Our Story Collage Slot 02 (Inset 1:1)', route: 'Home (/) & /story' },
+                      { id: 'golden_hour', title: 'The Golden Hour Culinary Feature', route: 'Home (/)' },
+                      { id: 'atmosphere', title: 'Atmosphere & Spaces Feature', route: 'Home (/)' },
+                      { id: 'story', title: 'Our Story Page Primary Image', route: '/story' },
+                      { id: 'concierge', title: 'Our Story Page Secondary Showcase', route: '/story' },
+                      { id: 'floorplan', title: 'Interactive Floor Plan Drone Shot', route: '/reserve' },
+                    ].map((slot) => {
+                      const imgRec = siteImages.find((s) => s.id === slot.id || s.sectionKey === slot.id);
+                      const secRec = siteContent.find((s) => s.sectionKey === slot.id || s.id === slot.id);
+                      const resolvedUrl =
+                        slot.id === 'hero'
+                          ? settings.heroImages?.[0] || imgRec?.imageUrl || ''
+                          : slot.id === 'floorplan'
+                          ? settings.floorPlanImageUrl || imgRec?.imageUrl || ''
+                          : (imgRec?.imageUrl && imgRec.imageUrl.trim()) ||
+                            (secRec?.imageUrl && secRec.imageUrl.trim()) ||
+                            '';
+                      const isBusy = uploadingAuditKey === `slot_${slot.id}`;
 
-                    {/* Story, Golden Hour, Atmosphere & Concierge Images */}
-                    {siteContent
-                      .filter(
-                        (s) =>
-                          s.sectionKey === 'story' ||
-                          s.sectionKey === 'golden_hour' ||
-                          s.sectionKey === 'atmosphere' ||
-                          s.sectionKey === 'concierge'
-                      )
-                      .map((sec) => (
+                      return (
                         <div
-                          key={sec.id}
+                          key={slot.id}
                           className="border border-[#E7DED3] bg-[#F8F4EE] p-3 flex flex-col justify-between space-y-3"
                         >
                           <div className="space-y-1.5">
-                            <div className="font-semibold text-[#171513]">
-                              {sec.sectionKey === 'story'
-                                ? 'Our Story Primary Image (/story)'
-                                : sec.sectionKey === 'golden_hour'
-                                ? 'The Golden Hour Culinary Feature (Home)'
-                                : sec.sectionKey === 'atmosphere'
-                                ? 'Atmosphere & Spaces Feature (Home)'
-                                : 'Our Story Secondary Showcase (/story)'}
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-[#C65B2B] font-semibold">
+                                siteImages/{slot.id}
+                              </span>
+                              <span className="text-[10px] text-[#171513]/55">{slot.route}</span>
                             </div>
-                            <div className="text-[11px] text-[#171513]/60 truncate">
-                              {sec.heading}
-                            </div>
+                            <div className="font-semibold text-[#171513] truncate">{slot.title}</div>
                             <div className="aspect-[16/10] bg-white border border-[#E7DED3] overflow-hidden">
-                              <EditorialVisual
-                                src={
-                                  (sec.imageUrl && sec.imageUrl.trim()) ||
-                                  (siteImages.find((img) => img.id === sec.sectionKey || img.sectionKey === sec.sectionKey)?.imageUrl ?? '')
-                                }
-                                alt={sec.heading}
-                              />
+                              <EditorialVisual src={resolvedUrl} alt={slot.title} />
+                            </div>
+                            <div className="text-[10px] font-mono-tabular text-[#171513]/55 truncate">
+                              {resolvedUrl ? resolvedUrl : 'No image in R2 yet'}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+
+                          <div className="flex items-center gap-1.5">
                             <label className="flex-1 py-1.5 px-2.5 bg-[#171513] text-[#F8F4EE] hover:bg-[#C65B2B] cursor-pointer inline-flex items-center justify-center gap-1 font-medium">
                               <Upload className="w-3 h-3" />
-                              <span>
-                                {uploadingAuditKey === `sec_${sec.id}`
-                                  ? 'Uploading...'
-                                  : 'Replace Image'}
-                              </span>
+                              <span>{isBusy ? 'Pushing to R2...' : resolvedUrl ? 'Replace in R2' : 'Upload to R2'}</span>
                               <input
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
                                 onChange={async (e) => {
                                   const file = e.target.files?.[0];
+                                  e.target.value = '';
                                   if (!file) return;
-                                  setUploadingAuditKey(`sec_${sec.id}`);
+                                  setUploadingAuditKey(`slot_${slot.id}`);
                                   try {
-                                    const r2Url = await uploadMediaFile(
-                                      file,
-                                      'content',
-                                      sec.imageUrl
+                                    await updateSiteImageSlot(slot.id, file);
+                                    showToast(`Pushed "${slot.title}" to Cloudflare R2 & synced siteImages/${slot.id}.`);
+                                  } catch (err) {
+                                    showToast(
+                                      err instanceof Error ? err.message : `Failed to push ${slot.id} image to R2.`
                                     );
-                                    await saveSiteContent({ ...sec, imageUrl: r2Url });
-                                    showToast(`Updated "${sec.sectionKey}" image in Cloudflare R2.`);
                                   } finally {
                                     setUploadingAuditKey(null);
-                                    e.target.value = '';
                                   }
                                 }}
                               />
                             </label>
-                            {sec.imageUrl && sec.imageUrl.startsWith('http') && (
+                            {resolvedUrl && (
                               <button
                                 type="button"
                                 onClick={async () => {
-                                  await saveSiteContent({ ...sec, imageUrl: '' });
-                                  showToast(`Reset "${sec.sectionKey}" image in Cloudflare R2.`);
+                                  try {
+                                    await clearSiteImageSlot(slot.id);
+                                    showToast(`Removed image from siteImages/${slot.id} and Cloudflare R2.`);
+                                  } catch (err) {
+                                    showToast(
+                                      err instanceof Error ? err.message : `Failed to clear ${slot.id}.`
+                                    );
+                                  }
                                 }}
-                                className="px-2.5 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16]"
+                                className="px-2 py-1.5 border border-[#E7DED3] bg-white text-[#9E3F16] cursor-pointer"
                               >
-                                Reset
+                                Clear
                               </button>
                             )}
                           </div>
                         </div>
-                      ))}
+                      );
+                    })}
                   </div>
                 </div>
 

@@ -347,6 +347,9 @@ function jsonResponse(data: unknown, status = 200): Response {
       'Content-Type': 'application/json; charset=utf-8',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
 }
@@ -356,6 +359,18 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname;
     const host = (request.headers.get('host') || url.host || '').toLowerCase();
+
+    if (request.method === 'OPTIONS' && pathname.startsWith('/api/')) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
 
     if (host.startsWith('www.onelovecafesigiriya.com') || host.startsWith('www.onelovecafe.lk')) {
       const canonicalDomain = (

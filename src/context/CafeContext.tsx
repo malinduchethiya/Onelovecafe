@@ -194,6 +194,8 @@ interface CafeContextValue {
   deleteMediaFromR2: (urlOrUrls: string | string[]) => Promise<void>;
   updateCollageImageFromDevice: (slotIndex: number, file: File) => Promise<void>;
   resetCollageImage: (slotIndex: number) => Promise<void>;
+  updateSiteImageSlot: (slotId: string, file: File) => Promise<string>;
+  clearSiteImageSlot: (slotId: string) => Promise<void>;
   storageStatus: {
     configured: boolean;
     provider: string;
@@ -289,20 +291,27 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const bootstrappedRef = useRef<boolean>(false);
 
   const checkStorageStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/storage/status');
-      if (res.ok) {
-        const data = await res.json();
-        setStorageStatus({
-          configured: Boolean(data.configured),
-          provider: data.provider || 'cloudflare-r2',
-          bucket: data.bucket || null,
-          publicUrl: data.publicUrl || null,
-        });
+    const endpoints = ['/api/storage/status', 'https://onelovecafesigiriya.com/api/storage/status'];
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetch(endpoint);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.configured) {
+            setStorageStatus({
+              configured: true,
+              provider: data.provider || 'cloudflare-r2',
+              bucket: data.bucket || 'onelove-assets',
+              publicUrl: data.publicUrl || 'https://cdn.onelovecafesigiriya.com',
+            });
+            return;
+          }
+        }
+      } catch {
+        // try next endpoint
       }
-    } catch {
-      setStorageStatus({ configured: false, provider: 'unreachable' });
     }
+    setStorageStatus({ configured: false, provider: 'unreachable' });
   }, []);
 
   useEffect(() => {
@@ -317,14 +326,18 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .filter((u) => /^https?:\/\//i.test(u));
     if (urls.length === 0) return;
 
-    try {
-      await fetch('/api/storage/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls }),
-      });
-    } catch (err) {
-      console.warn('Could not delete media object from Cloudflare R2:', err);
+    const endpoints = ['/api/storage/delete', 'https://onelovecafesigiriya.com/api/storage/delete'];
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls }),
+        });
+        if (res.ok) return;
+      } catch {
+        // try fallback endpoint
+      }
     }
   }, []);
 
@@ -1918,28 +1931,40 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Direct Admin -> Cloudflare R2 Image Upload (returns public R2 CDN URL to save in Firestore)
   const uploadMediaFile = useCallback(
     async (file: File, folder = 'media', previousUrl?: string): Promise<string> => {
-      const compressedDataUrl = await fileToCompressedBase64(file, 1400, 0.84);
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dataUrl: compressedDataUrl,
-          filename: file.name,
-          folder,
-          previousUrl:
-            previousUrl && /^https?:\/\//i.test(previousUrl.trim()) ? previousUrl.trim() : undefined,
-        }),
+      const compressedDataUrl = await fileToCompressedBase64(file, 2400, 1800, 0.88, 6_000_000);
+      const payload = JSON.stringify({
+        dataUrl: compressedDataUrl,
+        filename: file.name,
+        folder,
+        previousUrl:
+          previousUrl && /^https?:\/\//i.test(previousUrl.trim()) ? previousUrl.trim() : undefined,
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok || typeof data.url !== 'string' || !/^https?:\/\//i.test(data.url)) {
-        throw new Error(
-          data.error ||
-            'Cloudflare R2 upload failed. Verify R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY.'
-        );
+      const endpoints = ['/api/upload', 'https://onelovecafesigiriya.com/api/upload'];
+      let lastError = 'Cloudflare R2 upload failed.';
+
+      for (const endpoint of endpoints) {
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.ok && typeof data.url === 'string' && /^https?:\/\//i.test(data.url)) {
+            return data.url;
+          }
+          if (data.error) {
+            lastError = data.error;
+          }
+        } catch (err) {
+          if (err instanceof Error && err.message) {
+            lastError = err.message;
+          }
+        }
       }
 
-      return data.url;
+      throw new Error(lastError);
     },
     []
   );
@@ -2057,6 +2082,86 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [siteContent, deleteMediaFromR2]
   );
 
+  const updateSiteImageSlot = useCallback(
+    async (slotId: string, file: File): Promise<string> => {
+      const cleanId = slotId.trim();
+      if (cleanId === 'hero') {
+        const prevHero = settings.heroImages?.[0];
+        const r2Url = await uploadMediaFile(file, 'hero', prevHero);
+        const currentHeroes = Array.isArray(settings.heroImages) ? settings.heroImages.filter(Boolean) : [];
+        const nextHeroes = currentHeroes.length > 0 ? [r2Url, ...currentHeroes.slice(1)] : [r2Url];
+        await saveSettings({ ...settings, heroImages: nextHeroes });
+        return r2Url;
+      }
+      if (cleanId === 'floorplan') {
+        const r2Url = await uploadMediaFile(file, 'floorplan', settings.floorPlanImageUrl);
+        await saveSettings({ ...settings, floorPlanImageUrl: r2Url });
+        return r2Url;
+      }
+      if (cleanId === 'story_collage_1') {
+        await updateCollageImageFromDevice(1, file);
+        const rec = siteImages.find((s) => s.id === 'story_collage_1');
+        return rec?.imageUrl || '';
+      }
+      if (cleanId === 'story_collage_2') {
+        await updateCollageImageFromDevice(2, file);
+        const rec = siteImages.find((s) => s.id === 'story_collage_2');
+        return rec?.imageUrl || '';
+      }
+
+      const existingSection =
+        siteContent.find((s) => s.sectionKey === cleanId || s.id === cleanId) ||
+        DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === cleanId || s.id === cleanId);
+      const existingImg = siteImages.find((s) => s.id === cleanId || s.sectionKey === cleanId);
+      const prevUrl = existingSection?.imageUrl || existingImg?.imageUrl || '';
+      const r2Url = await uploadMediaFile(file, 'content', prevUrl);
+
+      const sectionPayload: SiteContentSection = {
+        id: cleanId,
+        sectionKey: cleanId,
+        kicker: existingSection?.kicker || cleanId.toUpperCase(),
+        heading: existingSection?.heading || cleanId,
+        subheading: existingSection?.subheading || '',
+        body: existingSection?.body || '',
+        ctaLabel: existingSection?.ctaLabel || '',
+        ctaLink: existingSection?.ctaLink || '',
+        imageUrl: r2Url,
+      };
+      await saveSiteContent(sectionPayload);
+      return r2Url;
+    },
+    [settings, siteContent, siteImages, uploadMediaFile, saveSettings, updateCollageImageFromDevice, saveSiteContent]
+  );
+
+  const clearSiteImageSlot = useCallback(
+    async (slotId: string): Promise<void> => {
+      const cleanId = slotId.trim();
+      if (cleanId === 'hero') {
+        await saveSettings({ ...settings, heroImages: [] });
+        return;
+      }
+      if (cleanId === 'floorplan') {
+        await saveSettings({ ...settings, floorPlanImageUrl: '' });
+        return;
+      }
+      if (cleanId === 'story_collage_1') {
+        await resetCollageImage(1);
+        return;
+      }
+      if (cleanId === 'story_collage_2') {
+        await resetCollageImage(2);
+        return;
+      }
+      const existingSection =
+        siteContent.find((s) => s.sectionKey === cleanId || s.id === cleanId) ||
+        DEFAULT_SITE_CONTENT.find((s) => s.sectionKey === cleanId || s.id === cleanId);
+      if (existingSection) {
+        await saveSiteContent({ ...existingSection, imageUrl: '' });
+      }
+    },
+    [settings, siteContent, saveSettings, resetCollageImage, saveSiteContent]
+  );
+
   return (
     <CafeContext.Provider
       value={{
@@ -2114,6 +2219,8 @@ export const CafeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteMediaFromR2,
         updateCollageImageFromDevice,
         resetCollageImage,
+        updateSiteImageSlot,
+        clearSiteImageSlot,
         storageStatus,
         checkStorageStatus,
       }}

@@ -35,12 +35,12 @@ In your Cloudflare Pages project under **Settings** > **Environment variables** 
 If you prefer to keep `firebase-applet-config.json` private or override settings per environment, you can set these in Cloudflare Pages:
 
 - `VITE_FIREBASE_API_KEY`: Your Firebase Web API Key
-- `VITE_FIREBASE_PROJECT_ID`: `advance-sandbox-gmzf6`
-- `VITE_FIREBASE_DATABASE_ID`: `ai-studio-5fe42b00-de17-4d88-b455-9367f3431665`
-- `VITE_FIREBASE_AUTH_DOMAIN`: `advance-sandbox-gmzf6.firebaseapp.com`
-- `VITE_FIREBASE_STORAGE_BUCKET`: `advance-sandbox-gmzf6.firebasestorage.app`
-- `VITE_FIREBASE_APP_ID`: `1:448261670736:web:b9c2a2ffea58dfe8ce0e55`
-- `VITE_FIREBASE_MESSAGING_SENDER_ID`: `448261670736`
+- `VITE_FIREBASE_PROJECT_ID`: `onelovecafe-6a0fa`
+- `VITE_FIREBASE_DATABASE_ID`: `(default)`
+- `VITE_FIREBASE_AUTH_DOMAIN`: `onelovecafe-6a0fa.firebaseapp.com`
+- `VITE_FIREBASE_STORAGE_BUCKET`: `onelovecafe-6a0fa.firebasestorage.app`
+- `VITE_FIREBASE_APP_ID`: `1:89235235317:web:89058b26f48f85f15e40bc`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`: `89235235317`
 
 ---
 

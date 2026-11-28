@@ -296,6 +296,16 @@ async function startServer() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
+    if (req.path.startsWith('/api/')) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      if (req.method === 'OPTIONS') {
+        res.status(204).end();
+        return;
+      }
+    }
+
     const rawHost = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
     const host = rawHost.split(',')[0].trim().toLowerCase();
     if (host.startsWith('www.onelovecafesigiriya.com') || host.startsWith('www.onelovecafe.lk')) {
